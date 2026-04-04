@@ -333,6 +333,7 @@ kimiz/
 | **libxev** | 异步运行时 | mitchellh/libxev | 跨平台事件循环，社区标准 |
 | **zig-clap** | CLI 参数解析 | Hejsil/zig-clap | 社区最流行，简单易用 |
 | **nexlog** | 日志 | chrischtel/nexlog | 生产级，支持文件轮转、彩色输出 |
+| **sqlite** | 数据存储 | vrischmann/zig-sqlite | 单文件数据库，零配置 |
 
 #### 可选项（根据需求）
 
@@ -341,13 +342,17 @@ kimiz/
 | **zimdjson** | 高性能 JSON | ezequielramis/zimdjson | 需要解析大量 JSON 时 |
 | **zig-yaml** | YAML 解析 | kubkon/zig-yaml | 配置文件使用 YAML 时 |
 | **tomlz** | TOML 解析 | mattyhall/tomlz | 配置文件使用 TOML 时 |
-| **csv-zero** | CSV 处理 | peymanmortazavi/csv-zero | 需要处理 CSV 数据时 |
-| **zeit** | 时间处理 | rockorager/zeit | 需要时区支持时 |
-| **zg** | Unicode 文本 | atman/zg | 需要完整 Unicode 支持时 |
-| **zig-regex** | 正则表达式 | tiehuis/zig-regex | 需要复杂模式匹配时 |
-| **glob.zig** | Glob 匹配 | xcaeser/glob.zig | 需要文件路径模式匹配时 |
 
-### 4.3 技术选择理由
+### 4.3 明确不使用的技术
+
+| 技术 | 不使用的理由 |
+|------|-------------|
+| **MCP** | 避免 Context 爆炸，保持架构简单 |
+| **WebSocket** | 优先 HTTP/2，简化实现 |
+| **复杂数据库** | SQLite 足够，避免运维负担 |
+| **Docker** | 单二进制，无需容器化 |
+
+### 4.4 技术选择理由
 
 #### 为什么使用 Zig 标准库？
 
@@ -361,100 +366,88 @@ kimiz/
 
 **原则**: 优先使用标准库，仅在标准库不满足需求时引入第三方库
 
-#### 为什么使用这些第三方库？
+#### 为什么使用 SQLite？
 
-**libvaxis vs 纯 std 实现**
-| 特性 | libvaxis | 纯 std 实现 |
-|------|----------|-------------|
-| 现代终端支持 | ✅ Kitty, WezTerm, iTerm2 | ⚠️ 需自行实现 |
-| 图像显示 | ✅ Kitty graphics protocol | ❌ 不支持 |
-| 鼠标事件 | ✅ 完整支持 | ⚠️ 部分支持 |
-| 动画/刷新 | ✅ 优化过的渲染循环 | ⚠️ 需自行优化 |
-| 开发成本 | 低（直接使用） | 高（数周工作量） |
-
-**libxev vs 标准库线程**
-| 特性 | libxev | std.Thread |
+| 特性 | SQLite | 其他数据库 |
 |------|--------|-----------|
-| 异步 IO | ✅ io_uring/epoll/kqueue | ❌ 阻塞 IO |
-| 事件循环 | ✅ 内置 | ❌ 需自行实现 |
-| 性能 | ✅ 高（零拷贝） | 一般 |
-| 复杂度 | 中等 | 低 |
+| 部署 | 零配置，单文件 | 需要服务器 |
+| 备份 | 复制文件即可 | 复杂备份策略 |
+| 性能 | 足够（本地使用）| 可能过剩 |
+| 依赖 | 单一 C 库 | 多个组件 |
 
-**zig-clap vs 其他 CLI 库**
-| 库 | 优点 | 缺点 |
-|----|------|------|
-| zig-clap | 社区最流行，文档完善 | 功能较基础 |
-| zig-args | 基于结构体，声明式 | 功能较少 |
-| yazap | 功能丰富，支持子命令 | 学习曲线陡峭 |
+---
 
-### 4.4 构建配置
+## 5. 模块详细设计
 
-```zig
-// build.zig.zon
-.{
-    .name = "kimiz",
-    .version = "0.1.0",
-    .dependencies = .{
-        // 核心依赖
-        .vaxis = .{
-            .url = "https://github.com/rockorager/libvaxis/archive/refs/tags/v0.1.0.tar.gz",
-            .hash = "...",
-        },
-        .libxev = .{
-            .url = "https://github.com/mitchellh/libxev/archive/refs/tags/v0.1.0.tar.gz",
-            .hash = "...",
-        },
-        .clap = .{
-            .url = "https://github.com/Hejsil/zig-clap/archive/refs/tags/v0.10.0.tar.gz",
-            .hash = "...",
-        },
-        .nexlog = .{
-            .url = "https://github.com/chrischtel/nexlog/archive/refs/tags/v0.1.0.tar.gz",
-            .hash = "...",
-        },
-        
-        // 可选依赖（根据需求启用）
-        // .zimdjson = .{ ... },
-        // .yaml = .{ ... },
-        // .tomlz = .{ ... },
-        // .csv = .{ ... },
-        // .zeit = .{ ... },
-        // .zg = .{ ... },
-        // .regex = .{ ... },
-        // .glob = .{ ... },
-    },
-}
+### 5.1 kimiz-core
+
+```
+src/core/
+├── root.zig           # 模块入口
+├── types.zig          # 核心类型定义
+├── errors.zig         # 错误类型体系
+├── arena.zig          # 内存分配工具
+└── utils.zig          # 通用工具函数
 ```
 
-### 4.5 依赖管理策略
+### 5.2 kimiz-ai
 
-**MVP 阶段（最小依赖）**:
 ```
-必选:
-├── libvaxis (TUI)
-├── libxev (异步运行时)
-├── zig-clap (CLI)
-└── nexlog (日志)
-```
-
-**完整功能阶段（按需添加）**:
-```
-可选:
-├── zimdjson (高性能 JSON)
-├── zig-yaml (YAML 配置)
-├── tomlz (TOML 配置)
-├── csv-zero (CSV 处理)
-├── zeit (时间处理)
-├── zg (Unicode)
-├── zig-regex (正则)
-└── glob.zig (Glob 匹配)
+src/ai/
+├── root.zig
+├── types.zig          # AI 相关类型
+├── providers/         # Provider 实现
+│   ├── openai.zig
+│   ├── anthropic.zig
+│   ├── google.zig
+│   ├── kimi.zig
+│   └── fireworks.zig
+├── routing.zig        # 智能路由
+├── streaming.zig      # 流式处理
+└── multimodal.zig     # 多模态支持
 ```
 
-**原则**:
-1. 优先使用 Zig 标准库
-2. 仅在标准库不满足需求时引入第三方库
-3. 每个引入的库都需要明确的使用场景
-4. 保持依赖数量最小化
+### 5.3 kimiz-agent
+
+```
+src/agent/
+├── root.zig
+├── loop.zig           # Agent 主循环
+├── tools/             # 工具实现
+│   ├── read_file.zig
+│   ├── write_file.zig
+│   ├── bash.zig
+│   └── search.zig
+├── memory/            # 记忆系统
+│   ├── store.zig
+│   ├── retrieval.zig
+│   └── learning.zig
+└── parallel.zig       # 并行执行
+```
+
+### 5.4 kimiz-cli
+
+```
+src/cli/
+├── root.zig
+├── repl.zig           # REPL 模式
+├── tui/               # TUI 实现
+│   ├── app.zig
+│   ├── ui.zig
+│   └── components/
+├── commands.zig       # 子命令
+└── config.zig         # 配置管理
+```
+
+### 5.5 kimiz-prompts
+
+```
+src/prompts/
+├── root.zig
+├── templates/         # 提示词模板
+├── builder.zig        # 动态构建
+└── optimizer.zig      # 优化器
+```
 
 ---
 

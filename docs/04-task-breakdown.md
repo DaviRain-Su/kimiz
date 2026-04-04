@@ -1,103 +1,385 @@
 : 0
 # Task Breakdown — kimiz 任务拆解
 
-**版本**: 0.1.0  
-**日期**: 2026-04-04  
-**依赖**: [03-technical-spec.md](./03-technical-spec.md)
+**版本**: 0.2.0  
+**日期**: 2026-04-05  
+**依赖**: [01-prd.md](./01-prd.md), [02-architecture.md](./02-architecture.md)
 
 ---
 
-## 任务总览
+## 执行策略
 
-| 批次 | 任务数 | 预估时间 | 里程碑 |
-|------|--------|----------|--------|
-| Batch 1 | 4 | 4h | M1: 核心数据类型就绪 |
-| Batch 2 | 4 | 4h | M2: OpenAI Provider 非流式 |
-| Batch 3 | 4 | 4h | M3: 流式 SSE 解析 |
-| Batch 4 | 7 | 7h | M4: Kimi Code + Fireworks 完整支持 |
-| Batch 5 | 4 | 4h | M5: Tool Calling |
-| Batch 6 | 3 | 3h | M6: Agent 运行时 |
-| Batch 7 | 4 | 4h | M7: TUI 界面 |
-| Batch 8 | 2 | 2h | M8: CLI + 集成测试 |
+基于优化后的 PRD，采用**5 模块并行开发**策略：
+
+```
+Phase 1 (4周): 核心基础设施
+├── Week 1-2: kimiz-core + kimiz-ai (基础)
+├── Week 3: kimiz-cli (REPL)
+└── Week 4: 集成测试
+
+Phase 2 (4周): Agent 能力
+├── Week 5-6: kimiz-agent (Loop + Tools)
+└── Week 7-8: 记忆系统 + 学习
+
+Phase 3 (4周): 智能增强
+├── Week 9-10: 智能路由 + 多模态
+└── Week 11-12: TUI + 提示词工程
+
+Phase 4 (4周): 优化发布
+├── Week 13-14: 性能优化
+└── Week 15-16: 测试 + 文档
+```
 
 ---
 
-## Batch 1: 核心数据类型 (M1)
+## Phase 1: 核心基础设施
 
-### Task 1.1: 创建项目目录结构 + 配置依赖
-**时间**: 45min  
-**文件**: 新建目录 + build.zig.zon
+### Week 1-2: kimiz-core + kimiz-ai
 
+#### Task 1.1: 项目初始化
+**时间**: 2h
+**模块**: kimiz-core
+
+**内容**:
+1. 创建 5 模块目录结构
+2. 配置 build.zig.zon（libvaxis, libxev, zig-clap, nexlog, sqlite）
+3. 设置 CI/CD 基础
+4. 创建 Makefile 常用命令
+
+**目录结构**:
 ```
 src/
-├── main.zig
-├── root.zig
-├── http.zig
-├── ai/
-│   ├── root.zig
-│   ├── types.zig
-│   ├── models.zig
-│   ├── stream.zig
-│   ├── sse.zig
-│   ├── json_utils.zig
-│   ├── stream_guard.zig
-│   └── providers/
-│       ├── openai.zig
-│       ├── anthropic.zig
-│       ├── google.zig
-│       ├── kimi.zig
-│       └── fireworks.zig
-├── agent/
-│   ├── root.zig
-│   ├── agent.zig
-│   ├── events.zig
-│   ├── tool.zig
-│   ├── session.zig
-│   └── parallel.zig
-├── tui/
-│   ├── root.zig
-│   ├── app.zig
-│   ├── ui.zig
-│   ├── events.zig
-│   ├── theme.zig
-│   └── components/
-│       ├── message.zig
-│       ├── code_block.zig
-│       ├── sidebar.zig
-│       ├── input.zig
-│       └── status_bar.zig
-└── utils/
-    ├── log.zig
-    ├── async.zig
-    └── config.zig
-```
-
-**build.zig.zon 配置**:
-```zig
-.dependencies = .{
-    .vaxis = .{ .url = "...", .hash = "..." },
-    .libxev = .{ .url = "...", .hash = "..." },
-    .clap = .{ .url = "...", .hash = "..." },
-    .nexlog = .{ .url = "...", .hash = "..." },
-}
+├── core/          # kimiz-core
+├── ai/            # kimiz-ai
+├── agent/         # kimiz-agent
+├── cli/           # kimiz-cli
+└── prompts/       # kimiz-prompts
 ```
 
 **验收**:
-- [ ] 所有目录和空文件创建完成
-- [ ] `build.zig.zon` 配置好第三方依赖
-- [ ] `zig build` 能成功下载依赖并编译
+- [ ] `zig build` 成功
+- [ ] `make test` 通过
+- [ ] CI 配置完成
+
+#### Task 1.2: 核心类型系统
+**时间**: 4h
+**模块**: kimiz-core
+
+**内容**:
+1. 定义 Memory, Context, Message 等核心类型
+2. 设计错误处理体系
+3. 实现 Arena 分配器工具
+4. 编写单元测试
+
+**验收**:
+- [ ] 所有核心类型定义完成
+- [ ] 错误类型覆盖所有场景
+- [ ] 单元测试覆盖率 > 80%
+
+#### Task 1.3: HTTP 层封装
+**时间**: 3h
+**模块**: kimiz-core
+
+**内容**:
+1. 封装 std.http.Client
+2. 实现请求/响应处理
+3. 添加重试机制
+4. 错误码映射
+
+**验收**:
+- [ ] HTTP GET/POST 正常工作
+- [ ] 重试机制测试通过
+- [ ] 错误处理正确
+
+#### Task 1.4: OpenAI Provider 实现
+**时间**: 6h
+**模块**: kimiz-ai
+
+**内容**:
+1. 实现 Provider 接口
+2. 请求/响应序列化
+3. 流式 SSE 解析
+4. 成本计算
+
+**验收**:
+- [ ] 非流式调用成功
+- [ ] 流式输出正常
+- [ ] Token 成本计算准确
 
 ---
 
-### Task 1.2: 实现核心数据类型 (ai/types.zig)
-**时间**: 90min  
-**依赖**: Task 1.1
+### Week 3: kimiz-cli (REPL)
+
+#### Task 2.1: CLI 基础框架
+**时间**: 4h
+**模块**: kimiz-cli
 
 **内容**:
-1. Provider / KnownProvider / KnownApi 枚举
-2. ThinkingLevel, StopReason 枚举
-3. 内容块类型: TextContent, ThinkingContent, ImageContent, ToolCall, AssistantContentBlock, UserContentBlock
-4. Usage 结构体
+1. zig-clap 集成
+2. 子命令系统（run, repl, tui, config）
+3. 环境变量读取
+4. 配置管理
+
+**验收**:
+- [ ] 所有子命令可用
+- [ ] 帮助信息完整
+- [ ] 配置加载正确
+
+#### Task 2.2: REPL 模式
+**时间**: 4h
+**模块**: kimiz-cli
+
+**内容**:
+1. 交互式输入
+2. 历史记录
+3. 快捷键支持
+4. 流式输出显示
+
+**验收**:
+- [ ] 基本对话可用
+- [ ] 历史记录可浏览
+- [ ] Ctrl+C 正确处理
+
+---
+
+### Week 4: 集成测试
+
+#### Task 3.1: 端到端测试
+**时间**: 6h
+**模块**: All
+
+**内容**:
+1. 编写 E2E 测试脚本
+2. Mock Provider 测试
+3. 性能基准测试
+4. 内存泄漏检测
+
+**验收**:
+- [ ] E2E 测试通过
+- [ ] 无内存泄漏
+- [ ] 性能达标
+
+---
+
+## Phase 2: Agent 能力
+
+### Week 5-6: kimiz-agent
+
+#### Task 4.1: Agent Loop 实现
+**时间**: 8h
+**模块**: kimiz-agent
+
+**内容**:
+1. Agent 状态机
+2. 事件系统
+3. Tool Calling 解析
+4. 循环控制
+
+**验收**:
+- [ ] Agent Loop 运行稳定
+- [ ] 事件正确触发
+- [ ] 工具调用正确解析
+
+#### Task 4.2: 内置工具集
+**时间**: 8h
+**模块**: kimiz-agent
+
+**内容**:
+1. ReadFile/WriteFile
+2. Glob/Grep
+3. Bash（带确认）
+4. WebSearch
+
+**验收**:
+- [ ] 所有工具可用
+- [ ] 安全确认机制工作
+- [ ] 错误处理完善
+
+---
+
+### Week 7-8: 记忆系统
+
+#### Task 5.1: SQLite 存储层
+**时间**: 6h
+**模块**: kimiz-agent
+
+**内容**:
+1. 数据库 Schema 设计
+2. CRUD 操作
+3. 全文搜索
+4. 迁移机制
+
+**验收**:
+- [ ] 数据库操作正常
+- [ ] 搜索功能可用
+- [ ] 数据持久化正确
+
+#### Task 5.2: 记忆管理器
+**时间**: 6h
+**模块**: kimiz-agent
+
+**内容**:
+1. 三层记忆实现
+2. 记忆检索
+3. 会话摘要
+4. 模式提取
+
+**验收**:
+- [ ] 记忆存储/检索正常
+- [ ] 相关记忆召回准确
+- [ ] 学习效果可感知
+
+---
+
+## Phase 3: 智能增强
+
+### Week 9-10: 智能路由 + 多模态
+
+#### Task 6.1: 智能模型路由
+**时间**: 8h
+**模块**: kimiz-ai
+
+**内容**:
+1. 任务分析器
+2. 模型能力矩阵
+3. 路由决策引擎
+4. 性能追踪
+
+**验收**:
+- [ ] 任务正确分类
+- [ ] 模型选择合理
+- [ ] 成本降低可测量
+
+#### Task 6.2: 多模态支持
+**时间**: 8h
+**模块**: kimiz-ai
+
+**内容**:
+1. 图片输入（base64）
+2. PDF 文档处理
+3. 终端图片显示
+4. 多 Provider 适配
+
+**验收**:
+- [ ] 图片分析可用
+- [ ] PDF 总结准确
+- [ ] TUI 图片显示正常
+
+---
+
+### Week 11-12: TUI + 提示词
+
+#### Task 7.1: TUI 界面
+**时间**: 10h
+**模块**: kimiz-cli
+
+**内容**:
+1. libvaxis 集成
+2. 布局系统
+3. 消息组件
+4. 会话管理
+
+**验收**:
+- [ ] TUI 启动正常
+- [ ] 流式输出流畅
+- [ ] 快捷键响应正确
+
+#### Task 7.2: 提示词工程
+**时间**: 6h
+**模块**: kimiz-prompts
+
+**内容**:
+1. 提示词模板系统
+2. 动态构建器
+3. 上下文压缩
+4. 缓存优化
+
+**验收**:
+- [ ] 提示词正确组装
+- [ ] 上下文压缩有效
+- [ ] 响应质量提升
+
+---
+
+## Phase 4: 优化发布
+
+### Week 13-16: 优化 + 文档 + 发布
+
+#### Task 8.1: 性能优化
+**时间**: 10h
+**模块**: All
+
+**内容**:
+1. 启动时间优化
+2. 内存使用优化
+3. 编译时间优化
+4. 缓存策略优化
+
+**验收**:
+- [ ] 启动 < 100ms
+- [ ] 内存 < 50MB
+- [ ] 编译 < 10s
+
+#### Task 8.2: 文档完善
+**时间**: 10h
+**模块**: Docs
+
+**内容**:
+1. API 文档
+2. 用户指南
+3. 架构文档
+4. 示例代码
+
+**验收**:
+- [ ] 文档完整
+- [ ] 示例可运行
+- [ ] 发布说明
+
+#### Task 8.3: 发布准备
+**时间**: 6h
+**模块**: All
+
+**内容**:
+1. 版本号更新
+2. 二进制打包
+3. Homebrew 公式
+4. 发布检查清单
+
+**验收**:
+- [ ] 多平台二进制
+- [ ] 安装测试通过
+- [ ] 发布流程文档化
+
+---
+
+## 关键路径
+
+```
+Week 1-2: 核心类型 → HTTP → OpenAI Provider
+                ↓
+Week 3-4: CLI 框架 → REPL → 集成测试
+                ↓
+Week 5-6: Agent Loop → 工具集
+                ↓
+Week 7-8: 记忆系统 → 学习
+                ↓
+Week 9-10: 智能路由 → 多模态
+                ↓
+Week 11-12: TUI → 提示词
+                ↓
+Week 13-16: 优化 → 文档 → 发布
+```
+
+---
+
+## 风险与应对
+
+| 风险 | 影响 | 应对 |
+|------|------|------|
+| libvaxis 不稳定 | TUI 延期 | 先用简单 TUI，后续升级 |
+| SQLite 性能不足 | 记忆系统慢 | 考虑 LevelDB 替代 |
+| Provider API 变更 | 兼容性问题 | 抽象层隔离，快速适配 |
+| 编译时间过长 | 开发效率低 | 模块化编译，增量构建 |
 5. Message 类型: UserMessage, AssistantMessage, ToolResultMessage
 6. Tool, Context, Model, ModelCost 结构体
 7. StreamOptions 结构体
