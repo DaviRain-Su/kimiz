@@ -45,10 +45,13 @@ zig version  # 必须是 0.16.0-dev+
 | 2 | P0 | **T-092-VERIFY** | 验证 delegate subagent 注册（代码已提交，待验证） | `todo` | [`docs/specs/T-092-verify-delegate-tool.md`](docs/specs/T-092-verify-delegate-tool.md) | 30min |
 | 3 | P0 | **T-119-VERIFY** | 验证 git worktree 隔离（代码已提交，待验证） | `todo` | [`docs/specs/T-119-verify-worktree.md`](docs/specs/T-119-verify-worktree.md) | 1h |
 | 4 | P1 | **T-009-E2E** | 补充 E2E 测试（核心工具 + Agent Loop） | `todo` | [`docs/specs/T-009-e2e-tests.md`](docs/specs/T-009-e2e-tests.md) | 4h |
-| 5 | P1 | **T-120-DESIGN** | 设计文档驱动的 Agent 工作流 | `todo` | [`docs/specs/T-120-design-document-driven-loop.md`](docs/specs/T-120-design-document-driven-loop.md) | 2h |
-| 6 | P1 | **T-121-IMPLEMENT** | 实现 Agent 长期记忆工具 | `todo` | [`docs/specs/T-121-implement-memory-tools.md`](docs/specs/T-121-implement-memory-tools.md) | 4h |
-| 7 | P1 | **T-122-PROMPT** | 改造 System Prompt 强制文档前置读取 | `todo` | [`docs/specs/T-122-prompt-document-driven-loop.md`](docs/specs/T-122-prompt-document-driven-loop.md) | 3h |
-| 8 | P2 | **T-123-LESSONS** | 建立 lessons-learned 和多 Agent 一致性 | `todo` | [`docs/specs/T-123-lessons-learned-and-consistency.md`](docs/specs/T-123-lessons-learned-and-consistency.md) | 3h |
+| 5 | **P0** | **T-103-SPIKE** | **comptime Skill DSL 原型验证（Scale 战略关键）** | `todo` | [`docs/specs/T-103-spike-comptime-skill-dsl.md`](docs/specs/T-103-spike-comptime-skill-dsl.md) | 4h |
+| 6 | P1 | **T-100** | 建立 auto skill 自动生成流水线 | `todo` | [`docs/specs/T-100-establish-auto-skill-generation-pipeline.md`](docs/specs/T-100-establish-auto-skill-generation-pipeline.md) | 12h |
+| 7 | P1 | **T-101** | 设计 AutoRegistry 动态加载 | `todo` | [`docs/specs/T-101-design-autoregistry-dynamic-loading.md`](docs/specs/T-101-design-autoregistry-dynamic-loading.md) | 10h |
+| 8 | P1 | **T-120-DESIGN** | 设计文档驱动的 Agent 工作流 | `todo` | [`docs/specs/T-120-design-document-driven-loop.md`](docs/specs/T-120-design-document-driven-loop.md) | 2h |
+| 9 | P1 | **T-121-IMPLEMENT** | 实现 Agent 长期记忆工具 | `todo` | [`docs/specs/T-121-implement-memory-tools.md`](docs/specs/T-121-implement-memory-tools.md) | 4h |
+| 10 | P1 | **T-122-PROMPT** | 改造 System Prompt 强制文档前置读取 | `todo` | [`docs/specs/T-122-prompt-document-driven-loop.md`](docs/specs/T-122-prompt-document-driven-loop.md) | 3h |
+| 11 | P2 | **T-123-LESSONS** | 建立 lessons-learned 和多 Agent 一致性 | `todo` | [`docs/specs/T-123-lessons-learned-and-consistency.md`](docs/specs/T-123-lessons-learned-and-consistency.md) | 3h |
 
 > **规则**: 只有上一行标记为 `done` 后，才能开始下一行的 `todo` 任务。
 

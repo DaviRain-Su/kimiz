@@ -36,12 +36,9 @@ pub const WorktreeManager = struct {
         errdefer self.allocator.free(worktree_path);
 
         // Ensure parent directory exists
-        const c = @cImport({ @cInclude("sys/stat.h"); @cInclude("string.h"); });
-        var parent_buf: [std.fs.max_path_bytes]u8 = undefined;
-        const parent = std.fs.path.dirname(worktree_path) orelse "/";
-        @memcpy(parent_buf[0..parent.len], parent);
-        parent_buf[parent.len] = 0;
-        _ = c.mkdir(@ptrCast(&parent_buf), 0o755);
+        std.fs.makeDirAbsolute(base_dir) catch |e| {
+            if (e != error.PathAlreadyExists) return WorktreeError.WorktreeCreateFailed;
+        };
 
         const cmd = try std.fmt.allocPrint(self.allocator, "cd '{s}' && git worktree add '{s}' -b {s} 2>&1", .{
             self.repo_path,
@@ -105,9 +102,9 @@ pub const WorktreeManager = struct {
 
     /// Generate a unique worktree name based on timestamp and random suffix
     pub fn generateName(self: *const Self, prefix: []const u8) WorktreeError![]const u8 {
-        const c = @cImport({ @cInclude("time.h"); @cInclude("stdlib.h"); });
+        const c = @cImport({ @cInclude("time.h"); });
         const ts: i64 = c.time(null);
-        const rand = c.arc4random();
+        const rand = std.crypto.random.int(u32);
         return try std.fmt.allocPrint(self.allocator, "{s}-{d}-{x}", .{ prefix, ts, rand });
     }
 

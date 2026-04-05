@@ -30,13 +30,9 @@ pub const rename = fs.rename;
 pub const deleteFile = fs.deleteFile;
 pub const realpath = fs.realpath;
 
-// Time compatibility functions using C library
-const c = @cImport({
-    @cInclude("time.h");
-});
-
 /// Get current timestamp in milliseconds
 pub fn milliTimestamp() i64 {
+    const c = @cImport({ @cInclude("time.h"); });
     var ts: c.struct_timespec = undefined;
     if (c.clock_gettime(c.CLOCK_REALTIME, &ts) != 0) {
         return 0;
@@ -46,6 +42,7 @@ pub fn milliTimestamp() i64 {
 
 /// Get current timestamp in seconds
 pub fn timestamp() i64 {
+    const c = @cImport({ @cInclude("time.h"); });
     var ts: c.struct_timespec = undefined;
     if (c.clock_gettime(c.CLOCK_REALTIME, &ts) != 0) {
         return 0;

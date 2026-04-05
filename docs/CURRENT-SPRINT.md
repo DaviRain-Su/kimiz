@@ -56,6 +56,36 @@
   - [ ] Agent Loop 基础测试
   - [ ] 所有测试通过
 
+#### T-103-SPIKE: comptime Skill DSL 原型验证
+- **状态**: `todo`
+- **Spec**: `docs/specs/T-103-spike-comptime-skill-dsl.md`
+- **背景**: KimiZ 核心差异化战略（ZIG-LLM-SELF-EVOLUTION-STRATEGY）的 Phase 3 起点。Scale / Metadata Programming 能力越早落地，后续所有开发都能自动加速。本任务是 go/no-go 的关键探针。
+- **影响文件**: `src/skills/dsl.zig`, `src/skills/debug.zig` 或 `src/skills/refactor.zig`
+- **验收**:
+  - [ ] `defineSkill` comptime DSL 最小可行版本实现
+  - [ ] 成功迁移 1 个现有 skill 并测试通过
+  - [ ] 输出 Spike Report，决定 T-100/T-101 的架构方向
+
+#### T-100: 建立 auto skill 自动生成流水线
+- **状态**: `todo`
+- **Spec**: `docs/specs/T-100-establish-auto-skill-generation-pipeline.md`
+- **背景**: 让 LLM 能根据自然语言描述生成有效的 Zig skill 源码，是自我进化的第一步
+- **影响文件**: `src/skills/auto/`, `scripts/generate-skill.zig`, `build.zig`
+- **验收**:
+  - [ ] `src/skills/auto/` 目录创建并纳入构建
+  - [ ] LLM 成功生成第一个可编译的 auto skill
+  - [ ] 编译失败时有结构化反馈机制
+
+#### T-101: 设计 AutoRegistry 动态加载
+- **状态**: `todo`
+- **Spec**: `docs/specs/T-101-design-autoregistry-dynamic-loading.md`
+- **背景**: 让 auto skill 无需修改 `builtin.zig` 即可被系统发现和调用
+- **影响文件**: `src/skills/auto_registry.zig`, `src/skills/root.zig`, `build.zig`
+- **验收**:
+  - [ ] `AutoRegistry` 能在构建时自动发现 `src/skills/auto/` 下的 skill
+  - [ ] 新增 auto skill 无需手动修改手写注册表
+  - [ ] `zig build test` 全绿
+
 #### T-120-DESIGN: 设计文档驱动的 Agent 工作流
 - **状态**: `todo`
 - **Spec**: `docs/specs/T-120-design-document-driven-loop.md`
@@ -100,7 +130,9 @@
 
 ```
 FIX-ZIG-015(cancelled) → T-092-VERIFY → T-119-VERIFY → T-009-E2E
-→ T-120-DESIGN → T-121-IMPLEMENT → T-122-PROMPT → T-123-LESSONS
+→ T-103-SPIKE → (go/no-go decision)
+    ├── go  → T-100 → T-101 → (T-103 full implementation)
+    └── parallel → T-120-DESIGN → T-121-IMPLEMENT → T-122-PROMPT → T-123-LESSONS
 ```
 
 ---
