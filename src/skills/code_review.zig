@@ -32,7 +32,7 @@ pub const params = &[_]SkillParam{
 
 /// Execute code review
 pub fn execute(
-    ctx: SkillContext,
+    _: SkillContext,
     args: std.json.ObjectMap,
     arena: std.mem.Allocator,
 ) !SkillResult {

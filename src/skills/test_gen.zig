@@ -37,7 +37,7 @@ pub const params = &[_]SkillParam{
 };
 
 pub fn execute(
-    ctx: SkillContext,
+    _: SkillContext,
     args: std.json.ObjectMap,
     arena: std.mem.Allocator,
 ) !SkillResult {
@@ -100,7 +100,7 @@ pub fn getSkill() Skill {
         .name = SKILL_NAME,
         .description = SKILL_DESCRIPTION,
         .version = SKILL_VERSION,
-        .category = .test,
+        .category = .testing,
         .params = params,
         .execute_fn = execute,
     };

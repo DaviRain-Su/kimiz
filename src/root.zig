@@ -1,8 +1,21 @@
 //! By convention, root.zig is the root source file when making a library.
 const std = @import("std");
 
+// Core module - types, session, workspace
+pub const core = @import("core/root.zig");
+
+// Workspace module - workspace context and file management
+pub const workspace = @import("workspace/root.zig");
+
 // Agent module - provides tool definitions and execution capabilities
 pub const agent = @import("agent/root.zig");
+
+// Skills module - Skill-Centric Architecture
+pub const skills = @import("skills/root.zig");
+
+// Harness module - Harness Engineering Platform
+// Note: Temporarily disabled due to compilation errors in harness/
+// pub const harness = @import("harness/root.zig");
 
 pub fn bufferedPrint() !void {
     // Stdout is for the actual output of your application, for example if you

@@ -39,15 +39,15 @@
 - **问题**: 项目无法编译
 - **预计**: 30分钟
 
-### 2. page_allocator 滥用（新增）
+### 2. page_allocator 滥用
 - **任务**: TASK-BUG-013-fix-page-allocator-abuse
 - **状态**: pending
 - **问题**: 多处使用 page_allocator 进行小内存分配
-- **影响**: 内存碎片、性能问题
+- **影响**: 内存碎片，性能问题
 - **预计**: 4小时
 - **文件**: src/ai/providers/*.zig, src/core/root.zig
 
-### 3. CLI 未实现（新增）
+### 3. CLI 未实现
 - **任务**: TASK-BUG-014-fix-cli-unimplemented
 - **状态**: pending
 - **问题**: `cli.run()` 直接返回 `error.NotImplemented`
@@ -55,11 +55,60 @@
 - **预计**: 6小时
 - **文件**: src/cli/root.zig
 
+### 4. 缺少工具文件 (代码审查发现) ⚠️ 新增
+- **任务**: TASK-BUG-021-create-missing-tools
+- **状态**: pending
+- **问题**: `agent/root.zig` 导入 3 个不存在的文件
+  - `glob.zig`
+  - `web_search.zig`
+  - `url_summary.zig`
+- **影响**: 项目无法编译
+- **预计**: 2小时
+- **文件**: src/agent/root.zig
+
+### 5. Anthropic 流式处理损坏 (代码审查发现) ⚠️ 新增
+- **任务**: TASK-BUG-022-fix-anthropic-streaming
+- **状态**: pending
+- **问题**: `StreamContext.processLine()` 是空实现
+- **影响**: Anthropic 流式响应完全损坏
+- **预计**: 4小时
+- **文件**: src/ai/providers/anthropic.zig
+
+### 6. OpenAI tool_calls 序列化未完成 (代码审查发现) ⚠️ 新增
+- **任务**: TASK-BUG-023-fix-openai-tool-calls
+- **状态**: pending
+- **问题**: `serializeRequest` 中 tool_calls 序列化是 TODO
+- **影响**: Agent 工具调用功能不完整
+- **预计**: 2小时
+- **文件**: src/ai/providers/openai.zig
+
+### 7. 测试编译失败 (最新代码审查) ⚠️ 新增
+- **任务**: TASK-BUG-024-fix-test-compilation
+- **状态**: pending
+- **问题**: 12 个编译错误
+  - `skills/root.zig:81` - undeclared 'SkillCategory'
+  - `skills/test_gen.zig:103` - `.test` 保留关键字
+  - 多个 unused function parameter
+- **影响**: 测试无法运行
+- **预计**: 1小时
+- **文件**: src/skills/*.zig
+
+### 8. registry.zig 死代码 (最新代码审查) ⚠️ 新增
+- **任务**: TASK-BUG-025-clean-registry-dead-imports
+- **状态**: pending
+- **问题**: 导入已删除的文件
+  - `tools/glob.zig`
+  - `tools/web_search.zig`
+  - `tools/url_summary.zig`
+- **影响**: 潜在编译错误
+- **预计**: 30分钟
+- **文件**: src/agent/registry.zig
+
 ---
 
 ## 🟡 P1 - 高优先级问题
 
-### 4. 静默错误处理（新增）
+### 4. 静默错误处理
 - **任务**: TASK-BUG-015-fix-silent-catch-empty
 - **状态**: pending
 - **问题**: 多处 `catch {}` 静默忽略错误
@@ -67,7 +116,7 @@
 - **预计**: 3小时
 - **文件**: src/ai/providers/*.zig, src/agent/agent.zig
 
-### 5. 工具结果内存浅拷贝（新增）
+### 5. 工具结果内存浅拷贝
 - **任务**: TASK-BUG-016-fix-tool-result-memory
 - **状态**: pending
 - **问题**: `continueFromToolResult` 浅拷贝可能导致悬空指针
@@ -75,7 +124,7 @@
 - **预计**: 2小时
 - **文件**: src/agent/agent.zig
 
-### 6. AI 客户端重复创建（新增）
+### 6. AI 客户端重复创建
 - **任务**: TASK-BUG-017-fix-ai-client-reuse
 - **状态**: pending
 - **问题**: 每次迭代创建新的 AI 客户端
@@ -83,15 +132,15 @@
 - **预计**: 3小时
 - **文件**: src/agent/agent.zig
 
-### 7. HTTP 伪流式处理（新增）
+### 7. HTTP 伪流式处理
 - **任务**: TASK-BUG-018-fix-http-streaming-implementation
 - **状态**: pending
 - **问题**: 先完整收集响应再处理，不是真正的流式
-- **影响**: 无法实现实时输出、大响应内存占用高
+- **影响**: 无法实现实时输出，大响应内存占用高
 - **预计**: 5小时
 - **文件**: src/http.zig
 
-### 8. getApiKey 内存管理（新增）
+### 8. getApiKey 内存管理
 - **任务**: TASK-BUG-019-fix-getApiKey-memory-management
 - **状态**: pending
 - **问题**: 函数签名不明确，调用者不知道需要释放内存
@@ -99,7 +148,7 @@
 - **预计**: 2小时
 - **文件**: src/core/root.zig, src/ai/models.zig, src/ai/providers/*.zig
 
-### 9. 完整 TUI 实现（新增）
+### 9. 完整 TUI 实现
 - **任务**: TASK-FEAT-001-implement-tui-complete
 - **状态**: pending
 - **问题**: TUI 只有骨架，功能不完整
@@ -107,7 +156,7 @@
 - **预计**: 12小时
 - **文件**: src/tui/*.zig
 
-### 10. Skills 注册和发现（新增）
+### 10. Skills 注册和发现
 - **任务**: TASK-FEAT-002-implement-skills-registration
 - **状态**: pending
 - **问题**: `registerBuiltinSkills` 是空实现
@@ -115,11 +164,55 @@
 - **预计**: 6小时
 - **文件**: src/skills/*.zig, src/agent/root.zig
 
+### 11. Memory 未集成到 Agent (代码审查发现) ⚠️ 新增
+- **任务**: TASK-INTEG-001-integrate-memory
+- **状态**: pending
+- **问题**: 
+  - MemoryManager 未添加到 Agent
+  - 不记录工具执行到记忆
+  - 不 recall 记忆用于上下文
+- **影响**: Agent 无记忆能力
+- **预计**: 4小时
+- **文件**: src/agent/agent.zig
+
+### 12. Learning 未集成到 Agent (代码审查发现) ⚠️ 新增
+- **任务**: TASK-INTEG-002-integrate-learning
+- **状态**: pending
+- **问题**: 
+  - LearningEngine 未添加到 Agent
+  - 不追踪工具使用
+  - 不记录模型性能
+- **影响**: Agent 无自适应能力
+- **预计**: 4小时
+- **文件**: src/agent/agent.zig
+
+### 13. Skills 未集成到 Agent (代码审查发现) ⚠️ 新增
+- **任务**: TASK-INTEG-003-integrate-skills
+- **状态**: pending
+- **问题**: 
+  - SkillEngine 未添加到 Agent
+  - CLI 不暴露 skill 执行
+  - Skills 无法被调用
+- **影响**: Skills 系统形同虚设
+- **预计**: 6小时
+- **文件**: src/agent/agent.zig, src/cli/root.zig
+
+### 14. CLI 未集成 Agent (最新代码审查) ⚠️ 新增
+- **任务**: TASK-INTEG-004-integrate-cli-agent
+- **状态**: pending
+- **问题**: 
+  - CLI 只是 echo 用户输入
+  - 没有调用 Agent
+  - 没有事件处理
+- **影响**: 用户无法真正使用 Agent
+- **预计**: 4小时
+- **文件**: src/cli/root.zig
+
 ---
 
 ## 🟢 P2 - 中优先级问题
 
-### 11. Logger 线程安全（新增）
+### 14. Logger 线程安全
 - **任务**: TASK-BUG-020-fix-logger-thread-safety
 - **状态**: pending
 - **问题**: 全局 Logger 多线程访问可能有问题
@@ -127,7 +220,31 @@
 - **预计**: 2小时
 - **文件**: src/utils/log.zig
 
-### 12. 请求序列化重构（新增）
+### 15. Memory recall 不完整 (代码审查发现) ⚠️ 新增
+- **任务**: TASK-P2-001-complete-memory-recall
+- **状态**: pending
+- **问题**: recall() 只搜索 ShortTerm，未搜索 LongTerm
+- **影响**: 记忆召回不完整
+- **预计**: 2小时
+- **文件**: src/memory/root.zig
+
+### 16. Learning recommendModel 未实现 (代码审查发现) ⚠️ 新增
+- **任务**: TASK-P2-002-complete-recommend-model
+- **状态**: pending
+- **问题**: `recommendModel()` 是空实现
+- **影响**: 无法根据历史推荐最优模型
+- **预计**: 4小时
+- **文件**: src/learning/root.zig
+
+### 17. Learning learnFromCodeChange 未实现 (代码审查发现) ⚠️ 新增
+- **任务**: TASK-P2-003-complete-learn-from-code
+- **状态**: pending
+- **问题**: `learnFromCodeChange()` 是空实现
+- **影响**: 无法从代码变更学习风格偏好
+- **预计**: 6小时
+- **文件**: src/learning/root.zig
+
+### 18. 请求序列化重构
 - **任务**: TASK-REF-002-serialize-request-refactor
 - **状态**: pending
 - **问题**: 手动 JSON 拼接冗长且容易出错
@@ -135,7 +252,7 @@
 - **预计**: 4小时
 - **文件**: src/ai/providers/*.zig
 
-### 13. API 文档完善（新增）
+### 19. API 文档完善
 - **任务**: TASK-DOCS-004-api-documentation
 - **状态**: pending
 - **问题**: 公共 API 缺少文档
@@ -169,36 +286,40 @@
 
 ---
 
-## 修复路线图
+## 修复路线图 (代码审查后更新)
 
-### 阶段 1: 紧急修复（本周）
-1. URGENT-FIX-compilation-errors (30分钟)
-2. TASK-BUG-014-fix-cli-unimplemented (6小时)
-3. TASK-BUG-013-fix-page-allocator-abuse (4小时)
+### 阶段 1: 紧急修复 - 编译错误（本周）
+1. TASK-BUG-024-fix-test-compilation (1h) ← **第一步！**
+2. TASK-BUG-025-clean-registry-dead-imports (0.5h)
+3. TASK-BUG-021-create-missing-tools (2h)
+4. TASK-BUG-022-fix-anthropic-streaming (4h)
+5. TASK-BUG-023-fix-openai-tool-calls (2h)
 
 **目标**: 项目可以编译并基本运行
 
-### 阶段 2: 核心修复（下周）
-4. TASK-BUG-019-fix-getApiKey-memory-management (2小时)
-5. TASK-BUG-015-fix-silent-catch-empty (3小时)
-6. TASK-BUG-016-fix-tool-result-memory (2小时)
-7. TASK-BUG-017-fix-ai-client-reuse (3小时)
+### 阶段 2: 核心集成（下周）
+6. TASK-INTEG-004-integrate-cli-agent (4h) ← **让 Agent 可用**
+7. TASK-INTEG-001-integrate-memory (4h)
+8. TASK-INTEG-002-integrate-learning (4h)
+9. TASK-INTEG-003-integrate-skills (6h)
+
+**目标**: Agent 具备完整能力
+
+### 阶段 3: Provider 修复（第3周）
+10. TASK-BUG-014-fix-cli-unimplemented (6h)
+11. TASK-BUG-013-fix-page-allocator-abuse (4h)
+12. TASK-BUG-019-fix-getApiKey-memory-management (2h)
+13. TASK-BUG-015-fix-silent-catch-empty (3h)
+14. TASK-BUG-016-fix-tool-result-memory (2h)
+15. TASK-BUG-017-fix-ai-client-reuse (3h)
 
 **目标**: 核心功能稳定
 
-### 阶段 3: 功能完善（第3周）
-8. TASK-BUG-018-fix-http-streaming-implementation (5小时)
-9. TASK-FEAT-002-implement-skills-registration (6小时)
-10. TASK-FEAT-001-implement-tui-complete (12小时)
+### 阶段 4: 高级功能（第4-5周）
+16. TASK-BUG-018-fix-http-streaming-implementation (5h)
+17. TASK-FEAT-006~017 (Harness 功能，详见 docs/07-kimiz-vision-b.md)
 
-**目标**: 用户体验完整
-
-### 阶段 4: 优化和文档（第4周）
-11. TASK-BUG-020-fix-logger-thread-safety (2小时)
-12. TASK-REF-002-serialize-request-refactor (4小时)
-13. TASK-DOCS-004-api-documentation (4小时)
-
-**目标**: 代码质量和开发者体验
+**目标**: Claude Code 模式完成
 
 ---
 
@@ -233,11 +354,11 @@
 | 优先级 | 任务数 | 预计工时 |
 |--------|--------|----------|
 | P0 | 9 | 36.5h |
-| P1 | 15 | 76h |
-| P2 | 3 | 18h |
-| **总计** | **27** | **130.5h** |
+| P1 | 18 | 94h |
+| P2 | 6 | 22h |
+| **总计** | **33** | **152.5h** |
 
-按每天 6 小时有效工作时间计算：约 **22 个工作日** (4.5 周)
+按每天 6 小时有效工作时间计算：约 **25 个工作日** (5 周)
 
 **详细分解**: 见 `docs/07-kimiz-vision-b.md`
 
@@ -246,24 +367,22 @@
 ## 关键路径
 
 ```
-URGENT-FIX-compilation-errors
+TASK-BUG-021 (创建缺失工具) ← 第一步！
     ↓
-TASK-BUG-014-fix-cli-unimplemented
+TASK-BUG-022 (Anthropic 流式)
     ↓
-TASK-BUG-013-fix-page-allocator-abuse
+TASK-BUG-023 (OpenAI tool_calls)
     ↓
-TASK-BUG-019-fix-getApiKey-memory-management
+TASK-INTEG-001 (Memory 集成)
     ↓
-TASK-BUG-015-fix-silent-catch-empty
+TASK-INTEG-002 (Learning 集成)
     ↓
-TASK-BUG-018-fix-http-streaming-implementation
-    ↓
-TASK-FEAT-001-implement-tui-complete
+TASK-INTEG-003 (Skills 集成)
 ```
 
 ---
 
 **下一步行动**:
-1. 立即开始 URGENT-FIX-compilation-errors
-2. 并行评估现有 backlog 任务与新任务的重复性
-3. 按优先级顺序执行修复
+1. 立即开始 TASK-BUG-021 (创建缺失工具)
+2. 然后修复 TASK-BUG-022, TASK-BUG-023
+3. 最后集成 Memory/Learning/Skills

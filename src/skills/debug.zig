@@ -38,7 +38,7 @@ pub const params = &[_]SkillParam{
 
 /// Execute debug analysis
 pub fn execute(
-    ctx: SkillContext,
+    _: SkillContext,
     args: std.json.ObjectMap,
     arena: std.mem.Allocator,
 ) !SkillResult {

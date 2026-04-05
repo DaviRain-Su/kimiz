@@ -63,7 +63,7 @@ pub const Skill = struct {
         code,
         review,
         refactor,
-        test,
+        testing,
         doc,
         debug,
         analyze,
@@ -78,7 +78,7 @@ pub const Skill = struct {
 pub const SkillRegistry = struct {
     allocator: std.mem.Allocator,
     skills: std.StringHashMap(Skill),
-    categories: std.EnumArray(SkillCategory, std.ArrayList([]const u8)),
+    categories: std.EnumArray(Skill.SkillCategory, std.ArrayListUnmanaged([]const u8)),
 
     const Self = @This();
 
@@ -86,8 +86,8 @@ pub const SkillRegistry = struct {
         return .{
             .allocator = allocator,
             .skills = std.StringHashMap(Skill).init(allocator),
-            .categories = std.EnumArray(SkillCategory, std.ArrayList([]const u8)).init(
-                .empty,
+            .categories = std.EnumArray(Skill.SkillCategory, std.ArrayListUnmanaged([]const u8)).initFill(
+                std.ArrayListUnmanaged([]const u8){},
             ),
         };
     }
@@ -135,36 +135,36 @@ pub const SkillRegistry = struct {
     /// List all skills
     pub fn listAll(self: *Self) ![]Skill {
         var list = std.ArrayList(Skill).init(self.allocator);
-        defer list.deinit(self.allocator);
+        defer list.deinit();
 
         var iter = self.skills.valueIterator();
         while (iter.next()) |skill| {
-            try list.append(self.allocator, skill.*);
+            try list.append(skill.*);
         }
 
-        return list.toOwnedSlice(self.allocator) catch &[]Skill{};
+        return list.toOwnedSlice();
     }
 
     /// List skills by category
-    pub fn listByCategory(self: *Self, category: SkillCategory) []const []const u8 {
+    pub fn listByCategory(self: *Self, category: Skill.SkillCategory) []const []const u8 {
         return self.categories.get(category).items;
     }
 
     /// Search skills by name/pattern
     pub fn search(self: *Self, pattern: []const u8) ![]Skill {
         var list = std.ArrayList(Skill).init(self.allocator);
-        defer list.deinit(self.allocator);
+        defer list.deinit();
 
         var iter = self.skills.valueIterator();
         while (iter.next()) |skill| {
             if (std.mem.indexOf(u8, skill.name, pattern) != null or
                 std.mem.indexOf(u8, skill.description, pattern) != null)
             {
-                try list.append(self.allocator, skill.*);
+                try list.append(skill.*);
             }
         }
 
-        return list.toOwnedSlice(self.allocator) catch &[]Skill{};
+        return list.toOwnedSlice();
     }
 };
 

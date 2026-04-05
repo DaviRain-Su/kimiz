@@ -8,6 +8,7 @@ const AgentTool = tool_mod.AgentTool;
 const ToolResult = tool_mod.ToolResult;
 const core = @import("../core/root.zig");
 const ai = @import("../ai/root.zig");
+const skills = @import("../skills/root.zig");
 const Message = core.Message;
 const Context = core.Context;
 const AssistantMessage = core.AssistantMessage;
@@ -81,10 +82,19 @@ pub const Agent = struct {
     event_callback: ?*const fn (event: AgentEvent) void,
     iteration_count: u32 = 0,
     ai_client: ai.Ai,
+    skill_registry: skills.SkillRegistry,
+    skill_engine: skills.SkillEngine,
 
     const Self = @This();
 
     pub fn init(allocator: std.mem.Allocator, options: AgentOptions) !Self {
+        var skill_registry = skills.SkillRegistry.init(allocator);
+        
+        // Register built-in skills
+        skills.registerBuiltinSkills(&skill_registry) catch |err| {
+            std.log.warn("Failed to register some built-in skills: {s}", .{@errorName(err)});
+        };
+        
         return .{
             .allocator = allocator,
             .options = options,
@@ -92,12 +102,15 @@ pub const Agent = struct {
             .messages = .empty,
             .event_callback = null,
             .ai_client = ai.Ai.init(allocator),
+            .skill_registry = skill_registry,
+            .skill_engine = skills.SkillEngine.init(allocator, &skill_registry),
         };
     }
 
     pub fn deinit(self: *Self) void {
         self.messages.deinit(self.allocator);
         self.ai_client.deinit();
+        self.skill_registry.deinit();
     }
 
     /// Set event callback for receiving agent events
