@@ -115,6 +115,10 @@ pub const Agent = struct {
     const Self = @This();
 
     pub fn init(allocator: std.mem.Allocator, options: AgentOptions) !Self {
+        std.debug.assert(options.max_tokens > 0); // Max tokens must be positive
+        std.debug.assert(options.max_iterations > 0); // Max iterations must be positive
+        std.debug.assert(options.temperature >= 0.0 and options.temperature <= 2.0); // Valid temperature range
+        
         var skill_registry = skills.SkillRegistry.init(allocator);
         
         // Register built-in skills
@@ -515,6 +519,8 @@ pub const Agent = struct {
             }
         }
 
+        std.debug.assert(self.iteration_count <= self.options.max_iterations); // Never exceed max
+        
         if (self.iteration_count >= self.options.max_iterations) {
             self.state = .err;
             self.emit(.{ .err = "Max iterations reached" });
@@ -816,8 +822,13 @@ pub const Agent = struct {
 
     /// Clear conversation history
     pub fn clearHistory(self: *Self) void {
+        const initial_count = self.messages.items.len;
+        
         for (self.messages.items) |msg| msg.deinit(self.allocator);
         self.messages.clearRetainingCapacity();
+        
+        std.debug.assert(self.messages.items.len == 0); // History cleared
+        std.debug.assert(initial_count >= 0); // Cleanup was valid
     }
 
     /// Trim to keep only recent N messages (oldest messages are freed)
