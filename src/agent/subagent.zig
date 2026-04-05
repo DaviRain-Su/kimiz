@@ -194,7 +194,12 @@ pub const SubAgent = struct {
         // Set up worktree isolation if enabled and not yet done
         if (self.config.use_worktree and self.worktree_path == null) {
             if (self.options.project_path) |repo_path| {
-                var wtm = WorktreeManager.init(self.allocator, repo_path);
+                var wtm = WorktreeManager.init(self.allocator, repo_path) catch |err| {
+                    std.log.warn("Failed to initialize WorktreeManager: {s}", .{@errorName(err)});
+                    return SubAgentError.TaskExecutionFailed;
+                };
+                errdefer wtm.deinit();
+                
                 const wt_name = wtm.generateName("subagent") catch |err| {
                     std.log.warn("Failed to generate worktree name: {s}", .{@errorName(err)});
                     return SubAgentError.TaskExecutionFailed;

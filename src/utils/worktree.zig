@@ -14,25 +14,34 @@ pub const WorktreeError = error{
 
 pub const WorktreeManager = struct {
     allocator: std.mem.Allocator,
+    arena: std.heap.ArenaAllocator,
     repo_path: []const u8,
 
     const Self = @This();
 
     /// Initialize a WorktreeManager for the given repo path
-    pub fn init(allocator: std.mem.Allocator, repo_path: []const u8) Self {
+    pub fn init(allocator: std.mem.Allocator, repo_path: []const u8) !Self {
         return .{
             .allocator = allocator,
-            .repo_path = repo_path,
+            .arena = std.heap.ArenaAllocator.init(allocator),
+            .repo_path = try allocator.dupe(u8, repo_path),
         };
+    }
+
+    /// Clean up resources
+    pub fn deinit(self: *Self) void {
+        self.arena.deinit();
+        self.allocator.free(self.repo_path);
     }
 
     /// Create a new worktree with the given name
     /// Returns the absolute path to the worktree directory
-    pub fn createWorktree(self: *const Self, name: []const u8) WorktreeError![]const u8 {
+    pub fn createWorktree(self: *Self, name: []const u8) WorktreeError![]const u8 {
+        const arena_alloc = self.arena.allocator();
+        
         const base_dir = try self.getWorktreeBaseDir();
-        defer self.allocator.free(base_dir);
-
-        const worktree_path = try std.fs.path.join(self.allocator, &.{ base_dir, name });
+        
+        const worktree_path = try self.allocator.dupe(u8, try std.fs.path.join(arena_alloc, &.{ base_dir, name }));
         errdefer self.allocator.free(worktree_path);
 
         // Ensure parent directory exists
@@ -41,15 +50,13 @@ pub const WorktreeManager = struct {
             if (e != error.PathAlreadyExists) return WorktreeError.WorktreeCreateFailed;
         };
 
-        const cmd = try std.fmt.allocPrint(self.allocator, "cd '{s}' && git worktree add '{s}' -b {s} 2>&1", .{
+        const cmd = try std.fmt.allocPrint(arena_alloc, "cd '{s}' && git worktree add '{s}' -b {s} 2>&1", .{
             self.repo_path,
             worktree_path,
             name,
         });
-        defer self.allocator.free(cmd);
 
         const output = self.execShell(cmd) catch return WorktreeError.WorktreeCreateFailed;
-        defer self.allocator.free(output);
 
         // Check for errors in output (git worktree add returns 0 but may warn)
         if (std.mem.containsAtLeast(u8, output, 1, "fatal:")) {
@@ -60,27 +67,27 @@ pub const WorktreeManager = struct {
     }
 
     /// Remove a worktree at the given path
-    pub fn removeWorktree(self: *const Self, path: []const u8) WorktreeError!void {
-        const cmd = try std.fmt.allocPrint(self.allocator, "cd '{s}' && git worktree remove --force '{s}' 2>&1", .{
+    pub fn removeWorktree(self: *Self, path: []const u8) WorktreeError!void {
+        const arena_alloc = self.arena.allocator();
+        
+        const cmd = try std.fmt.allocPrint(arena_alloc, "cd '{s}' && git worktree remove --force '{s}' 2>&1", .{
             self.repo_path,
             path,
         });
-        defer self.allocator.free(cmd);
 
-        const output = self.execShell(cmd) catch return WorktreeError.WorktreeRemoveFailed;
-        defer self.allocator.free(output);
+        _ = self.execShell(cmd) catch return WorktreeError.WorktreeRemoveFailed;
     }
 
     /// List all worktrees for this repo
     /// Caller owns returned slice and each string inside
-    pub fn listWorktrees(self: *const Self) WorktreeError![][]const u8 {
-        const cmd = try std.fmt.allocPrint(self.allocator, "cd '{s}' && git worktree list --porcelain 2>&1", .{
+    pub fn listWorktrees(self: *Self) WorktreeError![][]const u8 {
+        const arena_alloc = self.arena.allocator();
+        
+        const cmd = try std.fmt.allocPrint(arena_alloc, "cd '{s}' && git worktree list --porcelain 2>&1", .{
             self.repo_path,
         });
-        defer self.allocator.free(cmd);
 
         const output = self.execShell(cmd) catch return WorktreeError.WorktreeListFailed;
-        defer self.allocator.free(output);
 
         var paths = std.ArrayList([]const u8).init(self.allocator);
         errdefer {
@@ -102,7 +109,7 @@ pub const WorktreeManager = struct {
     }
 
     /// Generate a unique worktree name based on timestamp and random suffix
-    pub fn generateName(self: *const Self, prefix: []const u8) WorktreeError![]const u8 {
+    pub fn generateName(self: *Self, prefix: []const u8) WorktreeError![]const u8 {
         const utils = @import("root.zig");
         const ts = utils.milliTimestamp();
         var prng = std.Random.DefaultPrng.init(@intCast(ts));
@@ -110,7 +117,9 @@ pub const WorktreeManager = struct {
         return try std.fmt.allocPrint(self.allocator, "{s}-{d}-{x}", .{ prefix, ts, rand });
     }
 
-    fn getWorktreeBaseDir(self: *const Self) WorktreeError![]const u8 {
+    fn getWorktreeBaseDir(self: *Self) WorktreeError![]const u8 {
+        const arena_alloc = self.arena.allocator();
+        
         const home = if (std.c.getenv("HOME")) |ptr|
             std.mem.sliceTo(ptr, 0)
         else
@@ -120,30 +129,31 @@ pub const WorktreeManager = struct {
         const basename = std.fs.path.basename(self.repo_path);
         if (basename.len == 0) return WorktreeError.InvalidWorktreePath;
 
-        return try std.fs.path.join(self.allocator, &.{ home, ".kimiz", "worktrees", basename });
+        return try std.fs.path.join(arena_alloc, &.{ home, ".kimiz", "worktrees", basename });
     }
 
-    fn execShell(self: *const Self, command: []const u8) ![]const u8 {
+    fn execShell(self: *Self, command: []const u8) ![]const u8 {
         const utils = @import("root.zig");
         const io = utils.getIo() catch return error.CommandFailed;
+        
+        const arena_alloc = self.arena.allocator();
 
-        // Execute using Zig 0.16 native API
-        const result = std.process.run(self.allocator, io, .{
+        // Execute using Zig 0.16 native API with arena allocator
+        const result = std.process.run(arena_alloc, io, .{
             .argv = &.{ "sh", "-c", command },
             .stdout_limit = @enumFromInt(1024 * 1024),
             .stderr_limit = @enumFromInt(1024 * 1024),
         }) catch return error.CommandFailed;
 
-        // Combine stdout and stderr
+        // Combine stdout and stderr - all allocated in arena, auto-freed on deinit
         if (result.stdout.len > 0 and result.stderr.len > 0) {
-            const combined = try std.mem.concat(self.allocator, u8, &.{ result.stdout, result.stderr });
-            return combined;
+            return try std.fmt.allocPrint(arena_alloc, "{s}{s}", .{ result.stdout, result.stderr });
         } else if (result.stdout.len > 0) {
-            return try self.allocator.dupe(u8, result.stdout);
+            return result.stdout;
         } else if (result.stderr.len > 0) {
-            return try self.allocator.dupe(u8, result.stderr);
+            return result.stderr;
         }
-        return try self.allocator.dupe(u8, "");
+        return "";
     }
 };
 
@@ -153,7 +163,9 @@ pub const WorktreeManager = struct {
 
 test "WorktreeManager generateName" {
     const allocator = std.testing.allocator;
-    const manager = WorktreeManager.init(allocator, "/tmp/test-repo");
+    var manager = try WorktreeManager.init(allocator, "/tmp/test-repo");
+    defer manager.deinit();
+    
     const name = try manager.generateName("subagent");
     defer allocator.free(name);
     try std.testing.expect(std.mem.startsWith(u8, name, "subagent-"));
@@ -161,8 +173,10 @@ test "WorktreeManager generateName" {
 
 test "WorktreeManager getWorktreeBaseDir" {
     const allocator = std.testing.allocator;
-    const manager = WorktreeManager.init(allocator, "/tmp/test-repo");
+    var manager = try WorktreeManager.init(allocator, "/tmp/test-repo");
+    defer manager.deinit();
+    
     const dir = try manager.getWorktreeBaseDir();
-    defer allocator.free(dir);
+    // dir is allocated in arena, no need to free manually
     try std.testing.expect(std.mem.endsWith(u8, dir, "test-repo"));
 }
