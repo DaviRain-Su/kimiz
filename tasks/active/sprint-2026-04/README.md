@@ -31,6 +31,7 @@
 | 9 | `T-121-implement-memory-tools.md` | 实现 Agent 长期记忆工具 | `todo` | `docs/specs/T-121-implement-memory-tools.md` |
 | 10 | `T-122-prompt-document-driven-loop.md` | 改造 System Prompt 强制文档前置读取 | `todo` | `docs/specs/T-122-prompt-document-driven-loop.md` |
 | 11 | `T-123-lessons-learned-and-consistency.md` | 建立 lessons-learned 和多 Agent 一致性 | `todo` | `docs/specs/T-123-lessons-learned-and-consistency.md` |
+| **12** | **`T-124-observability-metrics-phase1.md`** | **Observability Metrics - Phase 1** | `research` | **`docs/specs/T-124-observability-metrics-phase1.md`** |
 
 ---
 
