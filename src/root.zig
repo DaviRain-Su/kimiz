@@ -37,6 +37,9 @@ pub const learning = @import("learning/root.zig");
 // Config module - configuration management
 pub const config = @import("config.zig");
 
+// HTTP module - HTTP client
+pub const http = @import("http.zig");
+
 pub fn bufferedPrint() !void {
     // Stdout is for the actual output of your application
     var stdout_buffer: [1024]u8 = undefined;

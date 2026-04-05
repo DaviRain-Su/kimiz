@@ -150,11 +150,16 @@ pub const Agent = struct {
             allocator.free(d);
             break :blk copy;
         } else null;
+        // Pre-allocate message ArrayList capacity to reduce allocations
+        // Typical conversation: 1 system + 3-10 assistant/tool messages per iteration
+        var messages_list = try std.ArrayList(Message).initCapacity(allocator, 32);
+        errdefer messages_list.deinit();
+        
         return .{
             .allocator = allocator,
             .options = options,
             .state = .idle,
-            .messages = .empty,
+            .messages = messages_list,
             .event_callback = null,
             .ai_client = ai.Ai.init(allocator),
             .skill_registry = skill_registry,
