@@ -133,6 +133,9 @@ pub const Agent = struct {
     }
 
     pub fn deinit(self: *Self) void {
+        for (self.messages.items) |msg| {
+            msg.deinit(self.allocator);
+        }
         self.messages.deinit(self.allocator);
         if (self.tool_defs_cache.len > 0) self.allocator.free(self.tool_defs_cache);
         self.ai_client.deinit();

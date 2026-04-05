@@ -5,7 +5,6 @@ const std = @import("std");
 const agent = @import("../agent/root.zig");
 const ai = @import("../ai/root.zig");
 const config = @import("../config.zig");
-const core = @import("../core/root.zig");
 
 /// Slash command handler function signature
 pub const SlashHandler = *const fn (
@@ -170,7 +169,7 @@ fn cmdModel(ctx: *SlashContext, args: []const u8) !void {
     defer ctx.allocator.free(msg);
     ctx.printLine(msg);
 
-    ctx.printLine("⚠️  Run '/reload' or restart the session to apply the new model immediately.");
+    ctx.printLine("⚠️  Restart the session to apply the new model.");
 }
 
 fn cmdYolo(ctx: *SlashContext, args: []const u8) !void {

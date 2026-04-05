@@ -192,17 +192,49 @@ pub const AssistantContentBlock = union(enum) {
     text: TextContent,
     thinking: ThinkingContent,
     tool_call: ToolCallContent,
+
+    pub fn deinit(self: AssistantContentBlock, allocator: std.mem.Allocator) void {
+        switch (self) {
+            .text => |t| allocator.free(t.text),
+            .thinking => |th| {
+                allocator.free(th.thinking);
+                if (th.thinking_signature) |s| allocator.free(s);
+            },
+            .tool_call => |tc| {
+                allocator.free(tc.tool_call.id);
+                allocator.free(tc.tool_call.name);
+                allocator.free(tc.tool_call.arguments);
+            },
+        }
+    }
 };
 
 pub const UserContentBlock = union(enum) {
     text: []const u8,
     image: ImageContent,
     image_url: ImageUrlContent,
+
+    pub fn deinit(self: UserContentBlock, allocator: std.mem.Allocator) void {
+        switch (self) {
+            .text => |t| allocator.free(t),
+            .image => |img| {
+                allocator.free(img.data);
+                // mime_type is typically a string literal, do not free
+                if (img.url) |u| allocator.free(u);
+            },
+            .image_url => |imgu| allocator.free(imgu.url),
+        }
+    }
 };
 
 pub const UserMessage = struct {
     role: enum { user } = .user,
     content: []const UserContentBlock,
+
+    pub fn deinit(self: UserMessage, allocator: std.mem.Allocator) void {
+        for (self.content) |block| block.deinit(allocator);
+        allocator.free(self.content);
+    }
 };
 
 pub const AssistantMessage = struct {
@@ -210,6 +242,11 @@ pub const AssistantMessage = struct {
     content: []const AssistantContentBlock,
     stop_reason: StopReason = .stop,
     usage: ?TokenUsage = null,
+
+    pub fn deinit(self: AssistantMessage, allocator: std.mem.Allocator) void {
+        for (self.content) |block| block.deinit(allocator);
+        allocator.free(self.content);
+    }
 };
 
 pub const ToolResultMessage = struct {
@@ -218,12 +255,27 @@ pub const ToolResultMessage = struct {
     tool_name: []const u8,
     content: []const UserContentBlock,
     is_error: bool = false,
+
+    pub fn deinit(self: ToolResultMessage, allocator: std.mem.Allocator) void {
+        allocator.free(self.tool_call_id);
+        allocator.free(self.tool_name);
+        for (self.content) |block| block.deinit(allocator);
+        allocator.free(self.content);
+    }
 };
 
 pub const Message = union(enum) {
     user: UserMessage,
     assistant: AssistantMessage,
     tool_result: ToolResultMessage,
+
+    pub fn deinit(self: Message, allocator: std.mem.Allocator) void {
+        switch (self) {
+            .user => |m| m.deinit(allocator),
+            .assistant => |m| m.deinit(allocator),
+            .tool_result => |m| m.deinit(allocator),
+        }
+    }
 };
 
 // ============================================================================

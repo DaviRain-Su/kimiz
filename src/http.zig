@@ -63,7 +63,10 @@ pub const HttpClient = struct {
     }
 
     pub fn deinit(self: *Self) void {
-        _ = self;
+        if (self.io_initialized) {
+            self.client.deinit();
+            self.io_initialized = false;
+        }
     }
 
     /// Make a POST request with JSON body

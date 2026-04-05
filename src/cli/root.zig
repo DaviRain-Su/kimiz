@@ -8,6 +8,7 @@ const extension = @import("../extension/root.zig");
 const harness = @import("../harness/root.zig");
 const workspace = @import("../workspace/root.zig");
 const config = @import("../config.zig");
+const slash = @import("slash.zig");
 
 const c = @cImport({
     @cInclude("stdio.h");
@@ -289,6 +290,31 @@ fn runInteractive(allocator: std.mem.Allocator) !void {
 
         if (std.mem.eql(u8, input, "clear")) {
             print("\x1b[2J\x1b[H");
+            continue;
+        }
+
+        // Slash command handling
+        if (slash.parse(input)) |cmd_info| {
+            if (slash.find(cmd_info.name)) |cmd| {
+                var ctx = slash.SlashContext{
+                    .allocator = allocator,
+                    .agent = &ai_agent,
+                    .cfg = &cfg,
+                    .print_fn = print,
+                    .print_line_fn = printLine,
+                    .should_exit = false,
+                };
+                cmd.handler(&ctx, cmd_info.args) catch |err| {
+                    const msg = std.fmt.allocPrint(allocator, "❌ Command failed: {s}\n", .{@errorName(err)}) catch "❌ Command failed\n";
+                    defer allocator.free(msg);
+                    print(msg);
+                };
+                if (ctx.should_exit) break;
+            } else {
+                print("Unknown slash command '/");
+                print(cmd_info.name);
+                print("'. Type /help for list.\n");
+            }
             continue;
         }
 
