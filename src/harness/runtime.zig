@@ -6,6 +6,7 @@ const parser = @import("parser.zig");
 const constraints = @import("constraints.zig");
 const core = @import("../core/root.zig");
 const agent = @import("../agent/root.zig");
+const utils = @import("../utils/root.zig");
 const skills = @import("../skills/root.zig");
 
 /// Harness runtime
@@ -137,7 +138,7 @@ pub const HarnessInfo = struct {
 
 /// Create runtime from AGENTS.md file
 pub fn createFromFile(allocator: std.mem.Allocator, path: []const u8) !?HarnessRuntime {
-    const content = std.fs.cwd().readFileAlloc(allocator, path, 1024 * 1024) catch |err| {
+    const content = utils.readFileAlloc(allocator, path, 1024 * 1024) catch |err| {
         if (err == error.FileNotFound) {
             return null;
         }

@@ -30,6 +30,8 @@ pub const rename = fs.rename;
 pub const deleteFile = fs.deleteFile;
 pub const realpath = fs.realpath;
 pub const openDir = fs.openDir;
+pub const deleteTree = fs.deleteTree;
+pub const deleteFile = fs.deleteFile;
 
 /// Get current timestamp in milliseconds
 pub fn milliTimestamp() i64 {

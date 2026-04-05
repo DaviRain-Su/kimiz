@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const tool = @import("../tool.zig");
+const utils = @import("../../utils/root.zig");
 
 pub const TOOL_NAME = "edit";
 
@@ -137,12 +138,9 @@ test "edit basic replacement" {
     const original_content = "Hello World";
     const new_content = "Hello Universe";
 
-    // Create test file
-    try std.fs.cwd().writeFile(.{
-        .sub_path = test_path,
-        .data = original_content,
-    });
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    // Create test file (Zig 0.16 compatible)
+    try utils.writeFile(test_path, original_content);
+    defer utils.deleteFile(test_path) catch {};
 
     // Execute edit
     var ctx = EditContext{};
@@ -156,7 +154,7 @@ test "edit basic replacement" {
     try std.testing.expect(!result.is_error);
 
     // Verify content changed
-    const read_content = try std.fs.cwd().readFileAlloc(arena.allocator(), test_path, 1024);
+    const read_content = try utils.readFileAlloc(arena.allocator(), test_path, 1024);
     defer arena.allocator().free(read_content);
     try std.testing.expectEqualStrings(new_content, read_content);
 }
@@ -167,11 +165,8 @@ test "edit old_string not found" {
     defer arena.deinit();
 
     const test_path = "/tmp/kimiz_test_edit2.txt";
-    try std.fs.cwd().writeFile(.{
-        .sub_path = test_path,
-        .data = "Hello World",
-    });
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    try utils.writeFile(test_path, "Hello World");
+    defer utils.deleteFile(test_path) catch {};
 
     var ctx = EditContext{};
     const args = try std.json.parseFromSlice(
@@ -192,11 +187,8 @@ test "edit multiple occurrences" {
     defer arena.deinit();
 
     const test_path = "/tmp/kimiz_test_edit3.txt";
-    try std.fs.cwd().writeFile(.{
-        .sub_path = test_path,
-        .data = "foo bar foo bar",
-    });
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    try utils.writeFile(test_path, "foo bar foo bar");
+    defer utils.deleteFile(test_path) catch {};
 
     var ctx = EditContext{};
     const args = try std.json.parseFromSlice(

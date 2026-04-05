@@ -6,6 +6,7 @@ const core = @import("../core/root.zig");
 const ToolCall = core.ToolCall;
 const TokenUsage = core.TokenUsage;
 const log = @import("../utils/log.zig");
+const utils = @import("../utils/root.zig");
 
 /// A single step in the reasoning process
 pub const ReasoningStep = struct {
@@ -227,10 +228,8 @@ pub const Trace = struct {
         const json = try self.toJson(self.allocator);
         defer self.allocator.free(json);
         
-        const file = try std.fs.cwd().createFile(path, .{});
-        defer file.close();
-        
-        try file.writeAll(json);
+        // Use utils to write file (Zig 0.16 compatible)
+        try utils.writeFile(path, json);
         
         log.info("Trace saved to: {s}", .{path});
     }
@@ -264,7 +263,8 @@ pub const TraceManager = struct {
 
     pub fn init(allocator: std.mem.Allocator, traces_dir: []const u8) !Self {
         // Create traces directory
-        std.fs.cwd().makeDir(traces_dir) catch |e| switch (e) {
+        // Use utils to create directory (Zig 0.16 compatible)
+        utils.makeDirRecursive(traces_dir) catch |e| switch (e) {
             error.PathAlreadyExists => {},
             else => return e,
         };
@@ -303,8 +303,10 @@ pub const TraceManager = struct {
             traces.deinit();
         }
 
-        var dir = try std.fs.cwd().openDir(self.traces_dir, .{ .iterate = true });
-        defer dir.close();
+        // Use utils to open directory (Zig 0.16 compatible)
+        const io = try utils.getIo();
+        var dir = try utils.openDir(self.traces_dir, .{ .iterate = true });
+        defer dir.close(io);
 
         var iter = dir.iterate();
         while (try iter.next()) |entry| {
@@ -323,7 +325,7 @@ pub const TraceManager = struct {
         const path = try self.getTracePath(session_id);
         defer self.allocator.free(path);
 
-        const content = std.fs.cwd().readFileAlloc(self.allocator, path, 10 * 1024 * 1024) catch |err| switch (err) {
+        const content = utils.readFileAlloc(self.allocator, path, 10 * 1024 * 1024) catch |err| switch (err) {
             error.FileNotFound => return null,
             else => return err,
         };
@@ -386,8 +388,8 @@ test "TraceManager init" {
     
     try std.testing.expectEqualStrings(".test_traces", manager.traces_dir);
     
-    // Cleanup
-    std.fs.cwd().deleteDir(".test_traces") catch {};
+    // Cleanup (Zig 0.16 compatible - use utils)
+    utils.deleteTree(".test_traces") catch {};
 }
 
 test "Trace getStats" {

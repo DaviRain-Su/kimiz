@@ -2,6 +2,7 @@
 //! Defines the Harness configuration from markdown files
 
 const std = @import("std");
+const utils = @import("../utils/root.zig");
 
 /// Harness definition parsed from AGENTS.md
 pub const Harness = struct {
@@ -529,7 +530,7 @@ pub fn loadFromDirectory(allocator: std.mem.Allocator, dir: []const u8) !?Harnes
     const agents_path = try std.fs.path.join(allocator, &.{ dir, "AGENTS.md" });
     defer allocator.free(agents_path);
     
-    const content = std.fs.cwd().readFileAlloc(allocator, agents_path, 1024 * 1024) catch |err| {
+    const content = utils.readFileAlloc(allocator, agents_path, 1024 * 1024) catch |err| {
         if (err == error.FileNotFound) {
             return null;  // No AGENTS.md found
         }

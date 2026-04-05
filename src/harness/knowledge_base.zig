@@ -2,6 +2,7 @@
 //! Load and query AGENTS.md content for agent context
 
 const std = @import("std");
+const utils = @import("../utils/root.zig");
 
 /// A section within the knowledge base
 pub const KnowledgeSection = struct {
@@ -77,8 +78,8 @@ pub const KnowledgeBase = struct {
         self.deinit();
         self.* = Self.init(self.allocator);
 
-        // Read file content
-        const content = try std.fs.cwd().readFileAlloc(self.allocator, path, 1024 * 1024);
+        // Read file content (Zig 0.16 compatible)
+        const content = try utils.readFileAlloc(self.allocator, path, 1024 * 1024);
         self.raw_content = content;
 
         // Parse the content
@@ -269,21 +270,17 @@ pub fn findAgentsMd(start_dir: []const u8, allocator: std.mem.Allocator) !?[]con
         const agents_path = try std.fs.path.join(allocator, &.{ dir_path, "AGENTS.md" });
         errdefer allocator.free(agents_path);
 
-        // Check if file exists
-        const file = std.fs.cwd().openFile(agents_path, .{}) catch |err| switch (err) {
-            error.FileNotFound => {
-                allocator.free(agents_path);
-                // Try parent directory
-                const parent = std.fs.path.dirname(dir_path);
-                if (parent == null) break;
-                const new_path = try allocator.dupe(u8, parent.?);
-                allocator.free(dir_path);
-                dir_path = new_path;
-                continue;
-            },
-            else => return err,
-        };
-        file.close();
+        // Check if file exists (Zig 0.16 compatible)
+        if (!utils.fileExists(agents_path)) {
+            allocator.free(agents_path);
+            // Try parent directory
+            const parent = std.fs.path.dirname(dir_path);
+            if (parent == null) break;
+            const new_path = try allocator.dupe(u8, parent.?);
+            allocator.free(dir_path);
+            dir_path = new_path;
+            continue;
+        }
 
         return agents_path;
     }
