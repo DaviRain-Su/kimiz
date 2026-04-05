@@ -20,10 +20,14 @@
 
 | # | 任务文件 | 标题 | 状态 | Spec |
 |---|----------|------|------|------|
-| 1 | `FIX-ZIG-015-compatibility.md` | 修复 Zig 0.15.2 编译兼容性 | `todo` | `docs/specs/FIX-ZIG-015-compatibility.md` |
+| 1 | `FIX-ZIG-015-compatibility.md` | ~~修复 Zig 0.15.2 编译兼容性~~ | `cancelled` | `docs/specs/FIX-ZIG-015-compatibility.md` |
 | 2 | `T-092-verify-delegate-tool.md` | 验证 delegate subagent 注册 | `todo` | `docs/specs/T-092-verify-delegate-tool.md` |
-| 3 | `T-119-verify-worktree.md` | 验证 git worktree 隔离 | `todo` | `docs/specs/T-119-verify-worktree.md` (待创建) |
+| 3 | `T-119-verify-worktree.md` | 验证 git worktree 隔离 | `todo` | `docs/specs/T-119-verify-worktree.md` |
 | 4 | `T-009-e2e-tests.md` | 补充 E2E 测试 | `todo` | `docs/specs/T-009-e2e-tests.md` |
+| 5 | `T-120-design-document-driven-loop.md` | 设计文档驱动的 Agent 工作流 | `todo` | `docs/specs/T-120-design-document-driven-loop.md` |
+| 6 | `T-121-implement-memory-tools.md` | 实现 Agent 长期记忆工具 | `todo` | `docs/specs/T-121-implement-memory-tools.md` |
+| 7 | `T-122-prompt-document-driven-loop.md` | 改造 System Prompt 强制文档前置读取 | `todo` | `docs/specs/T-122-prompt-document-driven-loop.md` |
+| 8 | `T-123-lessons-learned-and-consistency.md` | 建立 lessons-learned 和多 Agent 一致性 | `todo` | `docs/specs/T-123-lessons-learned-and-consistency.md` |
 
 ---
 

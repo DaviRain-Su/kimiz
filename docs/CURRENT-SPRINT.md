@@ -56,12 +56,51 @@
   - [ ] Agent Loop 基础测试
   - [ ] 所有测试通过
 
+#### T-120-DESIGN: 设计文档驱动的 Agent 工作流
+- **状态**: `todo`
+- **Spec**: `docs/specs/T-120-design-document-driven-loop.md`
+- **背景**: 根据 yage.ai《从上下文失忆到文档驱动开发》，Agentic AI 在大型项目失效的根因是缺乏长期记忆。需要将文档驱动开发作为 KimiZ 的核心机制。
+- **影响文件**: `docs/design/document-driven-agent-loop.md`（新增）
+- **验收**:
+  - [ ] 设计文档完成并通过 review
+  - [ ] 明确 3 个新工具接口和 System Prompt 改造方案
+
+#### T-121-IMPLEMENT: 实现 Agent 长期记忆工具
+- **状态**: `todo`
+- **Spec**: `docs/specs/T-121-implement-memory-tools.md`
+- **背景**: 将 T-120 的设计落地为可执行工具
+- **影响文件**: `src/agent/tools/document_tools.zig`, `src/agent/registry.zig`
+- **验收**:
+  - [ ] `read_active_task` 实现并测试通过
+  - [ ] `update_task_log` 实现并测试通过
+  - [ ] `sync_spec_with_code` 实现并测试通过
+
+#### T-122-PROMPT: 改造 System Prompt 强制文档前置读取
+- **状态**: `todo`
+- **Spec**: `docs/specs/T-122-prompt-document-driven-loop.md`
+- **背景**: 仅有工具不够，必须让 Agent 在每次行动前自动读取文档、行动后自动更新日志
+- **影响文件**: `src/agent/agent.zig`, `src/cli/root.zig`
+- **验收**:
+  - [ ] System Prompt 注入 Document-Driven Protocol
+  - [ ] REPL 支持 `/resync` 指令
+
+#### T-123-LESSONS: 建立 lessons-learned 和多 Agent 一致性
+- **状态**: `todo`
+- **Spec**: `docs/specs/T-123-lessons-learned-and-consistency.md`
+- **背景**: 长期记忆不仅是单 Agent 的笔记，也是 Multi-Agent 的共享通信渠道
+- **影响文件**: `docs/lessons-learned.md`, `src/utils/document_lock.zig`, `src/agent/tools/lesson_tools.zig`
+- **验收**:
+  - [ ] `lessons-learned.md` 创建并包含初始记录
+  - [ ] `DocumentLock` 通过并发测试
+  - [ ] Agent 启动时自动读取最新 lessons
+
 ---
 
 ## 执行顺序
 
 ```
-FIX-ZIG-015 → T-092-VERIFY → T-119-VERIFY → T-009-E2E
+FIX-ZIG-015(cancelled) → T-092-VERIFY → T-119-VERIFY → T-009-E2E
+→ T-120-DESIGN → T-121-IMPLEMENT → T-122-PROMPT → T-123-LESSONS
 ```
 
 ---
