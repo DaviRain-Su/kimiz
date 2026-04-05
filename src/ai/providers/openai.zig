@@ -34,7 +34,7 @@ const OpenAITool = struct {
 const OpenAIFunction = struct {
     name: []const u8,
     description: []const u8,
-    parameters: []const u8, // JSON string directly
+    parameters: std.json.Value,
 };
 
 const OpenAIToolCall = struct {
@@ -280,7 +280,6 @@ fn serializeRequest(allocator: std.mem.Allocator, ctx: core.Context) ![]u8 {
     for (ctx.messages) |msg| {
         const openai_msg = switch (msg) {
             .user => |user_msg| blk: {
-                // Concatenate all content blocks
                 var content: std.ArrayList(u8) = .empty;
                 defer content.deinit(allocator);
                 for (user_msg.content) |block| {
@@ -361,116 +360,32 @@ fn serializeRequest(allocator: std.mem.Allocator, ctx: core.Context) ![]u8 {
         try messages.append(allocator, openai_msg);
     }
 
-    // Convert tools - build JSON string manually for tools
-    var tools_json: ?[]const u8 = null;
+    // Convert tools: parse parameters_json into std.json.Value for proper serialization
+    var tools: ?std.ArrayList(OpenAITool) = null;
     if (ctx.tools.len > 0) {
-        var tools_buf: std.ArrayList(u8) = .empty;
-        defer tools_buf.deinit(allocator);
-        
-        try tools_buf.appendSlice(allocator, "[");
-        for (ctx.tools, 0..) |tool, i| {
-            if (i > 0) try tools_buf.appendSlice(allocator, ",");
-            
-            // Build tool JSON manually
-            try tools_buf.appendSlice(allocator, "{\"type\":\"function\",\"function\":{\"name\":\"");
-            try tools_buf.appendSlice(allocator, tool.name);
-            try tools_buf.appendSlice(allocator, "\",\"description\":\"");
-            try tools_buf.appendSlice(allocator, tool.description);
-            try tools_buf.appendSlice(allocator, "\",\"parameters\":");
-            try tools_buf.appendSlice(allocator, tool.parameters_json);
-            try tools_buf.appendSlice(allocator, "}}");
+        tools = std.ArrayList(OpenAITool){ .items = &.{}, .capacity = 0 };
+        for (ctx.tools) |tool| {
+            const schema = try std.json.parseFromSlice(std.json.Value, allocator, tool.parameters_json, .{});
+            try tools.?.append(allocator, .{
+                .function = .{
+                    .name = tool.name,
+                    .description = tool.description,
+                    .parameters = schema.value,
+                },
+            });
         }
-        try tools_buf.appendSlice(allocator, "]");
-        tools_json = try tools_buf.toOwnedSlice(allocator);
     }
 
-    // Build request JSON manually using simple string concatenation
-    var req_buf: std.ArrayList(u8) = .empty;
-    defer req_buf.deinit(allocator);
-    
-    // Start JSON
-    try req_buf.appendSlice(allocator, "{\"model\":\"");
-    try req_buf.appendSlice(allocator, ctx.model.id);
-    try req_buf.appendSlice(allocator, "\",\"messages\":[");
-    
-    // Messages array
-    for (messages.items, 0..) |msg, i| {
-        if (i > 0) try req_buf.appendSlice(allocator, ",");
-        try req_buf.appendSlice(allocator, "{\"role\":\"");
-        try req_buf.appendSlice(allocator, msg.role);
-        try req_buf.appendSlice(allocator, "\"");
-        
-        if (msg.content) |content| {
-            try req_buf.appendSlice(allocator, ",\"content\":\"");
-            try req_buf.appendSlice(allocator, content);
-            try req_buf.appendSlice(allocator, "\"");
-        }
-        
-        if (msg.tool_call_id) |id| {
-            try req_buf.appendSlice(allocator, ",\"tool_call_id\":\"");
-            try req_buf.appendSlice(allocator, id);
-            try req_buf.appendSlice(allocator, "\"");
-        }
-        
-        // Handle tool_calls serialization
-        if (msg.tool_calls) |tool_calls| {
-            try req_buf.appendSlice(allocator, ",\"tool_calls\":[");
-            for (tool_calls, 0..) |tc, j| {
-                if (j > 0) try req_buf.appendSlice(allocator, ",");
-                try req_buf.appendSlice(allocator, "{\"id\":\"");
-                try req_buf.appendSlice(allocator, tc.id);
-                try req_buf.appendSlice(allocator, "\",\"type\":\"function\",\"function\":{\"name\":\"");
-                try req_buf.appendSlice(allocator, tc.function.name);
-                try req_buf.appendSlice(allocator, "\",\"arguments\":\"");
-                // Escape quotes in arguments
-                for (tc.function.arguments) |c| {
-                    if (c == '"') {
-                        try req_buf.appendSlice(allocator, "\\\"");
-                    } else if (c == '\\') {
-                        try req_buf.appendSlice(allocator, "\\\\");
-                    } else {
-                        try req_buf.append(allocator, c);
-                    }
-                }
-                try req_buf.appendSlice(allocator, "\"}}");
-            }
-            try req_buf.appendSlice(allocator, "]");
-        }
-        
-        try req_buf.appendSlice(allocator, "}");
-    }
-    
-    // Close messages, add other params
-    try req_buf.appendSlice(allocator, "],\"temperature\":");
-    
-    // Convert temperature to string
-    var temp_buf: [32]u8 = undefined;
-    const temp_str = try std.fmt.bufPrint(&temp_buf, "{d}", .{ctx.temperature});
-    try req_buf.appendSlice(allocator, temp_str);
-    
-    try req_buf.appendSlice(allocator, ",\"max_tokens\":");
-    var max_tokens_buf: [16]u8 = undefined;
-    const max_tokens_str = try std.fmt.bufPrint(&max_tokens_buf, "{d}", .{ctx.max_tokens});
-    try req_buf.appendSlice(allocator, max_tokens_str);
-    
-    // Stream flag
-    if (ctx.stream) {
-        try req_buf.appendSlice(allocator, ",\"stream\":true");
-    } else {
-        try req_buf.appendSlice(allocator, ",\"stream\":false");
-    }
-    
-    // Tools
-    if (tools_json) |tj| {
-        try req_buf.appendSlice(allocator, ",\"tools\":");
-        try req_buf.appendSlice(allocator, tj);
-        allocator.free(tj);
-    }
-    
-    // Close JSON
-    try req_buf.appendSlice(allocator, "}");
-    
-    return try req_buf.toOwnedSlice(allocator);
+    const request = OpenAIRequest{
+        .model = ctx.model.id,
+        .messages = messages.items,
+        .temperature = ctx.temperature,
+        .max_tokens = ctx.max_tokens,
+        .stream = ctx.stream,
+        .tools = if (tools) |t| t.items else null,
+    };
+
+    return try std.json.Stringify.valueAlloc(allocator, request, .{ .emit_null_optional_fields = false });
 }
 
 // ============================================================================

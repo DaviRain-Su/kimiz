@@ -351,105 +351,113 @@ const StreamContext = struct {
 // ============================================================================
 
 fn serializeRequest(allocator: std.mem.Allocator, ctx: core.Context) ![]u8 {
-    // Convert messages
-    var messages: std.ArrayList(AnthropicMessage) = .empty;
-    defer messages.deinit(allocator);
+    var buf: std.ArrayList(u8) = .empty;
+    defer buf.deinit(allocator);
 
-    for (ctx.messages) |msg| {
+    try buf.appendSlice(allocator, "{\"model\":");
+    try appendJsonString(&buf, allocator, ctx.model.id);
+
+    // Messages
+    try buf.appendSlice(allocator, ",\"messages\":[");
+    for (ctx.messages, 0..) |msg, msg_i| {
+        if (msg_i > 0) try buf.appendSlice(allocator, ",");
         switch (msg) {
             .user => |user_msg| {
-                var content: std.ArrayList(AnthropicContent) = .empty;
-                defer content.deinit(allocator);
-
+                try buf.appendSlice(allocator, "{\"role\":\"user\",\"content\":[");
+                var first = true;
                 for (user_msg.content) |block| {
                     switch (block) {
                         .text => |text| {
-                            try content.append(allocator, .{ .text = .{ .text = text } });
+                            if (!first) try buf.appendSlice(allocator, ",");
+                            first = false;
+                            try buf.appendSlice(allocator, "{\"type\":\"text\",\"text\":");
+                            try appendJsonString(&buf, allocator, text);
+                            try buf.appendSlice(allocator, "}");
                         },
                         .image => |img| {
-                            try content.append(allocator, .{ .image = .{
-                                .source = .{
-                                    .media_type = img.mime_type,
-                                    .data = img.data,
-                                },
-                            } });
+                            if (!first) try buf.appendSlice(allocator, ",");
+                            first = false;
+                            try buf.appendSlice(allocator, "{\"type\":\"image\",\"source\":{\"type\":\"base64\",\"media_type\":");
+                            try appendJsonString(&buf, allocator, img.mime_type);
+                            try buf.appendSlice(allocator, ",\"data\":");
+                            try appendJsonString(&buf, allocator, img.data);
+                            try buf.appendSlice(allocator, "}}");
                         },
-                        .image_url => {}, // Anthropic doesn't support image URLs directly
+                        .image_url => {},
                     }
                 }
-
-                try messages.append(allocator, .{
-                    .role = "user",
-                    .content = try content.toOwnedSlice(allocator),
-                });
+                try buf.appendSlice(allocator, "]}");
             },
             .assistant => |assistant_msg| {
-                var content: std.ArrayList(AnthropicContent) = .empty;
-                defer content.deinit(allocator);
-
+                try buf.appendSlice(allocator, "{\"role\":\"assistant\",\"content\":[");
+                var first = true;
                 for (assistant_msg.content) |block| {
                     switch (block) {
                         .text => |text| {
-                            try content.append(allocator, .{ .text = .{ .text = text.text } });
+                            if (!first) try buf.appendSlice(allocator, ",");
+                            first = false;
+                            try buf.appendSlice(allocator, "{\"type\":\"text\",\"text\":");
+                            try appendJsonString(&buf, allocator, text.text);
+                            try buf.appendSlice(allocator, "}");
                         },
-                        .thinking => {}, // Anthropic handles thinking separately via API
+                        .thinking => {},
                         .tool_call => |tc| {
-                            const parsed = try std.json.parseFromSlice(std.json.Value, allocator, tc.tool_call.arguments, .{});
-                            try content.append(allocator, .{ .tool_use = .{
-                                .id = tc.tool_call.id,
-                                .name = tc.tool_call.name,
-                                .input = parsed.value,
-                            } });
+                            if (!first) try buf.appendSlice(allocator, ",");
+                            first = false;
+                            try buf.appendSlice(allocator, "{\"type\":\"tool_use\",\"id\":");
+                            try appendJsonString(&buf, allocator, tc.tool_call.id);
+                            try buf.appendSlice(allocator, ",\"name\":");
+                            try appendJsonString(&buf, allocator, tc.tool_call.name);
+                            try buf.appendSlice(allocator, ",\"input\":");
+                            try buf.appendSlice(allocator, tc.tool_call.arguments);
+                            try buf.appendSlice(allocator, "}");
                         },
                     }
                 }
-
-                try messages.append(allocator, .{
-                    .role = "assistant",
-                    .content = try content.toOwnedSlice(allocator),
-                });
+                try buf.appendSlice(allocator, "]}");
             },
             .tool_result => |tool_result| {
-                var content: std.ArrayList(ContentBlock) = .empty;
-                defer content.deinit(allocator);
-
+                try buf.appendSlice(allocator, "{\"role\":\"user\",\"content\":[");
+                try buf.appendSlice(allocator, "{\"type\":\"tool_result\",\"tool_use_id\":");
+                try appendJsonString(&buf, allocator, tool_result.tool_call_id);
+                try buf.appendSlice(allocator, ",\"content\":[");
+                var first = true;
                 for (tool_result.content) |block| {
                     switch (block) {
-                        .text => |text| try content.append(allocator, .{ .text = text }),
-                        .image => {}, // Skip images in tool results for now
-                        .image_url => {}, // Skip image URLs in tool results for now
+                        .text => |text| {
+                            if (!first) try buf.appendSlice(allocator, ",");
+                            first = false;
+                            try buf.appendSlice(allocator, "{\"type\":\"text\",\"text\":");
+                            try appendJsonString(&buf, allocator, text);
+                            try buf.appendSlice(allocator, "}");
+                        },
+                        .image => {},
+                        .image_url => {},
                     }
                 }
-
-                try messages.append(allocator, .{
-                    .role = "user",
-                    .content = &[_]AnthropicContent{.{
-                        .tool_result = .{
-                            .tool_use_id = tool_result.tool_call_id,
-                            .content = try content.toOwnedSlice(allocator),
-                        },
-                    }},
-                });
+                try buf.appendSlice(allocator, "]}]}");
             },
         }
     }
+    try buf.appendSlice(allocator, "]");
 
-    // Convert tools
-    var tools: ?std.ArrayList(AnthropicTool) = null;
-    if (ctx.tools.len > 0) {
-        tools = std.ArrayList(AnthropicTool){ .items = &.{}, .capacity = 0 };
-        for (ctx.tools) |tool| {
-            const schema = try std.json.parseFromSlice(std.json.Value, allocator, tool.parameters_json, .{});
-            try tools.?.append(allocator, .{
-                .name = tool.name,
-                .description = tool.description,
-                .input_schema = schema.value,
-            });
-        }
+    // Temperature and max_tokens
+    try buf.appendSlice(allocator, ",\"temperature\":");
+    var temp_str: [32]u8 = undefined;
+    const temp_len = (try std.fmt.bufPrint(&temp_str, "{d}", .{ctx.temperature})).len;
+    try buf.appendSlice(allocator, temp_str[0..temp_len]);
+
+    try buf.appendSlice(allocator, ",\"max_tokens\":");
+    var mt_str: [16]u8 = undefined;
+    const mt_len = (try std.fmt.bufPrint(&mt_str, "{d}", .{ctx.max_tokens})).len;
+    try buf.appendSlice(allocator, mt_str[0..mt_len]);
+
+    // Stream
+    if (ctx.stream) {
+        try buf.appendSlice(allocator, ",\"stream\":true");
     }
 
-    // Thinking configuration
-    var thinking: ?AnthropicThinking = null;
+    // Thinking
     if (ctx.thinking_level != .off) {
         const budget: u32 = switch (ctx.thinking_level) {
             .off => 0,
@@ -459,26 +467,54 @@ fn serializeRequest(allocator: std.mem.Allocator, ctx: core.Context) ![]u8 {
             .high => 16384,
             .xhigh => 32768,
         };
-        thinking = .{ .budget_tokens = budget };
+        try buf.appendSlice(allocator, ",\"thinking\":{\"type\":\"enabled\",\"budget_tokens\":");
+        var budget_str: [16]u8 = undefined;
+        const budget_len = (try std.fmt.bufPrint(&budget_str, "{d}", .{budget})).len;
+        try buf.appendSlice(allocator, budget_str[0..budget_len]);
+        try buf.appendSlice(allocator, "}");
     }
 
-    const request = AnthropicRequest{
-        .model = ctx.model.id,
-        .messages = messages.items,
-        .temperature = ctx.temperature,
-        .max_tokens = ctx.max_tokens,
-        .stream = ctx.stream,
-        .thinking = thinking,
-        .tools = if (tools) |t| t.items else null,
-    };
+    // Tools
+    if (ctx.tools.len > 0) {
+        try buf.appendSlice(allocator, ",\"tools\":[");
+        for (ctx.tools, 0..) |tool, i| {
+            if (i > 0) try buf.appendSlice(allocator, ",");
+            try buf.appendSlice(allocator, "{\"name\":");
+            try appendJsonString(&buf, allocator, tool.name);
+            try buf.appendSlice(allocator, ",\"description\":");
+            try appendJsonString(&buf, allocator, tool.description);
+            try buf.appendSlice(allocator, ",\"input_schema\":");
+            try buf.appendSlice(allocator, tool.parameters_json);
+            try buf.appendSlice(allocator, "}");
+        }
+        try buf.appendSlice(allocator, "]");
+    }
 
-    var buf: std.ArrayList(u8) = .empty;
-    defer buf.deinit(allocator);
-    // TODO: Implement proper JSON serialization for Zig 0.16
-    // For now, return a placeholder to allow compilation
-    _ = request;
-    try buf.appendSlice(allocator, "{\"placeholder\":true}");
+    try buf.appendSlice(allocator, "}");
     return try buf.toOwnedSlice(allocator);
+}
+
+fn appendJsonString(buf: *std.ArrayList(u8), allocator: std.mem.Allocator, s: []const u8) !void {
+    try buf.append(allocator, '"');
+    for (s) |c| {
+        switch (c) {
+            '"' => try buf.appendSlice(allocator, "\\\""),
+            '\\' => try buf.appendSlice(allocator, "\\\\"),
+            '\n' => try buf.appendSlice(allocator, "\\n"),
+            '\r' => try buf.appendSlice(allocator, "\\r"),
+            '\t' => try buf.appendSlice(allocator, "\\t"),
+            else => {
+                if (c < 0x20) {
+                    var esc: [6]u8 = undefined;
+                    _ = std.fmt.bufPrint(&esc, "\\u{X:0>4}", .{c}) catch unreachable;
+                    try buf.appendSlice(allocator, &esc);
+                } else {
+                    try buf.append(allocator, c);
+                }
+            },
+        }
+    }
+    try buf.append(allocator, '"');
 }
 
 // ============================================================================
@@ -507,9 +543,7 @@ fn parseResponse(allocator: std.mem.Allocator, body: []const u8) !core.Assistant
                 } });
             },
             .tool_use => |t| {
-                // TODO: Fix JSON serialization for Zig 0.16
-                // For now, use placeholder arguments
-                const args = try std.fmt.allocPrint(allocator, "{{}}", .{});
+                const args = try std.json.Stringify.valueAlloc(allocator, t.input, .{});
                 try content.append(allocator, .{ .tool_call = .{
                     .tool_call = .{
                         .id = t.id,

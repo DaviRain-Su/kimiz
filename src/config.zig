@@ -35,7 +35,7 @@ pub const Config = struct {
             .kimi_api_key = null,
             .fireworks_api_key = null,
             .openrouter_api_key = null,
-            .default_model = "kimi-k2.5",
+            .default_model = "kimi-for-coding",
             .default_temperature = 0.7,
             .default_max_tokens = 4096,
             .yolo_mode = false,
@@ -120,6 +120,6 @@ test "Config init/deinit" {
     var config = try Config.init(allocator);
     defer config.deinit();
     
-    try std.testing.expectEqualStrings("kimi-k2.5", config.default_model);
+    try std.testing.expectEqualStrings("kimi-for-coding", config.default_model);
     try std.testing.expect(!config.yolo_mode);
 }

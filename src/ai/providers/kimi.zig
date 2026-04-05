@@ -303,13 +303,7 @@ fn serializeCodeRequest(allocator: std.mem.Allocator, ctx: core.Context) ![]u8 {
         .stream = ctx.stream,
     };
 
-    var buf: std.ArrayList(u8) = .empty;
-    defer buf.deinit(allocator);
-    // TODO: Implement proper JSON serialization for Zig 0.16
-    // For now, return a placeholder to allow compilation
-    _ = request;
-    try buf.appendSlice(allocator, "{\"placeholder\":true}");
-    return try buf.toOwnedSlice(allocator);
+    return try std.json.Stringify.valueAlloc(allocator, request, .{ .emit_null_optional_fields = false });
 }
 
 // ============================================================================

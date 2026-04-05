@@ -296,7 +296,7 @@ pub const SessionManager = struct {
             .messages = messages,
         };
 
-        return try std.json.stringifyAlloc(allocator, data, .{ .pretty = true });
+        return try std.json.Stringify.valueAlloc(allocator, data, .{});
     }
 
     /// Import session from JSON
@@ -406,7 +406,7 @@ pub const SessionStore = struct {
             .messages = manager.messages.items,
         };
 
-        return try std.json.stringifyAlloc(self.allocator, data, .{ .pretty = true });
+        return try std.json.Stringify.valueAlloc(self.allocator, data, .{});
     }
 };
 

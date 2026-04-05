@@ -1,5 +1,8 @@
 # kimiz Task Management Makefile
 
+# Use Zig 0.16-dev by default
+ZIG ?= $(HOME)/zig-0.16.0-dev/zig
+
 .PHONY: help task-create task-start task-block task-unblock task-complete task-approve task-list task-show task-stats test test-unit test-integration test-e2e build run clean
 
 # 默认目标
@@ -30,10 +33,10 @@ help:
 
 # Build Commands
 build:
-	zig build
+	$(ZIG) build
 
 run:
-	zig build run -- repl
+	$(ZIG) build run -- repl
 
 clean:
 	rm -rf .zig-cache zig-out
@@ -41,13 +44,13 @@ clean:
 
 # Test Commands
 test:
-	zig build test
+	$(ZIG) build test
 
 test-unit:
-	zig test src/root.zig
+	$(ZIG) test src/root.zig
 
 test-integration:
-	zig test tests/integration_tests.zig
+	$(ZIG) test tests/integration_tests.zig
 
 test-e2e:
 	@echo "Running E2E tests..."
@@ -67,24 +70,23 @@ task-create:
 		exit 1; \
 	fi
 	@mkdir -p tasks/backlog/$(TYPE)
-	@cat > tasks/backlog/$(TYPE)/$(TASK_ID)-$(shell echo '$(TITLE)' | tr ' ' '-' | tr '[:upper:]' '[:lower:]').md << EOF
-### $(TASK_ID): $(TITLE)
-**状态**: pending
-**优先级**: P1
-**创建**: $(shell date +%Y-%m-%d)
-**预计耗时**: 2h
-
-**描述**:
-{任务描述}
-
-**验收标准**:
-- [ ] {标准1}
-- [ ] {标准2}
-
-**依赖**: 
-
-**笔记**:
-EOF
+	@FILE="tasks/backlog/$(TYPE)/$(TASK_ID)-$(shell echo '$(TITLE)' | tr ' ' '-' | tr '[:upper:]' '[:lower:]').md"; \
+	printf '%s\n' "### $(TASK_ID): $(TITLE)" > $$FILE; \
+	printf '%s\n' "**状态**: pending" >> $$FILE; \
+	printf '%s\n' "**优先级**: P1" >> $$FILE; \
+	printf '%s\n' "**创建**: $(shell date +%Y-%m-%d)" >> $$FILE; \
+	printf '%s\n' "**预计耗时**: 2h" >> $$FILE; \
+	printf '\n' >> $$FILE; \
+	printf '%s\n' "**描述**:" >> $$FILE; \
+	printf '%s\n' "{任务描述}" >> $$FILE; \
+	printf '\n' >> $$FILE; \
+	printf '%s\n' "**验收标准**:" >> $$FILE; \
+	printf '%s\n' "- [ ] {标准1}" >> $$FILE; \
+	printf '%s\n' "- [ ] {标准2}" >> $$FILE; \
+	printf '\n' >> $$FILE; \
+	printf '%s\n' "**依赖**: " >> $$FILE; \
+	printf '\n' >> $$FILE; \
+	printf '%s\n' "**笔记**:" >> $$FILE
 	@echo "Created task: $(TASK_ID)"
 	@echo "File: tasks/backlog/$(TYPE)/$(TASK_ID)-$(shell echo '$(TITLE)' | tr ' ' '-' | tr '[:upper:]' '[:lower:]').md"
 

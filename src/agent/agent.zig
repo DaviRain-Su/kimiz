@@ -528,7 +528,7 @@ pub const Agent = struct {
 
     /// Export conversation to JSON
     pub fn exportToJson(self: *Self, allocator: std.mem.Allocator) ![]u8 {
-        return std.json.stringifyAlloc(allocator, self.messages.items, .{ .pretty = true });
+        return std.json.Stringify.valueAlloc(allocator, self.messages.items, .{});
     }
 };
 

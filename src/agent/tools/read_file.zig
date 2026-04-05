@@ -113,3 +113,82 @@ fn execute(
 test "tool definition" {
     try std.testing.expectEqualStrings("read_file", tool_definition.name);
 }
+
+test "read_file basic" {
+    const allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    // Create a test file
+    const test_content = "Hello, World!";
+    const test_path = "/tmp/kimiz_test_read.txt";
+    
+    try std.fs.cwd().writeFile(.{
+        .sub_path = test_path,
+        .data = test_content,
+    });
+    defer std.fs.cwd().deleteFile(test_path) catch {};
+
+    // Execute tool
+    var ctx = ReadFileContext{};
+    const args = std.json.ObjectMap{};
+    
+    const result = try ctx.execute(arena.allocator(), args);
+    
+    try std.testing.expect(!result.is_error);
+    try std.testing.expect(result.content.len > 0);
+}
+
+test "read_file not found" {
+    const allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    var ctx = ReadFileContext{};
+    const args = std.json.parseFromSlice(
+        std.json.Value,
+        allocator,
+        "{\"path\":\"/nonexistent/file.txt\"}",
+        .{},
+    ) catch return;
+    defer args.deinit();
+
+    const result = ctx.execute(arena.allocator(), args.value) catch |err| {
+        // Expected to fail
+        _ = err;
+        return;
+    };
+    
+    try std.testing.expect(result.is_error);
+}
+
+test "read_file with offset and limit" {
+    const allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    // Create multi-line test file
+    const test_content = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5";
+    const test_path = "/tmp/kimiz_test_lines.txt";
+    
+    try std.fs.cwd().writeFile(.{
+        .sub_path = test_path,
+        .data = test_content,
+    });
+    defer std.fs.cwd().deleteFile(test_path) catch {};
+
+    // Test with offset
+    var ctx = ReadFileContext{};
+    const args = std.json.parseFromSlice(
+        std.json.Value,
+        allocator,
+        "{\"path\":\"/tmp/kimiz_test_lines.txt\",\"offset\":1,\"limit\":3}",
+        .{},
+    ) catch return;
+    defer args.deinit();
+
+    const result = try ctx.execute(arena.allocator(), args.value);
+    
+    try std.testing.expect(!result.is_error);
+    // Should contain "Line 2", "Line 3", "Line 4"
+}

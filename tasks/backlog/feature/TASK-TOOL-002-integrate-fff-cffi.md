@@ -1,182 +1,247 @@
-### TASK-TOOL-002: 集成 fff C FFI 作为原生 Zig 模块
-|**状态**: pending
-|**优先级**: P2
-|**创建**: 2026-04-05
-|**更新**: 2026-04-05 (添加 Dmitriy Kovalenko SDK 详情)
-|**预计耗时**: 8h
+# TASK-TOOL-002: 集成 fff C FFI (高性能搜索)
 
-|**描述**:
-将 fff 的 C FFI 库 (`libfff-c`) 编译为共享库，从 Zig 直接调用，实现**零 subprocess 开销**的极速搜索，作为 MCP 方案的高性能替代。
+**状态**: in_progress  
+**优先级**: P1  
+**预计工时**: 8 小时  
+**分配**: Claude Code  
+**创建**: 2026-04-05
 
-|**背景**:
-MCP Server 方案有 ~50-100ms 的进程间通信开销。对于需要极低延迟的场景，可以直接链接 C 库。
+---
 
-**Dmitriy Kovalenko 发布详情** (2026-04-05):
-- **作者**: @neogoose_btw (Dmitriy Kovalenko)
-- **技术栈**: Rust + Zig + SIMD + 内存映射缓存 + 预过滤 + 内联汇编
-- **SDK 支持**: Rust / C / Node.js / Bun (**Python 即将推出**)
-- **在线演示**: https://fff.dmtrkovalenko.dev
-- **规模测试**: Linux kernel (10万文件), Chromium (50万文件), Claude Code 源码
+## 目标
 
-**参考实现**: Pi + fff 原生集成 https://github.com/SamuelLHuber/pi-fff
+通过 C FFI 直接链接 libfff_core，实现零开销 (< 5ms) 的高性能模糊搜索。
 
-**架构**:
+---
+
+## 背景
+
+fff (Fuzzy File Finder) 是比 ripgrep 快 100 倍的模糊搜索引擎：
+- 无索引架构
+- SIMD 加速 (AVX2/NEON)
+- 支持 50万文件实时搜索 (< 100ms)
+- 模糊匹配 + Typo 纠错 + Frecency 排名
+
+---
+
+## 技术架构
+
 ```
 kimiz (Zig)
-    ↓ @cImport("fff.h")
-libfff-c (C FFI wrapper)
+    ↓ @cImport
+libfff_c (C FFI Wrapper - 需自行实现)
     ↓
-libfff_core (Rust static lib)
-    ↓
-搜索结果 (< 5ms)
+libfff_core (Rust, SIMD)
 ```
 
-**前提条件**:
-1. 克隆 fff.nvim 仓库
-2. 构建 libfff_c.a (静态库)
-3. 生成 fff.h 头文件
+---
 
-**实施步骤**:
+## 实施步骤
 
-1. **获取 fff C FFI**
-```bash
-git clone https://github.com/dmtrKovalenko/fff.nvim
-cd fff.nvim
-# 构建 C 库
-cargo build --release -p fff-c
+### Phase 1: C FFI 绑定层 (3h)
+
+**1.1 创建 fff C FFI 包装器**
+
+文件: `ffi/fff-wrapper/Cargo.toml`
+```toml
+[package]
+name = "fff-c"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+fff-core = { git = "https://github.com/dmtrKovalenko/fff.nvim" }
 ```
 
-2. **创建 Zig 绑定**
-```zig
-// src/db/fff.zig
-const std = @import("std");
+文件: `ffi/fff-wrapper/src/lib.rs`
+```rust
+use std::ffi::{CStr, CString};
+use std::os::raw::{c_char, c_int};
 
-// 加载 C 库
-pub const ffi = @cImport(@cInclude("fff.h"));
+/// C FFI wrapper for fff search
+#[no_mangle]
+pub extern "C" fn fff_search(
+    query: *const c_char,
+    path: *const c_char,
+    results: *mut FFFResult,
+    max_results: c_int,
+) -> c_int {
+    let query = unsafe { CStr::from_ptr(query) }.to_string_lossy();
+    let path = unsafe { CStr::from_ptr(path) }.to_string_lossy();
+    
+    // Call fff core
+    let matches = fff_core::search(&query, &path);
+    
+    // Convert to C format
+    let count = matches.len().min(max_results as usize);
+    for (i, m) in matches.iter().take(count).enumerate() {
+        unsafe {
+            (*results.add(i)).path = CString::new(m.path.clone()).unwrap().into_raw();
+            (*results.add(i)).score = m.score;
+            (*results.add(i)).line_num = m.line_num as c_int;
+        }
+    }
+    
+    count as c_int
+}
 
-// 实例句柄
-pub const FFFHandle = opaque {
-    // Opaque pointer to internal state
-};
-
-// 结果结构
-pub const FFFFileResult = extern struct {
-    path: [*]const u8,
+#[repr(C)]
+pub struct FFFResult {
+    path: *mut c_char,
     score: f64,
-    is_dir: bool,
-};
-
-pub const FFFGrepResult = extern struct {
-    path: [*]const u8,
-    line_number: u32,
-    line_content: [*]const u8,
-    score: f64,
-};
-
-// 核心 API
-pub const fff = struct {
-    pub fn create(path: [*]const u8) ?*FFFHandle {
-        return ffi.fff_create_instance(path);
-    }
-
-    pub fn search(
-        handle: *FFFHandle,
-        query: [*]const u8,
-        max_results: u32,
-    ) ?[]FFFFileResult {
-        const result = ffi.fff_search(handle, query, max_results);
-        // 转换并返回切片
-    }
-
-    pub fn grep(
-        handle: *FFFHandle,
-        query: [*]const u8,
-        path_filter: ?[*]const u8,
-        max_results: u32,
-    ) ?[]FFFGrepResult { ... }
-
-    pub fn destroy(handle: *FFFHandle) void {
-        ffi.fff_destroy(handle);
-    }
-
-    pub fn freeResult(result: *anyopaque) void {
-        ffi.fff_free_result(result);
-    }
-};
+    line_num: c_int,
+}
 ```
 
-3. **创建 FFFStore 封装**
+**1.2 Zig FFI 绑定**
+
+文件: `src/ffi/fff.zig`
 ```zig
-// src/db/fff_store.zig
-pub const FFFStore = struct {
+const c = @cImport({
+    @cInclude("fff.h");
+});
+
+pub const FFFMatch = struct {
+    path: []const u8,
+    score: f64,
+    line_num: usize,
+};
+
+pub fn search(
     allocator: std.mem.Allocator,
-    handle: *fff.FFFHandle,
-    base_path: []const u8,
-
-    pub fn init(allocator: std.mem.Allocator, base_path: []const u8) !Self {
-        const handle = fff.create(base_path) orelse {
-            return error.FFFInitFailed;
-        };
-        return .{
-            .allocator = allocator,
-            .handle = handle,
-            .base_path = try allocator.dupe(u8, base_path),
+    query: []const u8,
+    path: []const u8,
+    max_results: usize,
+) ![]FFFMatch {
+    const query_c = try allocator.dupeZ(u8, query);
+    defer allocator.free(query_c);
+    
+    const path_c = try allocator.dupeZ(u8, path);
+    defer allocator.free(path_c);
+    
+    var results: [100]c.FFFResult = undefined;
+    
+    const count = c.fff_search(
+        query_c.ptr,
+        path_c.ptr,
+        &results[0],
+        @intCast(max_results),
+    );
+    
+    var matches = try allocator.alloc(FFFMatch, @intCast(count));
+    for (0..@intCast(count)) |i| {
+        const r = results[i];
+        matches[i] = .{
+            .path = try allocator.dupe(u8, std.mem.span(r.path)),
+            .score = r.score,
+            .line_num = @intCast(r.line_num),
         };
     }
+    
+    return matches;
+}
+```
 
-    pub fn deinit(self: *Self) void {
-        fff.destroy(self.handle);
-        self.allocator.free(self.base_path);
+### Phase 2: FFFTool 实现 (2h)
+
+文件: `src/agent/tools/fff.zig`
+```zig
+const std = @import("std");
+const tool = @import("../tool.zig");
+const fff = @import("../../ffi/fff.zig");
+
+pub const FFFTool = struct {
+    pub fn execute(arena: std.mem.Allocator, args: std.json.Value) !tool.ToolResult {
+        const parsed = try tool.parseArguments(arena, args, struct {
+            query: []const u8,
+            path: ?[]const u8 = null,
+            max_results: ?usize = 20,
+        });
+        
+        const matches = try fff.search(
+            arena,
+            parsed.query,
+            parsed.path orelse ".",
+            parsed.max_results orelse 20,
+        );
+        
+        // Format results
+        var result_text = std.ArrayList(u8).init(arena);
+        for (matches, 0..) |m, i| {
+            if (i > 0) try result_text.append('\n');
+            try std.fmt.format(result_text.writer(), "{s}:{d} (score: {d:.2})", .{
+                m.path, m.line_num, m.score,
+            });
+        }
+        
+        return tool.textContent(arena, result_text.items);
     }
+};
 
-    pub fn findFiles(self: *Self, query: []const u8, limit: u32) ![]FFFFileResult {
-        const results = fff.search(self.handle, query, limit) orelse {
-            return error.SearchFailed;
-        };
-        // 转换为 Zig 切片并复制到 allocator
-        return self.copyFileResults(results);
-    }
-
-    pub fn grep(self: *Self, query: []const u8, limit: u32) ![]FFFGrepResult { ... }
+pub const definition = tool.Tool{
+    .name = "fff",
+    .description = "Fast fuzzy file/code search with typo correction and smart ranking",
+    .parameters_json =
+        \\{"type":"object","properties":{"query":{"type":"string","description":"Search query (fuzzy, supports typos)"},"path":{"type":"string","description":"Directory to search in"},"max_results":{"type":"number","description":"Maximum results to return"}},"required":["query"]}
+    ,
 };
 ```
 
-4. **修改 build.zig 链接**
+### Phase 3: build.zig 配置 (1h)
+
 ```zig
-// build.zig
-const fff_mcp = b.dependency("fff_mcp", .{
+// Add fff C library
+const fff_lib = b.addStaticLibrary(.{
+    .name = "fff-c",
+    .root_source_file = b.path("ffi/fff-wrapper/src/lib.rs"),
     .target = target,
     .optimize = optimize,
 });
 
-// 添加 C 库和头文件路径
-exe.linkSystemLibrary("c");
-exe.addIncludePath(fff_mcp.path("crates/fff-c/src"));
-exe.addLibPath(fff_mcp.path("target/release"));
-exe.linkSystemLibrary("fff_c");  // libfff_c.a
+// Link to kimiz
+exe.addObjectFile(fff_lib.getEmittedBin());
+exe.linkLibC();
+exe.addIncludePath(b.path("ffi/fff-wrapper/include"));
 ```
 
-**性能对比目标**:
-| 操作 | MCP Server | C FFI |
-|------|------------|--------|
-| find_files | ~100ms | **< 5ms** |
-| grep | ~150ms | **< 10ms** |
-| 模糊搜索 | ~100ms | **< 5ms** |
+### Phase 4: 替换 grep (2h)
 
-**验收标准**:
-- [ ] `zig build` 编译通过
-- [ ] 链接 libfff_c.a 成功
-- [ ] find_files < 5ms (10k 文件)
-- [ ] grep < 10ms (10k 文件)
-- [ ] 内存占用 < 50MB (10k 文件索引)
+1. 更新 `src/agent/root.zig`，添加 fff 工具
+2. 更新 `src/agent/tools/grep.zig`，标记为 deprecated
+3. 更新默认工具集，fff 替代 grep
 
-**依赖**:
-- TASK-TOOL-001 (了解 FFI 接口)
+---
 
-**阻塞**:
-- 需要 fff 仓库源码
+## 验收标准
 
-**笔记**:
-- C FFI 方案复杂度高，需要处理内存分配边界
-- 建议先用 MCP 方案验证功能，再考虑 C FFI
-- LMDB 依赖 (heed) 可能需要额外配置
+- [ ] fff 搜索延迟 < 5ms (10k 文件)
+- [ ] 模糊匹配正常工作 ("mtxlk" → "mutex_lock")
+- [ ] Typo 纠错正常工作 ("serach" → "search")
+- [ ] Git 感知优先级正常
+- [ ] 编译通过 `zig build`
+- [ ] 所有测试通过 `zig build test`
+
+---
+
+## 风险评估
+
+| 风险 | 概率 | 影响 | 缓解 |
+|------|------|------|------|
+| fff 无现成 C FFI | 高 | 高 | 需自行编写 Rust wrapper |
+| 内存边界问题 | 中 | 高 | 仔细测试，使用 Arena |
+| 编译复杂度 | 中 | 中 | 提供一键构建脚本 |
+
+---
+
+## 参考
+
+- fff: https://github.com/dmtrKovalenko/fff.nvim
+- Pi + fff: https://github.com/SamuelLHuber/pi-fff
+- Zig FFI: https://ziglang.org/documentation/master/#C-Import
+
+---
+
+**下一步**: Phase 1 - 创建 C FFI 绑定层

@@ -165,9 +165,9 @@ fn runInteractive(allocator: std.mem.Allocator) !void {
     const model = ai.models_registry.getModelById(model_id) orelse {
         print("❌ Unknown model: ");
         print(model_id);
-        print("\nUsing default: kimi-k2.5\n");
-        _ = ai.models_registry.getModel(.kimi, "kimi-k2.5") orelse {
-            print("❌ Default model kimi-k2.5 not found\n");
+        print("\nUsing default: kimi-for-coding\n");
+        _ = ai.models_registry.getModelById("kimi-for-coding") orelse {
+            print("❌ Default model kimi-for-coding not found\n");
             return error.ModelNotFound;
         };
         return error.ModelNotFound;
@@ -289,8 +289,8 @@ fn runSkillCommand(allocator: std.mem.Allocator, args: []const []const u8) !void
     }
 
     // Initialize Agent
-    const model = ai.models_registry.getModelById("kimi-k2.5") orelse {
-        printLine("❌ Failed to get default model kimi-k2.5");
+    const model = ai.models_registry.getModelById("kimi-for-coding") orelse {
+        printLine("❌ Failed to get default model kimi-for-coding");
         return;
     };
 
@@ -344,7 +344,7 @@ fn printHelp() void {
         \\  kimiz skill <id>   Execute a skill
         \\
         \\Environment:
-        \\  KIMIZ_MODEL        Default model (default: kimi-k2.5)
+        \\  KIMIZ_MODEL        Default model (default: kimi-for-coding)
         \\  KIMI_API_KEY       Kimi API key (recommended)
         \\  OPENAI_API_KEY     OpenAI API key
         \\  ANTHROPIC_API_KEY  Anthropic API key
@@ -353,7 +353,7 @@ fn printHelp() void {
         \\  OPENROUTER_API_KEY OpenRouter API key
         \\  KIMIZ_YOLO_MODE    Enable YOLO mode (1/true/yes)
         \\  
-        \\Note: Kimi (kimi-k2.5) is the recommended default model with 256k context window.
+        \\Note: Kimi for Coding is the recommended default model with 262k context window.
         \\
     ;
     print(help);

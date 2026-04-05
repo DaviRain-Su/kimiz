@@ -201,3 +201,59 @@ fn executeCommand(
 test "tool definition" {
     try std.testing.expectEqualStrings("bash", tool_definition.name);
 }
+
+test "bash echo command" {
+    const allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    var ctx = BashContext{};
+    const args = try std.json.parseFromSlice(
+        std.json.Value,
+        allocator,
+        "{\"command\":\"echo 'Hello World'\"}",
+        .{},
+    );
+    defer args.deinit();
+
+    const result = try ctx.execute(arena.allocator(), args.value);
+    try std.testing.expect(!result.is_error);
+}
+
+test "bash empty command" {
+    const allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    var ctx = BashContext{};
+    const args = try std.json.parseFromSlice(
+        std.json.Value,
+        allocator,
+        "{\"command\":\"\"}",
+        .{},
+    );
+    defer args.deinit();
+
+    const result = try ctx.execute(arena.allocator(), args.value);
+    try std.testing.expect(result.is_error);
+}
+
+test "bash blocked command" {
+    const allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    var ctx = BashContext{
+        .blocked_commands = &[_][]const u8{"rm -rf /"},
+    };
+    const args = try std.json.parseFromSlice(
+        std.json.Value,
+        allocator,
+        "{\"command\":\"rm -rf /\"}",
+        .{},
+    );
+    defer args.deinit();
+
+    const result = try ctx.execute(arena.allocator(), args.value);
+    try std.testing.expect(result.is_error);
+}

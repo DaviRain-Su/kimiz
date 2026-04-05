@@ -129,3 +129,87 @@ fn execute(
 test "tool definition" {
     try std.testing.expectEqualStrings("edit", tool_definition.name);
 }
+
+test "edit basic replacement" {
+    const allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const test_path = "/tmp/kimiz_test_edit.txt";
+    const original_content = "Hello World";
+    const new_content = "Hello Universe";
+
+    // Create test file
+    try std.fs.cwd().writeFile(.{
+        .sub_path = test_path,
+        .data = original_content,
+    });
+    defer std.fs.cwd().deleteFile(test_path) catch {};
+
+    // Execute edit
+    var ctx = EditContext{};
+    const args_json = try std.fmt.allocPrint(allocator, "{{\"path\":\"{s}\",\"old_string\":\"World\",\"new_string\":\"Universe\"}}", .{test_path});
+    defer allocator.free(args_json);
+
+    const args = try std.json.parseFromSlice(std.json.Value, allocator, args_json, .{});
+    defer args.deinit();
+
+    const result = try ctx.execute(arena.allocator(), args.value);
+    try std.testing.expect(!result.is_error);
+
+    // Verify content changed
+    const read_content = try std.fs.cwd().readFileAlloc(arena.allocator(), test_path, 1024);
+    defer arena.allocator().free(read_content);
+    try std.testing.expectEqualStrings(new_content, read_content);
+}
+
+test "edit old_string not found" {
+    const allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const test_path = "/tmp/kimiz_test_edit2.txt";
+    try std.fs.cwd().writeFile(.{
+        .sub_path = test_path,
+        .data = "Hello World",
+    });
+    defer std.fs.cwd().deleteFile(test_path) catch {};
+
+    var ctx = EditContext{};
+    const args = try std.json.parseFromSlice(
+        std.json.Value,
+        allocator,
+        "{\"path\":\"/tmp/kimiz_test_edit2.txt\",\"old_string\":\"NonExistent\",\"new_string\":\"Replacement\"}",
+        .{},
+    );
+    defer args.deinit();
+
+    const result = try ctx.execute(arena.allocator(), args.value);
+    try std.testing.expect(result.is_error);
+}
+
+test "edit multiple occurrences" {
+    const allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const test_path = "/tmp/kimiz_test_edit3.txt";
+    try std.fs.cwd().writeFile(.{
+        .sub_path = test_path,
+        .data = "foo bar foo bar",
+    });
+    defer std.fs.cwd().deleteFile(test_path) catch {};
+
+    var ctx = EditContext{};
+    const args = try std.json.parseFromSlice(
+        std.json.Value,
+        allocator,
+        "{\"path\":\"/tmp/kimiz_test_edit3.txt\",\"old_string\":\"foo\",\"new_string\":\"baz\"}",
+        .{},
+    );
+    defer args.deinit();
+
+    // Should fail because "foo" appears multiple times
+    const result = try ctx.execute(arena.allocator(), args.value);
+    try std.testing.expect(result.is_error);
+}

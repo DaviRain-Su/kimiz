@@ -201,7 +201,7 @@ fn processLine(allocator: std.mem.Allocator, line: []const u8, callback: *const 
                     .id = fc.name, // Google uses function name as ID
                     .name = fc.name,
                 } });
-                const args = try std.json.stringifyAlloc(allocator, fc.args, .{});
+                const args = try std.json.Stringify.valueAlloc(allocator, fc.args, .{});
                 defer allocator.free(args);
                 callback(.{ .toolcall_delta = .{ .arguments_json_chunk = args } });
             },
@@ -318,11 +318,104 @@ fn serializeRequest(allocator: std.mem.Allocator, ctx: core.Context) ![]u8 {
 
     var buf: std.ArrayList(u8) = .empty;
     defer buf.deinit(allocator);
-    // TODO: Implement proper JSON serialization for Zig 0.16
-    // For now, return a placeholder to allow compilation
-    _ = request;
-    try buf.appendSlice(allocator, "{\"placeholder\":true}");
+
+    try buf.appendSlice(allocator, "{\"contents\":[");
+    for (request.contents, 0..) |content, ci| {
+        if (ci > 0) try buf.appendSlice(allocator, ",");
+        try buf.appendSlice(allocator, "{\"role\":");
+        try appendJsonStr(&buf, allocator, content.role);
+        try buf.appendSlice(allocator, ",\"parts\":[");
+        for (content.parts, 0..) |part, pi| {
+            if (pi > 0) try buf.appendSlice(allocator, ",");
+            switch (part) {
+                .text => |t| {
+                    try buf.appendSlice(allocator, "{\"text\":");
+                    try appendJsonStr(&buf, allocator, t.text);
+                    try buf.appendSlice(allocator, "}");
+                },
+                .inlineData => |d| {
+                    try buf.appendSlice(allocator, "{\"inlineData\":{\"mimeType\":");
+                    try appendJsonStr(&buf, allocator, d.mimeType);
+                    try buf.appendSlice(allocator, ",\"data\":");
+                    try appendJsonStr(&buf, allocator, d.data);
+                    try buf.appendSlice(allocator, "}}");
+                },
+                .functionCall => |fc| {
+                    try buf.appendSlice(allocator, "{\"functionCall\":{\"name\":");
+                    try appendJsonStr(&buf, allocator, fc.name);
+                    try buf.appendSlice(allocator, ",\"args\":");
+                    const args_json = try std.json.Stringify.valueAlloc(allocator, fc.args, .{});
+                    defer allocator.free(args_json);
+                    try buf.appendSlice(allocator, args_json);
+                    try buf.appendSlice(allocator, "}}");
+                },
+                .functionResponse => |fr| {
+                    try buf.appendSlice(allocator, "{\"functionResponse\":{\"name\":");
+                    try appendJsonStr(&buf, allocator, fr.name);
+                    try buf.appendSlice(allocator, ",\"response\":{\"result\":");
+                    try appendJsonStr(&buf, allocator, fr.response.result);
+                    try buf.appendSlice(allocator, "}}}");
+                },
+            }
+        }
+        try buf.appendSlice(allocator, "]}");
+    }
+    try buf.appendSlice(allocator, "]");
+
+    // generationConfig
+    try buf.appendSlice(allocator, ",\"generationConfig\":");
+    const gen_config = try std.json.Stringify.valueAlloc(allocator, request.generationConfig, .{});
+    defer allocator.free(gen_config);
+    try buf.appendSlice(allocator, gen_config);
+
+    // Tools
+    if (request.tools) |tool_list| {
+        try buf.appendSlice(allocator, ",\"tools\":[");
+        for (tool_list, 0..) |tool, ti| {
+            if (ti > 0) try buf.appendSlice(allocator, ",");
+            try buf.appendSlice(allocator, "{\"functionDeclarations\":[");
+            for (tool.functionDeclarations, 0..) |fd, fi| {
+                if (fi > 0) try buf.appendSlice(allocator, ",");
+                try buf.appendSlice(allocator, "{\"name\":");
+                try appendJsonStr(&buf, allocator, fd.name);
+                try buf.appendSlice(allocator, ",\"description\":");
+                try appendJsonStr(&buf, allocator, fd.description);
+                try buf.appendSlice(allocator, ",\"parameters\":");
+                const params_json = try std.json.Stringify.valueAlloc(allocator, fd.parameters, .{});
+                defer allocator.free(params_json);
+                try buf.appendSlice(allocator, params_json);
+                try buf.appendSlice(allocator, "}");
+            }
+            try buf.appendSlice(allocator, "]}");
+        }
+        try buf.appendSlice(allocator, "]");
+    }
+
+    try buf.appendSlice(allocator, "}");
     return try buf.toOwnedSlice(allocator);
+}
+
+fn appendJsonStr(buf: *std.ArrayList(u8), allocator: std.mem.Allocator, s: []const u8) !void {
+    try buf.append(allocator, '"');
+    for (s) |c| {
+        switch (c) {
+            '"' => try buf.appendSlice(allocator, "\\\""),
+            '\\' => try buf.appendSlice(allocator, "\\\\"),
+            '\n' => try buf.appendSlice(allocator, "\\n"),
+            '\r' => try buf.appendSlice(allocator, "\\r"),
+            '\t' => try buf.appendSlice(allocator, "\\t"),
+            else => {
+                if (c < 0x20) {
+                    var esc: [6]u8 = undefined;
+                    _ = std.fmt.bufPrint(&esc, "\\u{X:0>4}", .{c}) catch unreachable;
+                    try buf.appendSlice(allocator, &esc);
+                } else {
+                    try buf.append(allocator, c);
+                }
+            },
+        }
+    }
+    try buf.append(allocator, '"');
 }
 
 // ============================================================================
@@ -346,9 +439,7 @@ fn parseResponse(allocator: std.mem.Allocator, body: []const u8) !core.Assistant
         switch (part) {
             .text => |t| try content.append(allocator, .{ .text = .{ .text = t.text } }),
             .functionCall => |fc| {
-                // TODO: Fix JSON serialization for Zig 0.16
-                // For now, use placeholder arguments
-                const args = try std.fmt.allocPrint(allocator, "{{}}", .{});
+                const args = try std.json.Stringify.valueAlloc(allocator, fc.args, .{});
                 try content.append(allocator, .{ .tool_call = .{
                     .tool_call = .{
                         .id = fc.name,

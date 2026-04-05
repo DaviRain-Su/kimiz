@@ -206,3 +206,79 @@ fn globMatch(pattern: []const u8, text: []const u8) bool {
 test "tool definition" {
     try std.testing.expectEqualStrings("grep", tool_definition.name);
 }
+
+test "grep basic search" {
+    const allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    // Create test directory with files
+    const test_dir = "/tmp/kimiz_test_grep";
+    try std.fs.cwd().makeDir(test_dir);
+    defer std.fs.cwd().deleteTree(test_dir) catch {};
+
+    // Create test file
+    const test_file = try std.fs.path.join(arena.allocator(), &.{ test_dir, "test.txt" });
+    try std.fs.cwd().writeFile(.{
+        .sub_path = test_file,
+        .data = "hello world\nfoo bar\nhello again",
+    });
+
+    var ctx = GrepContext{};
+    const args = try std.json.parseFromSlice(
+        std.json.Value,
+        allocator,
+        "{\"pattern\":\"hello\",\"path\":\"/tmp/kimiz_test_grep\"}",
+        .{},
+    );
+    defer args.deinit();
+
+    const result = try ctx.execute(arena.allocator(), args.value);
+    try std.testing.expect(!result.is_error);
+}
+
+test "grep no matches" {
+    const allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const test_dir = "/tmp/kimiz_test_grep2";
+    try std.fs.cwd().makeDir(test_dir);
+    defer std.fs.cwd().deleteTree(test_dir) catch {};
+
+    try std.fs.cwd().writeFile(.{
+        .sub_path = try std.fs.path.join(arena.allocator(), &.{ test_dir, "file.txt" }),
+        .data = "abc def\nghi jkl",
+    });
+
+    var ctx = GrepContext{};
+    const args = try std.json.parseFromSlice(
+        std.json.Value,
+        allocator,
+        "{\"pattern\":\"xyz\",\"path\":\"/tmp/kimiz_test_grep2\"}",
+        .{},
+    );
+    defer args.deinit();
+
+    const result = try ctx.execute(arena.allocator(), args.value);
+    // Should return "No matches found" message, not error
+    try std.testing.expect(!result.is_error);
+}
+
+test "grep empty pattern" {
+    const allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    var ctx = GrepContext{};
+    const args = try std.json.parseFromSlice(
+        std.json.Value,
+        allocator,
+        "{\"pattern\":\"\",\"path\":\"/tmp\"}",
+        .{},
+    );
+    defer args.deinit();
+
+    const result = try ctx.execute(arena.allocator(), args.value);
+    try std.testing.expect(result.is_error);
+}
