@@ -115,6 +115,46 @@ fn execute(
     return tool.textContent(arena, try arena.dupe(u8, buf.items));
 }
 
+/// Apply smart truncation to file content based on token estimates
+fn applySmartTruncation(
+    arena: std.mem.Allocator,
+    raw_content: []const u8,
+    offset: usize,
+    limit: usize,
+) ![]const u8 {
+    const estimated_tokens = raw_content.len / 4;
+    const max_tokens: usize = 2000; // Default token limit for read_file
+
+    if (estimated_tokens <= max_tokens) {
+        return arena.dupe(u8, raw_content);
+    }
+
+    // If content exceeds token limit, apply aggressive truncation
+    var buf: std.ArrayList(u8) = .empty;
+    defer buf.deinit(arena);
+
+    var iter = std.mem.splitScalar(u8, raw_content, '\n');
+    var line_num: usize = 0;
+    var shown: usize = 0;
+    const effective_limit = @min(limit, max_tokens / 2); // Reduce line count to fit tokens
+
+    while (iter.next()) |line| {
+        if (line_num >= offset and shown < effective_limit) {
+            if (buf.items.len > 0) try buf.append(arena, '\n');
+            const numbered = try std.fmt.allocPrint(arena, "{d: >5}| {s}", .{ line_num + 1, line });
+            try buf.appendSlice(arena, numbered);
+            shown += 1;
+        }
+        line_num += 1;
+        if (shown >= effective_limit) break;
+    }
+
+    const note = try std.fmt.allocPrint(arena, "\n\n[Truncated: content too large for context window. Request specific lines with offset/limit.]", .{});
+    try buf.appendSlice(arena, note);
+
+    return try buf.toOwnedSlice(arena);
+}
+
 // ============================================================================
 // Tests
 // ============================================================================

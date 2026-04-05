@@ -3,6 +3,19 @@
 const std = @import("std");
 const utils = @import("../../utils/root.zig");
 const tool = @import("../tool.zig");
+const compress = @import("../../skills/compress/filters.zig");
+const git_filters = @import("../../skills/compress/git.zig");
+const file_filters = @import("../../skills/compress/files.zig");
+const TokenOptimizationConfig = @import("../../config.zig").TokenOptimizationConfig;
+
+// Strategy compatibility: map config Strategy to compress Strategy
+fn mapStrategy(config_strategy: TokenOptimizationConfig.Strategy) compress.Strategy {
+    return switch (config_strategy) {
+        .conservative => .conservative,
+        .balanced => .balanced,
+        .aggressive => .aggressive,
+    };
+}
 
 pub const TOOL_NAME = "bash";
 
@@ -50,6 +63,55 @@ pub const BashContext = struct {
     auto_approve: bool = false,
     allowed_commands: ?[]const []const u8 = null,
     blocked_commands: ?[]const []const u8 = null,
+    token_optimization: ?*const TokenOptimizationConfig = null,
+
+    /// Apply token optimization filter to command output
+    fn optimizeOutput(
+        self: *const BashContext,
+        allocator: std.mem.Allocator,
+        command: []const u8,
+        raw_output: []const u8,
+    ) ![]const u8 {
+        const config = self.token_optimization orelse return allocator.dupe(u8, raw_output);
+        if (!config.shouldOptimize(command)) return allocator.dupe(u8, raw_output);
+
+        const strategy = mapStrategy(config.getEffectiveStrategy(command));
+        const ctx = compress.FilterContext{
+            .allocator = allocator,
+            .strategy = strategy,
+            .command = command,
+            .raw_output = raw_output,
+            .max_tokens = config.advanced.max_output_tokens,
+        };
+
+        // Try command-specific filter first
+        if (std.mem.startsWith(u8, command, "git status")) {
+            const result = try git_filters.git_status_filter.apply(ctx);
+            defer result.deinit(allocator);
+            return allocator.dupe(u8, result.filtered);
+        } else if (std.mem.startsWith(u8, command, "git log")) {
+            const result = try git_filters.git_log_filter.apply(ctx);
+            defer result.deinit(allocator);
+            return allocator.dupe(u8, result.filtered);
+        } else if (std.mem.startsWith(u8, command, "git diff")) {
+            const result = try git_filters.git_diff_filter.apply(ctx);
+            defer result.deinit(allocator);
+            return allocator.dupe(u8, result.filtered);
+        } else if (std.mem.startsWith(u8, command, "ls")) {
+            const result = try file_filters.ls_filter.apply(ctx);
+            defer result.deinit(allocator);
+            return allocator.dupe(u8, result.filtered);
+        } else if (std.mem.startsWith(u8, command, "find")) {
+            const result = try file_filters.find_filter.apply(ctx);
+            defer result.deinit(allocator);
+            return allocator.dupe(u8, result.filtered);
+        }
+
+        // Fallback to default filter
+        const result = try compress.default_filter.apply(ctx);
+        defer result.deinit(allocator);
+        return allocator.dupe(u8, result.filtered);
+    }
 };
 
 pub fn createAgentTool(ctx: *BashContext) tool.AgentTool {
@@ -95,10 +157,17 @@ fn execute(
     // Execute command
     const result = try executeCommand(arena, parsed_args.command, parsed_args.working_dir, timeout_ms);
 
-    if (result.stdout.len > 0 and result.stderr.len == 0) {
-        return tool.textContent(arena, result.stdout);
+    // Apply token optimization if enabled
+    const optimized_stdout = ctx.optimizeOutput(arena, parsed_args.command, result.stdout) catch |err| blk: {
+        // If optimization fails, log and return raw output
+        std.log.debug("Token optimization failed for '{s}': {s}", .{ parsed_args.command, @errorName(err) });
+        break :blk result.stdout;
+    };
+
+    if (optimized_stdout.len > 0 and result.stderr.len == 0) {
+        return tool.textContent(arena, optimized_stdout);
     } else if (result.stderr.len > 0) {
-        const output = try std.fmt.allocPrint(arena, "STDOUT:\n{s}\n\nSTDERR:\n{s}", .{ result.stdout, result.stderr });
+        const output = try std.fmt.allocPrint(arena, "STDOUT:\n{s}\n\nSTDERR:\n{s}", .{ optimized_stdout, result.stderr });
         return tool.textContent(arena, output);
     } else {
         return tool.textContent(arena, "(no output)");

@@ -147,7 +147,50 @@ fn runGrepCommand(
     if (output.items.len == 0) {
         return tool.textContent(arena, "No matches found");
     }
-    return tool.textContent(arena, try arena.dupe(u8, output.items));
+
+    // Apply simple grouping: group by file
+    const optimized = try groupGrepResults(arena, output.items);
+    return tool.textContent(arena, optimized);
+}
+
+/// Group grep results by file path
+fn groupGrepResults(arena: std.mem.Allocator, raw: []const u8) ![]const u8 {
+    var groups = std.StringHashMap(std.ArrayList([]const u8)).init(arena);
+    defer {
+        var iter = groups.iterator();
+        while (iter.next()) |entry| {
+            entry.value_ptr.deinit();
+        }
+        groups.deinit();
+    }
+
+    var lines = std.mem.splitScalar(u8, raw, '\n');
+    while (lines.next()) |line| {
+        if (line.len == 0) continue;
+
+        const colon_idx = std.mem.indexOfScalar(u8, line, ':') orelse continue;
+        const file = line[0..colon_idx];
+        const rest = line[colon_idx + 1 ..];
+
+        const entry = try groups.getOrPut(file);
+        if (!entry.found_existing) {
+            entry.value_ptr.* = std.ArrayList([]const u8).init(arena);
+        }
+        try entry.value_ptr.append(rest);
+    }
+
+    var result: std.ArrayList(u8) = .empty;
+    defer result.deinit(arena);
+
+    var iter = groups.iterator();
+    while (iter.next()) |entry| {
+        try result.appendSlice(arena, try std.fmt.allocPrint(arena, "{s} ({d} matches):\n", .{ entry.key_ptr.*, entry.value_ptr.items.len }));
+        for (entry.value_ptr.items) |match| {
+            try result.appendSlice(arena, try std.fmt.allocPrint(arena, "  {s}\n", .{match}));
+        }
+    }
+
+    return try result.toOwnedSlice(arena);
 }
 
 test "tool definition" {
