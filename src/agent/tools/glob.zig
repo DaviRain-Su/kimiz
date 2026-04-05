@@ -20,7 +20,7 @@ pub const GlobContext = struct {
         const base_path = if (args.object.get("path")) |p| p.string else ".";
 
         // Simple glob implementation - collect matching files
-        var results = std.ArrayList(u8).init(arena);
+        var results = std.ArrayList(u8){ .items = &.{}, .capacity = 0 };
         defer results.deinit();
 
         var dir = std.fs.cwd().openDir(base_path, .{ .iterate = true }) catch |err| {

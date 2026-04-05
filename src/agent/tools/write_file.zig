@@ -78,21 +78,9 @@ fn execute(
         // For now, we proceed but could implement confirmation logic
     }
 
-    // Create parent directories if needed
-    const parent_dir = std.fs.path.dirname(parsed_args.path) orelse return tool.errorResult(arena, "Invalid path");
-    std.fs.cwd().makePath(parent_dir) catch |err| {
-        const err_msg = try std.fmt.allocPrint(arena, "Failed to create directory: {s}", .{@errorName(err)});
-        return tool.errorResult(arena, err_msg);
-    };
-
-    // Write file
-    const file = std.fs.cwd().createFile(parsed_args.path, .{}) catch |err| {
-        const err_msg = try std.fmt.allocPrint(arena, "Failed to create file: {s}", .{@errorName(err)});
-        return tool.errorResult(arena, err_msg);
-    };
-    defer file.close();
-
-    file.writeAll(parsed_args.content) catch |err| {
+    // Write file using C I/O
+    const file_io = @import("file_io.zig");
+    file_io.writeFileAlloc(arena, parsed_args.path, parsed_args.content) catch |err| {
         const err_msg = try std.fmt.allocPrint(arena, "Failed to write file: {s}", .{@errorName(err)});
         return tool.errorResult(arena, err_msg);
     };

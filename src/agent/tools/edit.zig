@@ -79,7 +79,8 @@ fn execute(
     }
 
     // Read file
-    const content = std.fs.cwd().readFileAlloc(arena, parsed_args.path, 10 * 1024 * 1024) catch |err| {
+    const file_io = @import("file_io.zig");
+    const content = file_io.readFileAlloc(arena, parsed_args.path, 10 * 1024 * 1024) catch |err| {
         const err_msg = try std.fmt.allocPrint(arena, "Failed to read file: {s}", .{@errorName(err)});
         return tool.errorResult(arena, err_msg);
     };
@@ -110,10 +111,7 @@ fn execute(
     });
 
     // Write back
-    std.fs.cwd().writeFile(.{
-        .sub_path = parsed_args.path,
-        .data = new_content,
-    }) catch |err| {
+    file_io.writeFileAlloc(arena, parsed_args.path, new_content) catch |err| {
         const err_msg = try std.fmt.allocPrint(arena, "Failed to write file: {s}", .{@errorName(err)});
         return tool.errorResult(arena, err_msg);
     };

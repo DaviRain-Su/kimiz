@@ -9,20 +9,28 @@ const harness = @import("../harness/root.zig");
 const workspace = @import("../workspace/root.zig");
 const config = @import("../config.zig");
 
-// Use linux syscalls directly
-const STDOUT_FILENO = 1;
-const STDIN_FILENO = 0;
+const c = @cImport({
+    @cInclude("stdio.h");
+    @cInclude("unistd.h");
+});
 
-fn sysWrite(fd: usize, buf: []const u8) usize {
-    return std.os.linux.syscall3(.write, fd, @intFromPtr(buf.ptr), buf.len);
+fn getStdout() *c.FILE {
+    if (comptime @typeInfo(@TypeOf(c.stdout)) == .pointer)
+        return c.stdout
+    else
+        return c.stdout();
 }
 
-fn sysRead(fd: usize, buf: []u8) usize {
-    return std.os.linux.syscall3(.read, fd, @intFromPtr(buf.ptr), buf.len);
+fn getStdin() *c.FILE {
+    if (comptime @typeInfo(@TypeOf(c.stdin)) == .pointer)
+        return c.stdin
+    else
+        return c.stdin();
 }
 
 fn print(msg: []const u8) void {
-    _ = sysWrite(STDOUT_FILENO, msg);
+    _ = c.fwrite(msg.ptr, 1, msg.len, getStdout());
+    _ = c.fflush(getStdout());
 }
 
 fn printLine(msg: []const u8) void {
@@ -41,8 +49,24 @@ fn handleAgentEvent(evt: agent.AgentEvent) void {
         .message_delta => |text| {
             print(text);
         },
-        .message_complete => {
-            print("\n");
+        .message_complete => |msg| {
+            // Print assistant text content
+            for (msg.content) |block| {
+                switch (block) {
+                    .text => |t| {
+                        print(t.text);
+                        print("\n");
+                    },
+                    .thinking => |t| {
+                        print("\n[Thinking] ");
+                        const preview = if (t.thinking.len > 200) t.thinking[0..200] else t.thinking;
+                        print(preview);
+                        if (t.thinking.len > 200) print("...");
+                        print("\n");
+                    },
+                    .tool_call => {},
+                }
+            }
         },
         .tool_call_start => |info| {
             print("\n🔧 Calling tool: ");
@@ -140,12 +164,8 @@ pub fn run(
 }
 
 fn runInteractive(allocator: std.mem.Allocator) !void {
-    const welcome = 
-        \\kimiz v0.2.0 - AI Coding Agent
-        \\Type 'exit' or 'quit' to exit, 'help' for commands.
-        \\n
-    ;
-    print(welcome);
+    print("kimiz v0.3.0 - AI Coding Agent\n");
+    print("Type 'exit' or 'quit' to exit, 'help' for commands.\n\n");
 
     // Initialize configuration
     print("🚀 Initializing...\n");
@@ -209,14 +229,31 @@ fn runInteractive(allocator: std.mem.Allocator) !void {
         print("✅ Workspace context collected\n");
     }
 
+    // Create tool contexts (must outlive Agent)
+    var read_file_ctx = agent.createReadFileTool();
+    var write_file_ctx = agent.createWriteFileTool();
+    var edit_ctx = agent.createEditTool();
+    var grep_ctx = agent.createGrepTool();
+    var bash_ctx = agent.bash.BashContext{ .auto_approve = cfg.yolo_mode };
+
+    const tools = [_]agent.AgentTool{
+        agent.read_file.createAgentTool(&read_file_ctx),
+        agent.write_file.createAgentTool(&write_file_ctx),
+        agent.edit.createAgentTool(&edit_ctx),
+        agent.grep.createAgentTool(&grep_ctx),
+        agent.bash.createAgentTool(&bash_ctx),
+    };
+
     // Initialize Agent
     var ai_agent = agent.Agent.init(allocator, .{
         .model = model,
+        .tools = &tools,
         .temperature = cfg.default_temperature,
         .max_tokens = cfg.default_max_tokens,
         .thinking_level = .medium,
         .yolo_mode = cfg.yolo_mode,
         .max_iterations = 50,
+        .project_path = cwd,
     }) catch |err| {
         print("❌ Failed to initialize Agent: ");
         print(@errorName(err));
@@ -236,14 +273,11 @@ fn runInteractive(allocator: std.mem.Allocator) !void {
     while (true) {
         print("> ");
 
-        const n = sysRead(STDIN_FILENO, &buf);
-        if (n == 0 or n > buf.len) break;
+        const line = c.fgets(&buf, buf.len, getStdin());
+        if (line == null) break;
 
-        // Find newline
-        var len: usize = 0;
-        while (len < n and buf[len] != '\n') : (len += 1) {}
-
-        const input = std.mem.trim(u8, buf[0..len], " \t\r\n");
+        const raw = std.mem.sliceTo(&buf, 0);
+        const input = std.mem.trim(u8, raw, " \t\r\n");
         if (input.len == 0) continue;
         if (std.mem.eql(u8, input, "exit") or std.mem.eql(u8, input, "quit")) break;
 
@@ -253,12 +287,18 @@ fn runInteractive(allocator: std.mem.Allocator) !void {
         }
 
         if (std.mem.eql(u8, input, "clear")) {
-            print("\x1b[2J\x1b[H"); // ANSI clear screen
+            print("\x1b[2J\x1b[H");
             continue;
         }
 
-        // Process input with Agent
-        ai_agent.prompt(input) catch |err| {
+        // Deep copy user input since buf will be overwritten
+        const user_input = allocator.dupe(u8, input) catch {
+            print("Out of memory\n");
+            continue;
+        };
+        defer allocator.free(user_input);
+
+        ai_agent.prompt(user_input) catch |err| {
             print("\n❌ Agent error: ");
             print(@errorName(err));
             print("\n");

@@ -75,7 +75,8 @@ fn execute(
     }
 
     // Read file
-    const content = std.fs.cwd().readFileAlloc(arena, parsed_args.path, 10 * 1024 * 1024) catch |err| {
+    const file_io = @import("file_io.zig");
+    const content = file_io.readFileAlloc(arena, parsed_args.path, 10 * 1024 * 1024) catch |err| {
         const err_msg = try std.fmt.allocPrint(arena, "Failed to read file: {s}", .{@errorName(err)});
         return tool.errorResult(arena, err_msg);
     };
@@ -85,14 +86,14 @@ fn execute(
         const offset = parsed_args.offset orelse 0;
         const limit = parsed_args.limit orelse std.math.maxInt(usize);
 
-        var lines = std.ArrayList([]const u8).init(arena);
-        defer lines.deinit();
+        var lines: std.ArrayList([]const u8) = .empty;
+        defer lines.deinit(arena);
 
         var iter = std.mem.splitScalar(u8, content, '\n');
         var line_num: usize = 0;
         while (iter.next()) |line| {
             if (line_num >= offset and lines.items.len < limit) {
-                try lines.append(line);
+                try lines.append(arena, line);
             }
             line_num += 1;
             if (lines.items.len >= limit) break;

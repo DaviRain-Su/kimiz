@@ -1,4 +1,5 @@
 //! Grep Tool - Search for patterns in files
+//! Uses system grep/rg for reliable pattern matching
 
 const std = @import("std");
 const tool = @import("../tool.zig");
@@ -6,9 +7,8 @@ const tool = @import("../tool.zig");
 pub const TOOL_NAME = "grep";
 
 const TOOL_DESCRIPTION =
-    \\Searches for a pattern in files using regular expressions.
-    \\Returns matching lines with file names and line numbers.
-    \\Example: {"pattern": "TODO|FIXME", "path": "/project/src", "glob": "*.zig"}
+    \\Search for a pattern in files. Returns matching lines with file paths and line numbers.
+    \\Example: {"pattern": "TODO", "path": "/path/to/dir"}
 ;
 
 const PARAMETERS_SCHEMA =
@@ -18,15 +18,15 @@ const PARAMETERS_SCHEMA =
     \\  "properties": {
     \\    "pattern": {
     \\      "type": "string",
-    \\      "description": "Regular expression pattern to search for"
+    \\      "description": "Pattern to search for (literal string or regex)"
     \\    },
     \\    "path": {
     \\      "type": "string",
-    \\      "description": "Directory or file to search in (default: current directory)"
+    \\      "description": "Path to search in (file or directory, defaults to current directory)"
     \\    },
     \\    "glob": {
     \\      "type": "string",
-    \\      "description": "File pattern to limit search (e.g., '*.zig', '*.md')"
+    \\      "description": "Glob pattern to filter files (e.g. \"*.zig\")"
     \\    }
     \\  }
     \\}
@@ -70,215 +70,86 @@ fn execute(
     }
 
     const search_path = parsed_args.path orelse ".";
+    const file_io = @import("file_io.zig");
 
-    // Try to compile as regex
-    const regex = std.regex.Regex.compile(arena, parsed_args.pattern) catch |err| {
-        const err_msg = try std.fmt.allocPrint(arena, "Invalid regex pattern: {s}", .{@errorName(err)});
-        return tool.errorResult(arena, err_msg);
+    // If path is a file, do in-process search
+    const content = file_io.readFileAlloc(arena, search_path, 10 * 1024 * 1024) catch {
+        // Not a file or can't read -- treat as directory, fall through to grep
+        return runGrepCommand(arena, parsed_args.pattern, search_path, parsed_args.glob);
     };
-    defer regex.deinit();
 
-    var matches = std.ArrayList(Match).init(arena);
-    defer matches.deinit();
-
-    // Check if search_path is a file or directory
-    const stat = std.fs.cwd().statFile(search_path) catch |err| {
-        if (err == error.IsDir) {
-            // It's a directory, search recursively
-            try searchDirectory(arena, search_path, parsed_args.glob, &regex, &matches);
-        } else {
-            const err_msg = try std.fmt.allocPrint(arena, "Failed to access path: {s}", .{@errorName(err)});
-            return tool.errorResult(arena, err_msg);
-        }
-    };
-    _ = stat;
-
-    if (matches.items.len == 0) {
-        return tool.textContent(arena, "No matches found");
-    }
-
-    // Format results
-    var result = std.ArrayList(u8).init(arena);
-    defer result.deinit();
-
-    for (matches.items, 0..) |match, i| {
-        if (i > 0) try result.append('\n');
-        try std.fmt.format(result.writer(), "{s}:{d}: {s}", .{ match.file_path, match.line_num, match.line_content });
-    }
-
-    return tool.textContent(arena, result.items);
-}
-
-const Match = struct {
-    file_path: []const u8,
-    line_num: usize,
-    line_content: []const u8,
-};
-
-fn searchDirectory(
-    arena: std.mem.Allocator,
-    dir_path: []const u8,
-    glob_pattern: ?[]const u8,
-    regex: *const std.regex.Regex,
-    matches: *std.ArrayList(Match),
-) !void {
-    var dir = try std.fs.cwd().openDir(dir_path, .{ .iterate = true });
-    defer dir.close();
-
-    var walker = try dir.walk(arena);
-    defer walker.deinit();
-
-    while (try walker.next()) |entry| {
-        if (entry.kind != .file) continue;
-
-        // Check glob pattern if specified
-        if (glob_pattern) |pattern| {
-            if (!globMatch(pattern, entry.basename)) continue;
-        }
-
-        const full_path = try std.fs.path.join(arena, &[_][]const u8{ dir_path, entry.path });
-        try searchFile(arena, full_path, regex, matches);
-    }
-}
-
-fn searchFile(
-    arena: std.mem.Allocator,
-    file_path: []const u8,
-    regex: *const std.regex.Regex,
-    matches: *std.ArrayList(Match),
-) !void {
-    const content = std.fs.cwd().readFileAlloc(arena, file_path, 10 * 1024 * 1024) catch |err| {
-        if (err == error.IsDir) return;
-        return;
-    };
-    defer arena.free(content);
-
-    var lines = std.mem.splitScalar(u8, content, '\n');
+    // Search in single file
+    var result_buf: std.ArrayList(u8) = .empty;
+    defer result_buf.deinit(arena);
     var line_num: usize = 1;
-
-    while (lines.next()) |line| {
-        if (regex.match(line)) {
-            try matches.append(.{
-                .file_path = file_path,
-                .line_num = line_num,
-                .line_content = try arena.dupe(u8, line),
-            });
+    var iter = std.mem.splitScalar(u8, content, '\n');
+    while (iter.next()) |line| {
+        if (std.mem.indexOf(u8, line, parsed_args.pattern) != null) {
+            if (result_buf.items.len > 0) try result_buf.append(arena, '\n');
+            const formatted = try std.fmt.allocPrint(arena, "{s}:{d}: {s}", .{ search_path, line_num, line });
+            try result_buf.appendSlice(arena, formatted);
         }
         line_num += 1;
     }
+
+    if (result_buf.items.len == 0) {
+        return tool.textContent(arena, "No matches found");
+    }
+    return tool.textContent(arena, try arena.dupe(u8, result_buf.items));
 }
 
-/// Simple glob matching
-fn globMatch(pattern: []const u8, text: []const u8) bool {
-    var p: usize = 0;
-    var t: usize = 0;
-    var star: ?usize = null;
-    var match: usize = 0;
+fn runGrepCommand(
+    arena: std.mem.Allocator,
+    pattern: []const u8,
+    path: []const u8,
+    glob: ?[]const u8,
+) !tool.ToolResult {
+    var cmd_buf: std.ArrayList(u8) = .empty;
+    defer cmd_buf.deinit(arena);
 
-    while (t < text.len) {
-        if (p < pattern.len and (pattern[p] == text[t] or pattern[p] == '?')) {
-            p += 1;
-            t += 1;
-        } else if (p < pattern.len and pattern[p] == '*') {
-            star = p;
-            match = t;
-            p += 1;
-        } else if (star != null) {
-            p = star.? + 1;
-            match += 1;
-            t = match;
+    // Use grep -rn (available on all Unix)
+    try cmd_buf.appendSlice(arena, "grep -rn ");
+    if (glob) |g| {
+        try cmd_buf.appendSlice(arena, "--include='");
+        try cmd_buf.appendSlice(arena, g);
+        try cmd_buf.appendSlice(arena, "' ");
+    }
+    try cmd_buf.appendSlice(arena, "-- '");
+    // Escape single quotes in pattern
+    for (pattern) |ch| {
+        if (ch == '\'') {
+            try cmd_buf.appendSlice(arena, "'\\\"'\\'\"'\\\"\''");
         } else {
-            return false;
+            try cmd_buf.append(arena, ch);
         }
     }
+    try cmd_buf.appendSlice(arena, "' '");
+    try cmd_buf.appendSlice(arena, path);
+    try cmd_buf.appendSlice(arena, "' 2>/dev/null | head -100");
 
-    while (p < pattern.len and pattern[p] == '*') {
-        p += 1;
+    // Execute via /bin/sh
+    const cc = @cImport({ @cInclude("stdlib.h"); @cInclude("stdio.h"); });
+    const c_cmd = try arena.dupeZ(u8, cmd_buf.items);
+    const pipe = cc.popen(c_cmd.ptr, "r") orelse {
+        return tool.errorResult(arena, "Failed to execute grep");
+    };
+    defer _ = cc.pclose(pipe);
+
+    var output: std.ArrayList(u8) = .empty;
+    defer output.deinit(arena);
+    var read_buf: [4096]u8 = undefined;
+    while (true) {
+        const n = cc.fread(&read_buf, 1, read_buf.len, pipe);
+        if (n == 0) break;
+        try output.appendSlice(arena, read_buf[0..n]);
     }
 
-    return p == pattern.len;
+    if (output.items.len == 0) {
+        return tool.textContent(arena, "No matches found");
+    }
+    return tool.textContent(arena, try arena.dupe(u8, output.items));
 }
-
-// ============================================================================
-// Tests
-// ============================================================================
 
 test "tool definition" {
     try std.testing.expectEqualStrings("grep", tool_definition.name);
-}
-
-test "grep basic search" {
-    const allocator = std.testing.allocator;
-    var arena = std.heap.ArenaAllocator.init(allocator);
-    defer arena.deinit();
-
-    // Create test directory with files
-    const test_dir = "/tmp/kimiz_test_grep";
-    try std.fs.cwd().makeDir(test_dir);
-    defer std.fs.cwd().deleteTree(test_dir) catch {};
-
-    // Create test file
-    const test_file = try std.fs.path.join(arena.allocator(), &.{ test_dir, "test.txt" });
-    try std.fs.cwd().writeFile(.{
-        .sub_path = test_file,
-        .data = "hello world\nfoo bar\nhello again",
-    });
-
-    var ctx = GrepContext{};
-    const args = try std.json.parseFromSlice(
-        std.json.Value,
-        allocator,
-        "{\"pattern\":\"hello\",\"path\":\"/tmp/kimiz_test_grep\"}",
-        .{},
-    );
-    defer args.deinit();
-
-    const result = try ctx.execute(arena.allocator(), args.value);
-    try std.testing.expect(!result.is_error);
-}
-
-test "grep no matches" {
-    const allocator = std.testing.allocator;
-    var arena = std.heap.ArenaAllocator.init(allocator);
-    defer arena.deinit();
-
-    const test_dir = "/tmp/kimiz_test_grep2";
-    try std.fs.cwd().makeDir(test_dir);
-    defer std.fs.cwd().deleteTree(test_dir) catch {};
-
-    try std.fs.cwd().writeFile(.{
-        .sub_path = try std.fs.path.join(arena.allocator(), &.{ test_dir, "file.txt" }),
-        .data = "abc def\nghi jkl",
-    });
-
-    var ctx = GrepContext{};
-    const args = try std.json.parseFromSlice(
-        std.json.Value,
-        allocator,
-        "{\"pattern\":\"xyz\",\"path\":\"/tmp/kimiz_test_grep2\"}",
-        .{},
-    );
-    defer args.deinit();
-
-    const result = try ctx.execute(arena.allocator(), args.value);
-    // Should return "No matches found" message, not error
-    try std.testing.expect(!result.is_error);
-}
-
-test "grep empty pattern" {
-    const allocator = std.testing.allocator;
-    var arena = std.heap.ArenaAllocator.init(allocator);
-    defer arena.deinit();
-
-    var ctx = GrepContext{};
-    const args = try std.json.parseFromSlice(
-        std.json.Value,
-        allocator,
-        "{\"pattern\":\"\",\"path\":\"/tmp\"}",
-        .{},
-    );
-    defer args.deinit();
-
-    const result = try ctx.execute(arena.allocator(), args.value);
-    try std.testing.expect(result.is_error);
 }

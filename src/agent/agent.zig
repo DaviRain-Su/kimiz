@@ -87,6 +87,7 @@ pub const Agent = struct {
     event_callback: ?*const fn (event: AgentEvent) void,
     iteration_count: u32 = 0,
     ai_client: ai.Ai,
+    tool_defs_cache: []const core.Tool = &.{},
     skill_registry: skills.SkillRegistry,
     skill_engine: skills.SkillEngine,
     memory_manager: ?memory.MemoryManager,
@@ -132,6 +133,7 @@ pub const Agent = struct {
 
     pub fn deinit(self: *Self) void {
         self.messages.deinit(self.allocator);
+        if (self.tool_defs_cache.len > 0) self.allocator.free(self.tool_defs_cache);
         self.ai_client.deinit();
         self.skill_registry.deinit();
         if (self.memory_manager) |*mm| {
@@ -156,13 +158,32 @@ pub const Agent = struct {
 
     /// Send a user prompt and run the agent loop
     pub fn prompt(self: *Self, user_content: []const u8) !void {
-        // Add user message
-        const user_msg = Message{
-            .user = .{
-                .content = &[_]core.UserContentBlock{.{ .text = user_content }},
-            },
-        };
-        try self.messages.append(self.allocator, user_msg);
+        // Inject system prompt on first message
+        if (self.messages.items.len == 0) {
+            const system_text = try std.fmt.allocPrint(self.allocator,
+                \\You are Kimiz, an AI coding assistant. You have access to tools for reading, writing, and editing files, running shell commands, and searching code.
+                \\When asked to modify code, use the edit tool with exact old_string/new_string matches.
+                \\When asked to read files, use absolute paths.
+                \\Working directory: {s}
+                \\\n\n{s}
+            , .{
+                self.options.project_path orelse ".",
+                user_content,
+            });
+            const user_msg = Message{
+                .user = .{
+                    .content = &[_]core.UserContentBlock{.{ .text = system_text }},
+                },
+            };
+            try self.messages.append(self.allocator, user_msg);
+        } else {
+            const user_msg = Message{
+                .user = .{
+                    .content = &[_]core.UserContentBlock{.{ .text = user_content }},
+                },
+            };
+            try self.messages.append(self.allocator, user_msg);
+        }
 
         // Run the agent loop
         try self.runLoop();
@@ -221,14 +242,19 @@ pub const Agent = struct {
 
             self.emit(.{ .message_complete = response });
 
-            // Check for tool calls and execute them all
-            const tool_calls = self.extractToolCalls(response);
-            
-            if (tool_calls.len > 0) {
+            // Check for tool calls and execute them
+            const num_tool_calls = countToolCalls(response);
+
+            if (num_tool_calls > 0) {
                 self.state = .tool_calling;
 
-                // Execute all tool calls
-                for (tool_calls, 0..) |tc, i| {
+                // Execute tool calls from content blocks
+                for (response.content) |block| {
+                    const tc = switch (block) {
+                        .tool_call => |t| t.tool_call,
+                        else => continue,
+                    };
+
                     self.emit(.{ .tool_call_start = .{
                         .id = tc.id,
                         .name = tc.name,
@@ -271,12 +297,6 @@ pub const Agent = struct {
 
                     // Add tool result to messages
                     try self.addToolResultToMessages(tc.id, tc.name, result);
-
-                    // Only the first tool call in this batch triggers a new AI call
-                    // Subsequent tool calls will be processed in the next iteration
-                    if (i == 0) {
-                        break;
-                    }
                 }
                 
                 // Continue to next iteration to let AI process the tool results
@@ -296,26 +316,16 @@ pub const Agent = struct {
         }
     }
 
-    /// Extract all tool calls from assistant message
-    fn extractToolCalls(self: *Self, message: AssistantMessage) []const core.ToolCall {
-        _ = self;
-        var tool_calls: [16]core.ToolCall = undefined;
+    /// Extract tool calls from assistant message content blocks
+    fn countToolCalls(message: AssistantMessage) usize {
         var count: usize = 0;
-        
         for (message.content) |block| {
             switch (block) {
-                .tool_call => |tc| {
-                    if (count < 16) {
-                        tool_calls[count] = tc.tool_call;
-                        count += 1;
-                    }
-                },
+                .tool_call => count += 1,
                 else => {},
             }
         }
-        
-        // Return slice of the tool calls found
-        return tool_calls[0..count];
+        return count;
     }
 
     /// Execute tool with error recovery
@@ -447,24 +457,22 @@ pub const Agent = struct {
         return false;
     }
 
-    /// Get tool definitions from registered tools
+    /// Get tool definitions from registered tools (returns borrowed references)
     fn getToolDefinitions(self: *Self) []const core.Tool {
-        var tools: std.ArrayList(core.Tool) = .empty;
-        defer tools.deinit(self.allocator);
+        // Build a static array of core.Tool from the agent tools
+        // Since options.tools is stable, we can return pointers into it
+        if (self.tool_defs_cache.len > 0) return self.tool_defs_cache;
 
+        var defs: std.ArrayList(core.Tool) = .empty;
         for (self.options.tools) |agent_tool| {
-            const core_tool = core.Tool{
+            defs.append(self.allocator, .{
                 .name = agent_tool.tool.name,
                 .description = agent_tool.tool.description,
                 .parameters_json = agent_tool.tool.parameters_json,
-            };
-            tools.append(self.allocator, core_tool) catch |e| {
-                std.log.warn("Failed to append tool {s}: {s}", .{ agent_tool.tool.name, @errorName(e) });
-                continue;
-            };
+            }) catch continue;
         }
-
-        return tools.toOwnedSlice(self.allocator) catch &[_]core.Tool{};
+        self.tool_defs_cache = defs.toOwnedSlice(self.allocator) catch &[_]core.Tool{};
+        return self.tool_defs_cache;
     }
 
     /// Execute a skill with given arguments

@@ -117,80 +117,41 @@ fn executeCommand(
     working_dir: ?[]const u8,
     timeout_ms: u32,
 ) !CommandResult {
-    // Use /bin/sh for macOS/Linux or cmd.exe for Windows
-    const shell = if (@import("builtin").os.tag == .windows) "cmd.exe" else "/bin/sh";
-    const shell_arg = if (@import("builtin").os.tag == .windows) "/C" else "-c";
+    _ = timeout_ms;
+    const cc = @cImport({ @cInclude("stdlib.h"); @cInclude("stdio.h"); });
 
-    var child = std.process.Child.init(&[_][]const u8{ shell, shell_arg, command }, arena);
-
+    // Build command with optional cd
+    var cmd_buf: std.ArrayList(u8) = .empty;
+    defer cmd_buf.deinit(arena);
     if (working_dir) |wd| {
-        child.cwd = wd;
+        try cmd_buf.appendSlice(arena, "cd '\'");
+        try cmd_buf.appendSlice(arena, wd);
+        try cmd_buf.appendSlice(arena, "' && ");
     }
+    try cmd_buf.appendSlice(arena, command);
+    try cmd_buf.appendSlice(arena, " 2>&1");
 
-    child.stdout_behavior = .Pipe;
-    child.stderr_behavior = .Pipe;
+    const c_cmd = try arena.dupeZ(u8, cmd_buf.items);
+    const pipe = cc.popen(c_cmd.ptr, "r") orelse {
+        return CommandResult{ .stdout = "", .stderr = "Failed to execute command", .exit_code = null };
+    };
 
-    try child.spawn();
-
-    // Collect output with timeout
-    var stdout = std.ArrayList(u8).init(arena);
-    var stderr = std.ArrayList(u8).init(arena);
-
-    const stdout_reader = child.stdout.?.reader();
-    const stderr_reader = child.stderr.?.reader();
-
+    var output: std.ArrayList(u8) = .empty;
+    defer output.deinit(arena);
     var buf: [4096]u8 = undefined;
-    const start_time = utils.milliTimestamp();
-
     while (true) {
-        const elapsed = utils.milliTimestamp() - start_time;
-        if (elapsed > timeout_ms) {
-            _ = child.kill() catch {};
-            break;
-        }
-
-        // Try to read stdout
-        const stdout_bytes = stdout_reader.read(&buf) catch 0;
-        if (stdout_bytes > 0) {
-            try stdout.appendSlice(buf[0..stdout_bytes]);
-        }
-
-        // Try to read stderr
-        const stderr_bytes = stderr_reader.read(&buf) catch 0;
-        if (stderr_bytes > 0) {
-            try stderr.appendSlice(buf[0..stderr_bytes]);
-        }
-
-        // Check if process finished
-        const term = child.tryWait() catch break;
-        if (term) |t| {
-            // Process finished, read any remaining output
-            while (true) {
-                const bytes = stdout_reader.read(&buf) catch break;
-                if (bytes == 0) break;
-                try stdout.appendSlice(buf[0..bytes]);
-            }
-            while (true) {
-                const bytes = stderr_reader.read(&buf) catch break;
-                if (bytes == 0) break;
-                try stderr.appendSlice(buf[0..bytes]);
-            }
-
-            return CommandResult{
-                .stdout = try stdout.toOwnedSlice(),
-                .stderr = try stderr.toOwnedSlice(),
-                .exit_code = @intCast(t.Exited),
-            };
-        }
-
-        std.time.sleep(10 * std.time.ns_per_ms); // Small delay to prevent busy-waiting
+        const n = cc.fread(&buf, 1, buf.len, pipe);
+        if (n == 0) break;
+        try output.appendSlice(arena, buf[0..n]);
     }
 
-    // Timeout reached
+    const status = cc.pclose(pipe);
+    const exit_code: ?u32 = if (status >= 0) @intCast(@as(u32, @bitCast(status)) >> 8) else null;
+
     return CommandResult{
-        .stdout = try stdout.toOwnedSlice(),
-        .stderr = try stderr.toOwnedSlice(),
-        .exit_code = null,
+        .stdout = try arena.dupe(u8, output.items),
+        .stderr = "",
+        .exit_code = exit_code,
     };
 }
 
