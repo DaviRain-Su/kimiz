@@ -117,22 +117,15 @@ fn execute(
         return tool.textContent(arena, "No matches found");
     }
 
-    // Format results
+    // Format results grouped by file
+    const formatted = try groupGrepResults(arena, result.matches);
+
     var buf: std.ArrayList(u8) = .empty;
     defer buf.deinit(arena);
-
-    for (result.matches) |m| {
-        if (buf.items.len > 0) try buf.append(arena, '\n');
-        const line = try std.fmt.allocPrint(arena, "{s}:{d}: {s}", .{
-            m.path,
-            m.line_number,
-            m.line_content,
-        });
-        try buf.appendSlice(arena, line);
-    }
+    try buf.appendSlice(arena, formatted);
 
     if (result.total_matched > result.matches.len) {
-        const summary = try std.fmt.allocPrint(arena, "\n\n... {d} total matches ({d} shown)", .{
+        const summary = try std.fmt.allocPrint(arena, "\n... {d} total matches ({d} shown)", .{
             result.total_matched,
             result.matches.len,
         });
@@ -140,6 +133,43 @@ fn execute(
     }
 
     return tool.textContent(arena, try arena.dupe(u8, buf.items));
+}
+
+/// Group grep results by file path for better readability
+fn groupGrepResults(arena: std.mem.Allocator, matches: []const fff.GrepMatch) ![]u8 {
+    var groups = std.StringHashMap(std.ArrayList([]const u8)).init(arena);
+    defer {
+        var iter = groups.iterator();
+        while (iter.next()) |entry| {
+            entry.value_ptr.deinit(arena);
+        }
+        groups.deinit();
+    }
+
+    for (matches) |m| {
+        const line = try std.fmt.allocPrint(arena, "{d}: {s}", .{ m.line_number, m.line_content });
+        const entry = try groups.getOrPut(m.path);
+        if (!entry.found_existing) {
+            entry.value_ptr.* = std.ArrayList([]const u8).empty;
+        }
+        try entry.value_ptr.append(arena, line);
+    }
+
+    var result: std.ArrayList(u8) = .empty;
+    defer result.deinit(arena);
+
+    var iter = groups.iterator();
+    var first = true;
+    while (iter.next()) |entry| {
+        if (!first) try result.append(arena, '\n');
+        first = false;
+        try result.appendSlice(arena, try std.fmt.allocPrint(arena, "{s} ({d} matches):\n", .{ entry.key_ptr.*, entry.value_ptr.items.len }));
+        for (entry.value_ptr.items) |match| {
+            try result.appendSlice(arena, try std.fmt.allocPrint(arena, "  {s}\n", .{match}));
+        }
+    }
+
+    return try result.toOwnedSlice(arena);
 }
 
 // ============================================================================

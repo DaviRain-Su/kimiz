@@ -9,7 +9,6 @@ pub const subagent = @import("subagent.zig");
 pub const read_file = @import("tools/read_file.zig");
 pub const write_file = @import("tools/write_file.zig");
 pub const edit = @import("tools/edit.zig");
-pub const grep = @import("tools/grep.zig");
 pub const bash = @import("tools/bash.zig");
 pub const fff = @import("tools/fff.zig");
 
@@ -56,23 +55,19 @@ pub fn createEditTool() edit.EditContext {
     return edit.EditContext{};
 }
 
-/// Create a Grep tool instance
-pub fn createGrepTool() grep.GrepContext {
-    return grep.GrepContext{};
-}
-
 /// Create a Bash tool instance
 pub fn createBashTool() bash.BashContext {
     return bash.BashContext{};
 }
 
-/// Get all built-in tool definitions (5 core tools)
+/// Get all built-in tool definitions (core tools)
 pub fn getBuiltinToolDefinitions() []const Tool {
     return &[_]Tool{
         read_file.tool_definition,
         write_file.tool_definition,
         edit.tool_definition,
-        grep.tool_definition,
+        fff.tool_definition,
+        fff.file_search_definition,
         bash.tool_definition,
     };
 }
