@@ -88,13 +88,13 @@ pub const Agent = struct {
             .allocator = allocator,
             .options = options,
             .state = .idle,
-            .messages = std.ArrayList(Message).init(allocator),
+            .messages = .empty,
             .event_callback = null,
         };
     }
 
     pub fn deinit(self: *Self) void {
-        self.messages.deinit();
+        self.messages.deinit(self.allocator);
     }
 
     /// Set event callback for receiving agent events
@@ -117,7 +117,7 @@ pub const Agent = struct {
                 .content = &[_]core.UserContentBlock{.{ .text = user_content }},
             },
         };
-        try self.messages.append(user_msg);
+        try self.messages.append(self.allocator, user_msg);
 
         // Run the agent loop
         try self.runLoop();
@@ -144,7 +144,7 @@ pub const Agent = struct {
                 .is_error = result.is_error,
             },
         };
-        try self.messages.append(tool_result_msg);
+        try self.messages.append(self.allocator, tool_result_msg);
 
         // Continue the loop
         try self.runLoop();
@@ -184,7 +184,7 @@ pub const Agent = struct {
             const assistant_msg = Message{
                 .assistant = response,
             };
-            try self.messages.append(assistant_msg);
+            try self.messages.append(self.allocator, assistant_msg);
 
             self.emit(.{ .message_complete = response });
 
@@ -251,15 +251,20 @@ pub const Agent = struct {
     }
 
     /// Get tool definitions from registered tools
-    fn getToolDefinitions(self: *Self) []const Tool {
-        var tools = std.ArrayList(Tool).init(self.allocator);
-        defer tools.deinit();
+    fn getToolDefinitions(self: *Self) []const core.Tool {
+        var tools: std.ArrayList(core.Tool) = .empty;
+        defer tools.deinit(self.allocator);
 
         for (self.options.tools) |agent_tool| {
-            tools.append(agent_tool.tool) catch {};
+            const core_tool = core.Tool{
+                .name = agent_tool.tool.name,
+                .description = agent_tool.tool.description,
+                .parameters_json = agent_tool.tool.parameters_json,
+            };
+            tools.append(self.allocator, core_tool) catch {};
         }
 
-        return tools.toOwnedSlice() catch &[]Tool{};
+        return tools.toOwnedSlice(self.allocator) catch &[_]core.Tool{};
     }
 
     /// Execute a tool
@@ -319,7 +324,7 @@ pub const Agent = struct {
 
     /// Clear conversation history
     pub fn clearHistory(self: *Self) void {
-        self.messages.clearAndFree();
+        self.messages.clearAndFree(self.allocator);
     }
 
     /// Export conversation to JSON

@@ -273,6 +273,23 @@ pub const Memory = struct {
 };
 
 // ============================================================================
+// API Key Management
+// ============================================================================
+
+pub fn getApiKey(provider: KnownProvider) ?[]const u8 {
+    const env_var = switch (provider) {
+        .openai => "OPENAI_API_KEY",
+        .anthropic => "ANTHROPIC_API_KEY",
+        .google => "GOOGLE_API_KEY",
+        .kimi => "KIMI_API_KEY",
+        .fireworks => "FIREWORKS_API_KEY",
+        .openrouter => "OPENROUTER_API_KEY",
+    };
+
+    return std.process.getEnvVarOwned(std.heap.page_allocator, env_var) catch null;
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 

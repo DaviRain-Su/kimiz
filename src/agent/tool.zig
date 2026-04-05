@@ -2,14 +2,11 @@
 //! Following the architecture from docs/03-technical-spec.md
 
 const std = @import("std");
+const core = @import("../core/root.zig");
 
 /// Tool definition for LLM tool calling
-/// Matches the Tool struct from technical spec Section 3.7
-pub const Tool = struct {
-    name: []const u8,
-    description: []const u8,
-    parameters_json: []const u8, // JSON schema string
-};
+/// Re-export from core module for consistency
+pub const Tool = core.Tool;
 
 /// Content block for user messages
 pub const UserContentBlock = union(enum) {

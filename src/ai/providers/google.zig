@@ -104,9 +104,12 @@ pub fn complete(http_client: *HttpClient, ctx: core.Context) !core.AssistantMess
     const request_body = try serializeRequest(ctx);
     defer std.heap.page_allocator.free(request_body);
 
-    var headers = std.http.Headers{ .allocator = std.heap.page_allocator };
-    defer headers.deinit();
-    try headers.append("Content-Type", "application/json");
+    var headers: std.ArrayList(std.http.Header) = .empty;
+    defer headers.deinit(std.heap.page_allocator);
+    try headers.append(std.heap.page_allocator, .{
+        .name = "Content-Type",
+        .value = "application/json",
+    });
 
     const url = try std.fmt.allocPrint(
         std.heap.page_allocator,
@@ -115,8 +118,8 @@ pub fn complete(http_client: *HttpClient, ctx: core.Context) !core.AssistantMess
     );
     defer std.heap.page_allocator.free(url);
 
-    var response = try http_client.postJson(url, headers, request_body);
-    defer response.deinit();
+    var response = try http_client.postJson(url, headers.items, request_body);
+    defer response.deinit(std.heap.page_allocator);
 
     return try parseResponse(response.body);
 }
@@ -138,9 +141,12 @@ pub fn stream(
     const request_body = try serializeRequest(streaming_ctx);
     defer std.heap.page_allocator.free(request_body);
 
-    var headers = std.http.Headers{ .allocator = std.heap.page_allocator };
-    defer headers.deinit();
-    try headers.append("Content-Type", "application/json");
+    var headers: std.ArrayList(std.http.Header) = .empty;
+    defer headers.deinit(std.heap.page_allocator);
+    try headers.append(std.heap.page_allocator, .{
+        .name = "Content-Type",
+        .value = "application/json",
+    });
 
     const url = try std.fmt.allocPrint(
         std.heap.page_allocator,
@@ -149,7 +155,7 @@ pub fn stream(
     );
     defer std.heap.page_allocator.free(url);
 
-    try http_client.postStream(url, headers, request_body, struct {
+    try http_client.postStream(url, headers.items, request_body, struct {
         fn onLine(line: []const u8) void {
             processLine(line, callback) catch {};
         }
@@ -160,7 +166,7 @@ fn processLine(line: []const u8, callback: *const fn (event: ai.SseEvent) void) 
     if (line.len == 0) return;
 
     const parsed = try std.json.parseFromSlice(GoogleStreamChunk, std.heap.page_allocator, line, .{});
-    defer parsed.deinit();
+    defer parsed.deinit(std.heap.page_allocator);
 
     const chunk = parsed.value;
     if (chunk.candidates.len == 0) return;
@@ -190,19 +196,19 @@ fn processLine(line: []const u8, callback: *const fn (event: ai.SseEvent) void) 
 // ============================================================================
 
 fn serializeRequest(ctx: core.Context) ![]u8 {
-    var contents = std.ArrayList(GoogleContent).init(std.heap.page_allocator);
-    defer contents.deinit();
+    var contents: std.ArrayList(GoogleContent) = .empty;
+    defer contents.deinit(std.heap.page_allocator);
 
     for (ctx.messages) |msg| {
         switch (msg) {
             .user => |user_msg| {
-                var parts = std.ArrayList(GooglePart).init(std.heap.page_allocator);
-                defer parts.deinit();
+                var parts: std.ArrayList(GooglePart) = .empty;
+                defer parts.deinit(std.heap.page_allocator);
 
                 for (user_msg.content) |block| {
                     switch (block) {
-                        .text => |text| try parts.append(.{ .text = .{ .text = text } }),
-                        .image => |img| try parts.append(.{ .inlineData = .{
+                        .text => |text| try parts.append(std.heap.page_allocator, .{ .text = .{ .text = text } }),
+                        .image => |img| try parts.append(std.heap.page_allocator, .{ .inlineData = .{
                             .mimeType = img.mime_type,
                             .data = img.data,
                         } }),
@@ -210,21 +216,21 @@ fn serializeRequest(ctx: core.Context) ![]u8 {
                     }
                 }
 
-                try contents.append(.{
+                try contents.append(std.heap.page_allocator, .{
                     .role = "user",
-                    .parts = try parts.toOwnedSlice(),
+                    .parts = try parts.toOwnedSlice(std.heap.page_allocator),
                 });
             },
             .assistant => |assistant_msg| {
-                var parts = std.ArrayList(GooglePart).init(std.heap.page_allocator);
-                defer parts.deinit();
+                var parts: std.ArrayList(GooglePart) = .empty;
+                defer parts.deinit(std.heap.page_allocator);
 
                 for (assistant_msg.content) |block| {
                     switch (block) {
-                        .text => |text| try parts.append(.{ .text = .{ .text = text.text } }),
+                        .text => |text| try parts.append(std.heap.page_allocator, .{ .text = .{ .text = text.text } }),
                         .tool_call => |tc| {
                             const args = try std.json.parseFromSlice(std.json.Value, std.heap.page_allocator, tc.tool_call.arguments, .{});
-                            try parts.append(.{ .functionCall = .{
+                            try parts.append(std.heap.page_allocator, .{ .functionCall = .{
                                 .name = tc.tool_call.name,
                                 .args = args.value,
                             } });
@@ -233,23 +239,24 @@ fn serializeRequest(ctx: core.Context) ![]u8 {
                     }
                 }
 
-                try contents.append(.{
+                try contents.append(std.heap.page_allocator, .{
                     .role = "model",
-                    .parts = try parts.toOwnedSlice(),
+                    .parts = try parts.toOwnedSlice(std.heap.page_allocator),
                 });
             },
             .tool_result => |tool_result| {
-                var result_text = std.ArrayList(u8).init(std.heap.page_allocator);
-                defer result_text.deinit();
+                var result_text: std.ArrayList(u8) = .empty;
+                defer result_text.deinit(std.heap.page_allocator);
 
                 for (tool_result.content) |block| {
                     switch (block) {
-                        .text => |text| try result_text.appendSlice(text),
+                        .text => |text| try result_text.appendSlice(std.heap.page_allocator, text),
                         .image => {},
+                        .image_url => {},
                     }
                 }
 
-                try contents.append(.{
+                try contents.append(std.heap.page_allocator, .{
                     .role = "user",
                     .parts = &[_]GooglePart{.{
                         .functionResponse = .{
@@ -265,10 +272,10 @@ fn serializeRequest(ctx: core.Context) ![]u8 {
     // Convert tools
     var tools: ?std.ArrayList(GoogleTool) = null;
     if (ctx.tools.len > 0) {
-        tools = std.ArrayList(GoogleTool).init(std.heap.page_allocator);
+        tools = std.ArrayList(GoogleTool){ .items = &.{}, .capacity = 0 };
         for (ctx.tools) |tool| {
             const schema = try std.json.parseFromSlice(std.json.Value, std.heap.page_allocator, tool.parameters_json, .{});
-            try tools.?.append(.{
+            try tools.?.append(std.heap.page_allocator, .{
                 .functionDeclarations = &[_]GoogleFunctionDeclaration{.{
                     .name = tool.name,
                     .description = tool.description,
@@ -279,7 +286,7 @@ fn serializeRequest(ctx: core.Context) ![]u8 {
     }
 
     const request = GoogleRequest{
-        .contents = try contents.toOwnedSlice(),
+        .contents = try contents.toOwnedSlice(std.heap.page_allocator),
         .generationConfig = .{
             .temperature = ctx.temperature,
             .maxOutputTokens = ctx.max_tokens,
@@ -287,7 +294,10 @@ fn serializeRequest(ctx: core.Context) ![]u8 {
         .tools = if (tools) |t| t.items else null,
     };
 
-    return try std.json.stringifyAlloc(std.heap.page_allocator, request, .{});
+    var buf: std.ArrayList(u8) = .empty;
+    defer buf.deinit(std.heap.page_allocator);
+    try std.fmt.format(buf.writer(std.heap.page_allocator), "{f}", .{std.json.fmt(request, .{})});
+    return try buf.toOwnedSlice(std.heap.page_allocator);
 }
 
 // ============================================================================
@@ -296,7 +306,7 @@ fn serializeRequest(ctx: core.Context) ![]u8 {
 
 fn parseResponse(body: []const u8) !core.AssistantMessage {
     const parsed = try std.json.parseFromSlice(GoogleResponse, std.heap.page_allocator, body, .{});
-    defer parsed.deinit();
+    defer parsed.deinit(std.heap.page_allocator);
 
     const response = parsed.value;
     if (response.candidates.len == 0) return error.ApiUnexpectedResponse;
@@ -304,15 +314,15 @@ fn parseResponse(body: []const u8) !core.AssistantMessage {
     const candidate = response.candidates[0];
 
     // Convert content
-    var content = std.ArrayList(core.AssistantContentBlock).init(std.heap.page_allocator);
-    defer content.deinit();
+    var content: std.ArrayList(core.AssistantContentBlock) = .empty;
+    defer content.deinit(std.heap.page_allocator);
 
     for (candidate.content.parts) |part| {
         switch (part) {
-            .text => |t| try content.append(.{ .text = .{ .text = t.text } }),
+            .text => |t| try content.append(std.heap.page_allocator, .{ .text = .{ .text = t.text } }),
             .functionCall => |fc| {
                 const args = try std.json.stringifyAlloc(std.heap.page_allocator, fc.args, .{});
-                try content.append(.{ .tool_call = .{
+                try content.append(std.heap.page_allocator, .{ .tool_call = .{
                     .tool_call = .{
                         .id = fc.name,
                         .name = fc.name,

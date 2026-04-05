@@ -1,12 +1,23 @@
 # kimiz Task Management Makefile
 
-.PHONY: help task-create task-start task-block task-unblock task-complete task-approve task-list task-show task-stats
+.PHONY: help task-create task-start task-block task-unblock task-complete task-approve task-list task-show task-stats test test-unit test-integration test-e2e build run clean
 
 # 默认目标
 help:
 	@echo "kimiz Task Management"
 	@echo ""
-	@echo "Available commands:"
+	@echo "Build Commands:"
+	@echo "  make build              - Build the project"
+	@echo "  make run                - Run the application"
+	@echo "  make clean              - Clean build artifacts"
+	@echo ""
+	@echo "Test Commands:"
+	@echo "  make test               - Run all tests"
+	@echo "  make test-unit          - Run unit tests only"
+	@echo "  make test-integration   - Run integration tests"
+	@echo "  make test-e2e           - Run end-to-end tests"
+	@echo ""
+	@echo "Task Management:"
 	@echo "  make task-create TYPE=<type> TITLE=<title>  - Create new task"
 	@echo "  make task-start ID=<id>                     - Start task"
 	@echo "  make task-block ID=<id> REASON=<reason>     - Block task"
@@ -16,11 +27,34 @@ help:
 	@echo "  make task-list [STATUS=<status>]            - List tasks"
 	@echo "  make task-show ID=<id>                      - Show task details"
 	@echo "  make task-stats                             - Show statistics"
-	@echo ""
-	@echo "Examples:"
-	@echo "  make task-create TYPE=feature TITLE='实现 Skill 注册表'"
-	@echo "  make task-start ID=T-001"
-	@echo "  make task-list STATUS=in_progress"
+
+# Build Commands
+build:
+	zig build
+
+run:
+	zig build run -- repl
+
+clean:
+	rm -rf .zig-cache zig-out
+	@echo "Cleaned build artifacts"
+
+# Test Commands
+test:
+	zig build test
+
+test-unit:
+	zig test src/root.zig
+
+test-integration:
+	zig test tests/integration_tests.zig
+
+test-e2e:
+	@echo "Running E2E tests..."
+	@./tests/e2e_test.sh
+
+# 生成任务 ID
+TASK_ID := T-$(shell printf "%03d" $(shell expr $(shell ls tasks/active/sprint-01-core/*.md tasks/backlog/*/*.md 2>/dev/null | wc -l) + 1))
 
 # 生成任务 ID
 TASK_ID := T-$(shell printf "%03d" $(shell expr $(shell ls tasks/active/sprint-01-core/*.md tasks/backlog/*/*.md 2>/dev/null | wc -l) + 1))

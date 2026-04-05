@@ -74,11 +74,11 @@ pub const Ai = struct {
         switch (ctx.model.provider) {
             .known => |provider| {
                 return switch (provider) {
-                    .openai, .fireworks => @import("providers/openai.zig").complete(&self.http_client, ctx),
+                    .openai => @import("providers/openai.zig").complete(&self.http_client, ctx),
                     .anthropic => @import("providers/anthropic.zig").complete(&self.http_client, ctx),
                     .google => @import("providers/google.zig").complete(&self.http_client, ctx),
                     .kimi => {
-                        switch (ctx.model.api) {
+                        return switch (ctx.model.api) {
                             .known => |api| {
                                 return switch (api) {
                                     .@"openai-completions" => @import("providers/openai.zig").complete(&self.http_client, ctx),
@@ -87,8 +87,9 @@ pub const Ai = struct {
                                 };
                             },
                             .custom => error.ProviderNotSupported,
-                        }
+                        };
                     },
+                    .fireworks => @import("providers/fireworks.zig").complete(&self.http_client, ctx),
                     .openrouter => error.ProviderNotSupported,
                 };
             },
@@ -105,7 +106,7 @@ pub const Ai = struct {
         switch (ctx.model.provider) {
             .known => |provider| {
                 return switch (provider) {
-                    .openai, .fireworks => @import("providers/openai.zig").stream(&self.http_client, ctx, callback),
+                    .openai => @import("providers/openai.zig").stream(&self.http_client, ctx, callback),
                     .anthropic => @import("providers/anthropic.zig").stream(&self.http_client, ctx, callback),
                     .google => @import("providers/google.zig").stream(&self.http_client, ctx, callback),
                     .kimi => {
@@ -120,6 +121,7 @@ pub const Ai = struct {
                             .custom => error.ProviderNotSupported,
                         }
                     },
+                    .fireworks => @import("providers/fireworks.zig").stream(&self.http_client, ctx, callback),
                     .openrouter => error.ProviderNotSupported,
                 };
             },

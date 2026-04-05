@@ -49,7 +49,7 @@ pub const HttpClient = struct {
     pub fn postJson(
         self: *Self,
         url: []const u8,
-        headers: std.http.Headers,
+        headers: []const std.http.Header,
         body: []const u8,
     ) !Response {
         var attempts: u3 = 0;
@@ -73,42 +73,34 @@ pub const HttpClient = struct {
     fn postJsonOnce(
         self: *Self,
         url: []const u8,
-        headers: std.http.Headers,
+        headers: []const std.http.Header,
         body: []const u8,
     ) !Response {
         const uri = std.Uri.parse(url) catch return AiError.HttpRequestFailed;
 
-        var request = self.client.request(uri, .{
-            .method = .POST,
-            .headers = headers,
-        }, .{}) catch return AiError.HttpConnectionFailed;
-        defer request.deinit();
+        // Buffer to collect response body
+        var body_list: std.ArrayList(u8) = .empty;
+        errdefer body_list.deinit(self.allocator);
 
-        // Write body
-        request.writeAll(body) catch return AiError.HttpRequestFailed;
-        request.finish() catch return AiError.HttpRequestFailed;
-        request.wait() catch return AiError.HttpResponseReadFailed;
+        // Use fetch API with response_writer
+        const fetch_result = self.client.fetch(.{
+            .location = .{ .uri = uri },
+            .method = .POST,
+            .extra_headers = headers,
+            .payload = body,
+            .response_writer = body_list.writer(self.allocator),
+        }) catch return AiError.HttpRequestFailed;
 
         // Check status
-        const status = request.response.status;
+        const status = fetch_result.status;
         if (status == .ok or status == .created) {
-            // Read response body
-            var body_list = std.ArrayList(u8).init(self.allocator);
-            defer body_list.deinit();
-
-            var buf: [4096]u8 = undefined;
-            while (true) {
-                const bytes_read = request.read(&buf) catch break;
-                if (bytes_read == 0) break;
-                try body_list.appendSlice(buf[0..bytes_read]);
-            }
-
             return Response{
                 .status = status,
-                .body = try body_list.toOwnedSlice(),
+                .body = try body_list.toOwnedSlice(self.allocator),
                 .allocator = self.allocator,
             };
         } else {
+            body_list.deinit(self.allocator);
             return mapStatusToError(status);
         }
     }
@@ -117,57 +109,66 @@ pub const HttpClient = struct {
     pub fn postStream(
         self: *Self,
         url: []const u8,
-        headers: std.http.Headers,
+        headers: []const std.http.Header,
         body: []const u8,
         callback: *const fn (line: []const u8) void,
     ) !void {
         const uri = std.Uri.parse(url) catch return AiError.HttpRequestFailed;
 
-        var request = self.client.request(uri, .{
-            .method = .POST,
-            .headers = headers,
-        }, .{}) catch return AiError.HttpConnectionFailed;
-        defer request.deinit();
+        // Buffer to collect response body
+        var body_list: std.ArrayList(u8) = .empty;
+        errdefer body_list.deinit(self.allocator);
 
-        request.writeAll(body) catch return AiError.HttpRequestFailed;
-        request.finish() catch return AiError.HttpRequestFailed;
-        request.wait() catch return AiError.HttpResponseReadFailed;
+        // Use fetch API with response_writer
+        const fetch_result = self.client.fetch(.{
+            .location = .{ .uri = uri },
+            .method = .POST,
+            .extra_headers = headers,
+            .payload = body,
+            .response_writer = body_list.writer(self.allocator),
+        }) catch return AiError.HttpRequestFailed;
 
         // Check status
-        const status = request.response.status;
+        const status = fetch_result.status;
         if (status != .ok) {
+            body_list.deinit(self.allocator);
             return mapStatusToError(status);
         }
 
-        // Read stream line by line
+        // Process body line by line (SSE format)
         var line_buf: [SSE_LINE_BUF_SIZE]u8 = undefined;
         var line_pos: usize = 0;
 
-        var buf: [4096]u8 = undefined;
-        while (true) {
-            const bytes_read = request.read(&buf) catch break;
-            if (bytes_read == 0) break;
-
-            for (buf[0..bytes_read]) |byte| {
-                if (byte == '\n') {
-                    // Line complete
-                    if (line_pos > 0) {
-                        // Remove \r if present
-                        const line_len = if (line_pos > 0 and line_buf[line_pos - 1] == '\r')
-                            line_pos - 1
-                        else
-                            line_pos;
-                        callback(line_buf[0..line_len]);
-                        line_pos = 0;
-                    }
-                } else {
-                    if (line_pos < line_buf.len) {
-                        line_buf[line_pos] = byte;
-                        line_pos += 1;
-                    }
+        for (body_list.items) |byte| {
+            if (byte == '\n') {
+                // Line complete
+                if (line_pos > 0) {
+                    // Remove \r if present
+                    const line_len = if (line_pos > 0 and line_buf[line_pos - 1] == '\r')
+                        line_pos - 1
+                    else
+                        line_pos;
+                    callback(line_buf[0..line_len]);
+                    line_pos = 0;
+                }
+            } else {
+                if (line_pos < line_buf.len) {
+                    line_buf[line_pos] = byte;
+                    line_pos += 1;
                 }
             }
         }
+
+        // Handle last line if no trailing newline
+        if (line_pos > 0) {
+            const line_len = if (line_pos > 0 and line_buf[line_pos - 1] == '\r')
+                line_pos - 1
+            else
+                line_pos;
+            callback(line_buf[0..line_len]);
+        }
+
+        body_list.deinit(self.allocator);
     }
 };
 
@@ -176,8 +177,8 @@ pub const Response = struct {
     body: []u8,
     allocator: std.mem.Allocator,
 
-    pub fn deinit(self: *Response) void {
-        self.allocator.free(self.body);
+    pub fn deinit(self: *Response, allocator: std.mem.Allocator) void {
+        allocator.free(self.body);
     }
 };
 

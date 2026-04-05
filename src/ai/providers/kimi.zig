@@ -124,15 +124,21 @@ pub fn completeCode(http_client: *HttpClient, ctx: core.Context) !core.Assistant
     const request_body = try serializeCodeRequest(ctx);
     defer std.heap.page_allocator.free(request_body);
 
-    var headers = std.http.Headers{ .allocator = std.heap.page_allocator };
-    defer headers.deinit();
-    try headers.append("Authorization", try std.fmt.allocPrint(std.heap.page_allocator, "Bearer {s}", .{api_key}));
-    try headers.append("Content-Type", "application/json");
+    var headers: std.ArrayList(std.http.Header) = .empty;
+    defer headers.deinit(std.heap.page_allocator);
+    try headers.append(std.heap.page_allocator, .{
+        .name = "Authorization",
+        .value = try std.fmt.allocPrint(std.heap.page_allocator, "Bearer {s}", .{api_key}),
+    });
+    try headers.append(std.heap.page_allocator, .{
+        .name = "Content-Type",
+        .value = "application/json",
+    });
 
     const url = core.KIMI_CODE_BASE_URL ++ "/chat/completions";
 
-    var response = try http_client.postJson(url, headers, request_body);
-    defer response.deinit();
+    var response = try http_client.postJson(url, headers.items, request_body);
+    defer response.deinit(std.heap.page_allocator);
 
     return try parseCodeResponse(response.body);
 }
@@ -150,15 +156,24 @@ pub fn streamCode(
     const request_body = try serializeCodeRequest(streaming_ctx);
     defer std.heap.page_allocator.free(request_body);
 
-    var headers = std.http.Headers{ .allocator = std.heap.page_allocator };
-    defer headers.deinit();
-    try headers.append("Authorization", try std.fmt.allocPrint(std.heap.page_allocator, "Bearer {s}", .{api_key}));
-    try headers.append("Content-Type", "application/json");
-    try headers.append("Accept", "text/event-stream");
+    var headers: std.ArrayList(std.http.Header) = .empty;
+    defer headers.deinit(std.heap.page_allocator);
+    try headers.append(std.heap.page_allocator, .{
+        .name = "Authorization",
+        .value = try std.fmt.allocPrint(std.heap.page_allocator, "Bearer {s}", .{api_key}),
+    });
+    try headers.append(std.heap.page_allocator, .{
+        .name = "Content-Type",
+        .value = "application/json",
+    });
+    try headers.append(std.heap.page_allocator, .{
+        .name = "Accept",
+        .value = "text/event-stream",
+    });
 
     const url = core.KIMI_CODE_BASE_URL ++ "/chat/completions";
 
-    try http_client.postStream(url, headers, request_body, struct {
+    try http_client.postStream(url, headers.items, request_body, struct {
         fn onLine(line: []const u8) void {
             processLine(line, callback) catch {};
         }
@@ -170,24 +185,24 @@ pub fn streamCode(
 // ============================================================================
 
 fn serializeCodeRequest(ctx: core.Context) ![]u8 {
-    var messages = std.ArrayList(KimiMessage).init(std.heap.page_allocator);
-    defer messages.deinit();
+    var messages: std.ArrayList(KimiMessage) = .empty;
+    defer messages.deinit(std.heap.page_allocator);
 
     for (ctx.messages) |msg| {
         switch (msg) {
             .user => |user_msg| {
-                var content = std.ArrayList(u8).init(std.heap.page_allocator);
-                defer content.deinit();
+                var content: std.ArrayList(u8) = .empty;
+                defer content.deinit(std.heap.page_allocator);
 
                 for (user_msg.content) |block| {
                     switch (block) {
-                        .text => |text| try content.appendSlice(text),
+                        .text => |text| try content.appendSlice(std.heap.page_allocator, text),
                         .image => {}, // Kimi Code may not support images
                         .image_url => {},
                     }
                 }
 
-                try messages.append(.{
+                try messages.append(std.heap.page_allocator, .{
                     .role = "user",
                     .content = try std.heap.page_allocator.dupe(u8, content.items),
                 });
@@ -202,9 +217,9 @@ fn serializeCodeRequest(ctx: core.Context) ![]u8 {
                         .thinking => {}, // Kimi uses separate reasoning tokens
                         .tool_call => |tc| {
                             if (tool_calls == null) {
-                                tool_calls = std.ArrayList(KimiToolCall).init(std.heap.page_allocator);
+                                tool_calls = std.ArrayList(KimiToolCall){ .items = &.{}, .capacity = 0 };
                             }
-                            try tool_calls.?.append(KimiToolCall{
+                            try tool_calls.?.append(std.heap.page_allocator, KimiToolCall{
                                 .id = tc.tool_call.id,
                                 .function = .{
                                     .name = tc.tool_call.name,
@@ -215,24 +230,30 @@ fn serializeCodeRequest(ctx: core.Context) ![]u8 {
                     }
                 }
 
-                try messages.append(.{
+                var tool_calls_slice: ?[]const KimiToolCall = null;
+                if (tool_calls) |*tc| {
+                    tool_calls_slice = try tc.toOwnedSlice(std.heap.page_allocator);
+                }
+
+                try messages.append(std.heap.page_allocator, .{
                     .role = "assistant",
                     .content = content,
-                    .tool_calls = if (tool_calls) |tc| try tc.toOwnedSlice() else null,
+                    .tool_calls = tool_calls_slice,
                 });
             },
             .tool_result => |tool_result| {
-                var content = std.ArrayList(u8).init(std.heap.page_allocator);
-                defer content.deinit();
+                var content: std.ArrayList(u8) = .empty;
+                defer content.deinit(std.heap.page_allocator);
 
                 for (tool_result.content) |block| {
                     switch (block) {
-                        .text => |text| try content.appendSlice(text),
+                        .text => |text| try content.appendSlice(std.heap.page_allocator, text),
                         .image => {},
+                        .image_url => {},
                     }
                 }
 
-                try messages.append(.{
+                try messages.append(std.heap.page_allocator, .{
                     .role = "tool",
                     .content = try std.heap.page_allocator.dupe(u8, content.items),
                     .tool_call_id = tool_result.tool_call_id,
@@ -244,18 +265,18 @@ fn serializeCodeRequest(ctx: core.Context) ![]u8 {
     // Filter tools based on mode
     var tools: ?std.ArrayList(KimiTool) = null;
     if (ctx.tools.len > 0) {
-        tools = std.ArrayList(KimiTool).init(std.heap.page_allocator);
+        tools = std.ArrayList(KimiTool){ .items = &.{}, .capacity = 0 };
         for (ctx.tools) |tool| {
             // In plan mode, only allow read-only tools
             // For now, include all tools
-            try tools.?.append(KimiTool{
+            try tools.?.append(std.heap.page_allocator, KimiTool{
                 .builtin_function = .{ .name = tool.name },
             });
         }
     }
 
     // Thinking budget based on level
-    const thinking_budget = switch (ctx.thinking_level) {
+    const thinking_budget: u32 = switch (ctx.thinking_level) {
         .off => 0,
         .minimal => 1024,
         .low => 4096,
@@ -272,7 +293,10 @@ fn serializeCodeRequest(ctx: core.Context) ![]u8 {
         .stream = ctx.stream,
     };
 
-    return try std.json.stringifyAlloc(std.heap.page_allocator, request, .{});
+    var buf: std.ArrayList(u8) = .empty;
+    defer buf.deinit(std.heap.page_allocator);
+    try std.fmt.format(buf.writer(std.heap.page_allocator), "{f}", .{std.json.fmt(request, .{})});
+    return try buf.toOwnedSlice(std.heap.page_allocator);
 }
 
 // ============================================================================
@@ -281,7 +305,7 @@ fn serializeCodeRequest(ctx: core.Context) ![]u8 {
 
 fn parseCodeResponse(body: []const u8) !core.AssistantMessage {
     const parsed = try std.json.parseFromSlice(KimiCodeResponse, std.heap.page_allocator, body, .{});
-    defer parsed.deinit();
+    defer parsed.deinit(std.heap.page_allocator);
 
     const response = parsed.value;
     if (response.choices.len == 0) return error.ApiUnexpectedResponse;
@@ -290,16 +314,16 @@ fn parseCodeResponse(body: []const u8) !core.AssistantMessage {
     const message = choice.message orelse return error.ApiUnexpectedResponse;
 
     // Convert content
-    var content = std.ArrayList(core.AssistantContentBlock).init(std.heap.page_allocator);
-    defer content.deinit();
+    var content: std.ArrayList(core.AssistantContentBlock) = .empty;
+    defer content.deinit(std.heap.page_allocator);
 
     if (message.content) |text| {
-        try content.append(.{ .text = .{ .text = text } });
+        try content.append(std.heap.page_allocator, .{ .text = .{ .text = text } });
     }
 
     if (message.tool_calls) |tool_calls| {
         for (tool_calls) |tc| {
-            try content.append(.{ .tool_call = .{
+            try content.append(std.heap.page_allocator, .{ .tool_call = .{
                 .tool_call = .{
                     .id = tc.id,
                     .name = tc.function.name,
@@ -320,7 +344,7 @@ fn parseCodeResponse(body: []const u8) !core.AssistantMessage {
         if (u.completion_tokens_details) |details| {
             // Add thinking as a separate content block
             if (details.reasoning_tokens > 0) {
-                try content.insert(0, .{ .thinking = .{
+                try content.insert(std.heap.page_allocator, 0, .{ .thinking = .{
                     .thinking = try std.fmt.allocPrint(
                         std.heap.page_allocator,
                         "[Thinking process used {d} tokens]",
@@ -349,7 +373,7 @@ fn processLine(line: []const u8, callback: *const fn (event: ai.SseEvent) void) 
     }
 
     const parsed = try std.json.parseFromSlice(KimiCodeResponse, std.heap.page_allocator, data, .{});
-    defer parsed.deinit();
+    defer parsed.deinit(std.heap.page_allocator);
 
     const chunk = parsed.value;
     if (chunk.choices.len == 0) return;
