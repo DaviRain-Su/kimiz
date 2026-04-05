@@ -12,6 +12,7 @@
 - [ZIG-LLM-SELF-EVOLUTION-STRATEGY](../research/ZIG-LLM-SELF-EVOLUTION-STRATEGY.md) - 自我进化战略
 - [TigerBeetle Patterns](../research/TIGERBEETLE-PATTERNS-ANALYSIS.md) - 侵入式数据结构、零隐藏分配
 - [Zig gRPC Analysis](../research/grpc-zig-analysis.md) - comptime 枚举生成模式参考
+- [OpenCLI Analysis](../research/OPENCLI-ANALYSIS.md) - 外部自动注册机制参考、自我修复触发模式
 
 ---
 

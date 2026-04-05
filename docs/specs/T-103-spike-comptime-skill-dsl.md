@@ -12,6 +12,7 @@
 - [ZIG-LLM-SELF-EVOLUTION-STRATEGY](../research/ZIG-LLM-SELF-EVOLUTION-STRATEGY.md) - Phase 3 编译时自我进化战略
 - [TigerBeetle Patterns](../research/TIGERBEETLE-PATTERNS-ANALYSIS.md) - comptime 元编程与类型安全
 - [ZML Patterns Analysis](../research/zml-patterns-analysis.md) - `MapType`/`mapAlloc` comptime 类型变换（如有）
+- [OpenCLI Analysis](../research/OPENCLI-ANALYSIS.md) - 外部验证：自我进化的市场需求和 Token 经济性
 
 ---
 

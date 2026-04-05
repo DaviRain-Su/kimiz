@@ -12,6 +12,7 @@
 - [ZIG-LLM-SELF-EVOLUTION-STRATEGY](../research/ZIG-LLM-SELF-EVOLUTION-STRATEGY.md) - KimiZ 自我进化三阶段战略
 - [TigerBeetle Patterns](../research/TIGERBEETLE-PATTERNS-ANALYSIS.md) - 零技术债务、编译时验证原则
 - [Yoyo Evolve](../research/YOYO-EVOLVE-ANALYSIS.md) - 自进化循环与编译反馈
+- [OpenCLI Analysis](../research/OPENCLI-ANALYSIS.md) - 外部市场需求验证、探测-固化模式、Token 经济性量化
 
 ---
 

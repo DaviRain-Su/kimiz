@@ -103,6 +103,7 @@
 
 | 文档 | 核心要点 | 应用场景 |
 |------|----------|----------|
+| [OpenCLI Analysis](research/OPENCLI-ANALYSIS.md) | Agent 自我进化的市场需求验证、Token 经济性、探测-固化模式 | **Skill 自动生成、AutoRegistry、自我修复** |
 | [Yoyo Evolve](research/YOYO-EVOLVE-ANALYSIS.md) | 自进化循环、编译反馈、代码生成-测试-修复 | **AI Slop GC、Self-Review、Learning** |
 | [Zig LLM Self-Evolution](research/ZIG-LLM-SELF-EVOLUTION-STRATEGY.md) | LLM 驱动的 Zig 代码生成策略 | **Skill 自生成** |
 
