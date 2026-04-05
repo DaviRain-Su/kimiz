@@ -19,11 +19,36 @@
 - ✅ CLI友好（show/history/export命令）
 - ✅ 透明集成（Agent/Tool无感知）
 
-### 1.2 非目标（Phase 2+）
+### 1.2 核心设计原则：监控为机器服务，不是给人类实时盯盘的
+
+在 Hardness Engineering 的架构中，metrics 和 trace 处于**第三层防线**：
+
+```
+Layer 0: comptime DSL（编译时拦截结构错误）
+Layer 1: assertion density（运行时立刻崩溃暴露假设 violation）
+Layer 2: structured trace / metrics（事后分析，供 MetaHarness 学习进化）
+```
+
+因此，T-124 的 metrics 系统必须遵循以下原则：
+
+1. **Metrics 的默认消费者是 MetaHarness（机器），不是人类**
+   - trace 数据被用于自动识别失败模式、生成优化假设、进化 comptime 约束
+   - `show` / `history` / `export` CLI 命令只是辅助调试工具，不是主入口
+
+2. **任何需要"人在运行时查看"的指标，说明 comptime 约束或 assertion 规则有缺口**
+   - 如果某个错误反复发生，但它既没被 comptime 拦住，也没触发 assertion，那说明 Hardness 防线有漏洞
+   - 人工排查后，必须沉淀一条新的 comptime 验证规则或 assertion，而不是依赖"多看看监控"
+
+3. **监控数据是 MetaHarness 的输入，输出是更强的编译时约束**
+   - trace → MetaHarness 分析 → 生成新的 `@compileError` 条件或 `std.debug.assert`
+   - 这是一个**单向循环**：运行时复杂性逐渐被吸收为编译时安全性
+
+### 1.3 非目标（Phase 2+）
 
 - ❌ Web Dashboard（Phase 2）
 - ❌ Prometheus集成（Phase 3）
 - ❌ 实时告警（Phase 3）
+- ❌ 7x24 人类值班看监控（永远不是目标）
 
 ---
 
