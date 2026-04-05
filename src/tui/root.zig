@@ -39,6 +39,7 @@ pub const TuiState = struct {
     is_streaming: bool = false,
     current_model: []const u8 = "gpt-4o",
     current_session: []const u8 = "default",
+    input_history: InputHistory,
 
     const Self = @This();
 
@@ -46,12 +47,14 @@ pub const TuiState = struct {
         return .{
             .messages = std.ArrayList(DisplayMessage).init(allocator),
             .input_buffer = std.ArrayList(u8).init(allocator),
+            .input_history = InputHistory.init(allocator),
         };
     }
 
     pub fn deinit(self: *Self) void {
         self.messages.deinit();
         self.input_buffer.deinit();
+        self.input_history.deinit();
     }
 
     pub fn addMessage(self: *Self, msg_type: MessageType, content: []const u8) !void {
@@ -60,6 +63,8 @@ pub const TuiState = struct {
             .content = content,
             .timestamp = std.time.milliTimestamp(),
         });
+        // Auto-scroll to bottom on new message
+        self.scroll_offset = 0;
     }
 
     pub fn addStreamingMessage(self: *Self, msg_type: MessageType) !void {
@@ -99,6 +104,105 @@ pub const TuiState = struct {
 
     pub fn addSystemMessage(self: *Self, content: []const u8) !void {
         try self.addMessage(.system, content);
+    }
+};
+
+// ============================================================================
+// Input History
+// ============================================================================
+
+pub const InputHistory = struct {
+    items: std.ArrayList([]const u8),
+    allocator: std.mem.Allocator,
+    max_history: usize = 100,
+    current_index: ?usize = null,
+    temp_input: ?[]const u8 = null, // Store current input when navigating
+
+    const Self = @This();
+
+    pub fn init(allocator: std.mem.Allocator) Self {
+        return .{
+            .items = std.ArrayList([]const u8).init(allocator),
+            .allocator = allocator,
+        };
+    }
+
+    pub fn deinit(self: *Self) void {
+        for (self.items.items) |item| {
+            self.allocator.free(item);
+        }
+        if (self.temp_input) |temp| {
+            self.allocator.free(temp);
+        }
+        self.items.deinit();
+    }
+
+    /// Add input to history
+    pub fn add(self: *Self, input: []const u8) !void {
+        // Don't add empty input
+        if (input.len == 0) return;
+        
+        // Don't add duplicate of last entry
+        if (self.items.items.len > 0) {
+            const last = self.items.items[self.items.items.len - 1];
+            if (std.mem.eql(u8, last, input)) return;
+        }
+
+        // Remove oldest if at capacity
+        if (self.items.items.len >= self.max_history) {
+            const oldest = self.items.orderedRemove(0);
+            self.allocator.free(oldest);
+        }
+
+        const copy = try self.allocator.dupe(u8, input);
+        try self.items.append(copy);
+        self.reset();
+    }
+
+    /// Navigate up in history (older entries)
+    pub fn navigateUp(self: *Self, current_input: []const u8) ?[]const u8 {
+        if (self.items.items.len == 0) return null;
+
+        // Save current input if starting navigation
+        if (self.current_index == null) {
+            if (self.temp_input) |temp| {
+                self.allocator.free(temp);
+            }
+            self.temp_input = self.allocator.dupe(u8, current_input) catch null;
+        }
+
+        // Move to older entry
+        const new_index = if (self.current_index) |idx|
+            if (idx > 0) idx - 1 else 0
+        else
+            self.items.items.len - 1;
+
+        self.current_index = new_index;
+        return self.items.items[new_index];
+    }
+
+    /// Navigate down in history (newer entries)
+    pub fn navigateDown(self: *Self) ?[]const u8 {
+        if (self.current_index) |idx| {
+            if (idx + 1 < self.items.items.len) {
+                self.current_index = idx + 1;
+                return self.items.items[self.current_index.?];
+            } else {
+                // Return to current input (before navigation started)
+                self.current_index = null;
+                return self.temp_input;
+            }
+        }
+        return null;
+    }
+
+    /// Reset navigation state
+    pub fn reset(self: *Self) void {
+        self.current_index = null;
+        if (self.temp_input) |temp| {
+            self.allocator.free(temp);
+            self.temp_input = null;
+        }
     }
 };
 
@@ -240,8 +344,25 @@ pub const TuiApp = struct {
                 try terminal.Terminal.clearScreen();
             },
             .enter => {
-                if (self.state.input_buffer.items.len > 0 and !self.state.is_streaming) {
+                // Check if Shift is held (for multi-line input)
+                // For now, we use a simple heuristic: if the line starts with whitespace or previous char is newline, insert newline
+                const insert_newline = self.state.input_buffer.items.len > 0 and 
+                    (self.state.input_cursor == 0 or 
+                     self.state.input_buffer.items[self.state.input_cursor - 1] == '\n' or
+                     (self.state.input_cursor < self.state.input_buffer.items.len and 
+                      self.state.input_buffer.items[self.state.input_cursor] == ' '));
+                
+                if (insert_newline and !std.mem.eql(u8, self.state.input_buffer.items, "")) {
+                    // Insert newline for multi-line input
+                    try self.state.input_buffer.insert(self.state.input_cursor, '\n');
+                    self.state.input_cursor += 1;
+                } else if (self.state.input_buffer.items.len > 0 and !self.state.is_streaming) {
+                    // Submit message
                     const input = try self.allocator.dupe(u8, self.state.input_buffer.items);
+                    
+                    // Add to history before clearing
+                    try self.state.input_history.add(input);
+                    
                     try self.state.addUserMessage(input);
 
                     // Clear input
@@ -284,18 +405,30 @@ pub const TuiApp = struct {
                 }
             },
             .up => {
-                // TODO: History navigation
-                if (self.state.scroll_offset > 0) {
+                // History navigation
+                if (self.state.input_history.navigateUp(self.state.input_buffer.items)) |history_input| {
+                    self.state.input_buffer.clearRetainingCapacity();
+                    try self.state.input_buffer.appendSlice(history_input);
+                    self.state.input_cursor = self.state.input_buffer.items.len;
+                } else if (self.state.scroll_offset > 0) {
                     self.state.scroll_offset -= 1;
                 }
             },
             .down => {
-                // TODO: History navigation
-                self.state.scroll_offset += 1;
+                // History navigation
+                if (self.state.input_history.navigateDown()) |history_input| {
+                    self.state.input_buffer.clearRetainingCapacity();
+                    try self.state.input_buffer.appendSlice(history_input);
+                    self.state.input_cursor = self.state.input_buffer.items.len;
+                } else {
+                    self.state.scroll_offset += 1;
+                }
             },
             .char => |c| {
                 try self.state.input_buffer.insert(self.state.input_cursor, c);
                 self.state.input_cursor += 1;
+                // Reset history navigation when typing
+                self.state.input_history.reset();
             },
             else => {},
         }
@@ -369,77 +502,300 @@ pub const TuiApp = struct {
         const stdout = std.io.getStdOut().writer();
 
         // Calculate visible messages
-        const visible_count = area.height - 2;
-        const start_idx = if (self.state.messages.items.len > visible_count)
-            self.state.messages.items.len - visible_count + self.state.scroll_offset
-        else
-            0;
+        const visible_rows = area.height - 2;
+        
+        // First pass: calculate how many rows each message needs
+        var message_rows = std.ArrayList(usize).init(self.allocator);
+        defer message_rows.deinit();
+        
+        var total_rows: usize = 0;
+        for (self.state.messages.items) |msg| {
+            const prefix_len = switch (msg.msg_type) {
+                .user => 5, // "You: "
+                .assistant => 4, // "AI: "
+                .system => 2, // "! "
+                .tool_call => 0, // "[Tool: xxx]" - handled separately
+                .tool_result => 0, // "[Result: xxx]" - handled separately
+            };
+            const content_width = area.width - prefix_len - 2; // -2 for margins
+            const rows_needed = calculateWrappedRows(msg.content, content_width);
+            try message_rows.append(rows_needed);
+            total_rows += rows_needed;
+        }
+        
+        // Calculate start index based on scroll and total rows
+        var start_idx: usize = 0;
+        if (total_rows > visible_rows and self.state.scroll_offset > 0) {
+            var rows_to_skip = self.state.scroll_offset;
+            for (message_rows.items, 0..) |rows_needed, i| {
+                if (rows_to_skip >= rows_needed) {
+                    rows_to_skip -= rows_needed;
+                    start_idx = i + 1;
+                } else {
+                    break;
+                }
+            }
+        }
 
         var row: usize = area.y + 1;
-        for (self.state.messages.items[start_idx..]) |msg| {
-            if (row >= area.y + area.height - 1) break;
-
-            try terminal.Terminal.moveCursor(row, area.x + 1);
-
+        var msg_idx = start_idx;
+        while (msg_idx < self.state.messages.items.len and row < area.y + area.height - 1) {
+            const msg = self.state.messages.items[msg_idx];
+            
             // Message type indicator and style
+            const prefix = switch (msg.msg_type) {
+                .user => "You: ",
+                .assistant => "AI: ",
+                .system => "! ",
+                .tool_call => "[Tool: ",
+                .tool_result => "[Result: ",
+            };
+            const prefix_len = prefix.len;
+            
+            try terminal.Terminal.moveCursor(row, area.x + 1);
+            
+            // Format timestamp
+            const timestamp_str = try formatTimestamp(self.allocator, msg.timestamp);
+            defer self.allocator.free(timestamp_str);
+            
             switch (msg.msg_type) {
                 .user => {
-                    try terminal.applyStyle(.{ .fg = .green, .bold = true });
-                    try stdout.print("You: ", .{});
+                    try terminal.applyStyle(.{ .fg = .bright_black });
+                    try stdout.print("[{s}] ", .{timestamp_str});
                     try terminal.resetStyle();
-                    try stdout.print("{s}", .{msg.content});
+                    try terminal.applyStyle(.{ .fg = .green, .bold = true });
+                    try stdout.print("{s}", .{prefix});
+                    try terminal.resetStyle();
+                    
+                    // Wrap and print content
+                    const content_width = area.width - prefix_len - 11; // -11 for timestamp
+                    row = try self.printWrappedText(msg.content, content_width, row, area.x + 11 + prefix_len, area);
                 },
                 .assistant => {
-                    try terminal.applyStyle(.{ .fg = .blue, .bold = true });
-                    try stdout.print("AI: ", .{});
+                    try terminal.applyStyle(.{ .fg = .bright_black });
+                    try stdout.print("[{s}] ", .{timestamp_str});
                     try terminal.resetStyle();
-                    if (msg.is_streaming) {
-                        try stdout.print("{s}▊", .{msg.content});
-                    } else {
-                        try stdout.print("{s}", .{msg.content});
-                    }
+                    try terminal.applyStyle(.{ .fg = .blue, .bold = true });
+                    try stdout.print("{s}", .{prefix});
+                    try terminal.resetStyle();
+                    
+                    // Wrap and print content
+                    const content_width = area.width - prefix_len - 11; // -11 for timestamp
+                    const display_content = if (msg.is_streaming)
+                        try std.fmt.allocPrint(self.allocator, "{s}▊", .{msg.content})
+                    else
+                        msg.content;
+                    defer if (msg.is_streaming) self.allocator.free(display_content);
+                    
+                    row = try self.printWrappedText(display_content, content_width, row, area.x + 11 + prefix_len, area);
                 },
                 .system => {
-                    try terminal.applyStyle(.{ .fg = .yellow });
-                    try stdout.print("! {s}", .{msg.content});
+                    try terminal.applyStyle(.{ .fg = .bright_black });
+                    try stdout.print("[{s}] ", .{timestamp_str});
                     try terminal.resetStyle();
+                    try terminal.applyStyle(.{ .fg = .yellow });
+                    try stdout.print("{s}", .{prefix});
+                    try terminal.resetStyle();
+                    
+                    const content_width = area.width - prefix_len - 11;
+                    row = try self.printWrappedText(msg.content, content_width, row, area.x + 11 + prefix_len, area);
                 },
                 .tool_call => {
                     try terminal.applyStyle(.{ .fg = .magenta });
-                    try stdout.print("[Tool: {s}]", .{msg.content});
+                    try stdout.print("{s}{s}]", .{ prefix, msg.content });
                     try terminal.resetStyle();
+                    row += 1;
                 },
                 .tool_result => {
                     try terminal.applyStyle(.{ .fg = .cyan });
-                    try stdout.print("[Result: {s}]", .{msg.content});
+                    try stdout.print("{s}{s}]", .{ prefix, msg.content });
                     try terminal.resetStyle();
+                    row += 1;
                 },
             }
-
-            row += 1;
+            
+            msg_idx += 1;
         }
+    }
+    
+    /// Calculate how many rows needed to display text with given width
+    fn calculateWrappedRows(text: []const u8, width: usize) usize {
+        if (width == 0) return text.len;
+        var rows: usize = 1;
+        var col: usize = 0;
+        for (text) |byte| {
+            if (byte == '\n') {
+                rows += 1;
+                col = 0;
+            } else {
+                col += 1;
+                if (col >= width) {
+                    rows += 1;
+                    col = 0;
+                }
+            }
+        }
+        return rows;
+    }
+    
+    /// Format timestamp to HH:MM:SS
+    fn formatTimestamp(allocator: std.mem.Allocator, timestamp_ms: i64) ![]const u8 {
+        const seconds = @divTrunc(timestamp_ms, 1000);
+        const hours = @mod(@divTrunc(seconds, 3600), 24);
+        const minutes = @mod(@divTrunc(seconds, 60), 60);
+        const secs = @mod(seconds, 60);
+        return try std.fmt.allocPrint(allocator, "{d:0>2}:{d:0>2}:{d:0>2}", .{hours, minutes, secs});
+    }
+    
+    /// Print text with word wrapping, returns next row
+    fn printWrappedText(self: *Self, text: []const u8, width: usize, start_row: usize, start_col: usize, area: terminal.Rect) !usize {
+        const stdout = std.io.getStdOut().writer();
+        var row = start_row;
+        var line_start: usize = 0;
+        
+        while (line_start < text.len and row < area.y + area.height - 1) {
+            // Find the end of this line
+            var line_end = line_start;
+            var col: usize = 0;
+            
+            // Try to find a good break point (word boundary)
+            while (line_end < text.len and col < width) {
+                if (text[line_end] == '\n') {
+                    break;
+                }
+                col += 1;
+                line_end += 1;
+            }
+            
+            // If we're in the middle of a word, try to back up to a space
+            if (line_end < text.len and text[line_end] != '\n' and text[line_end] != ' ') {
+                var word_boundary = line_end;
+                while (word_boundary > line_start and text[word_boundary - 1] != ' ') {
+                    word_boundary -= 1;
+                }
+                if (word_boundary > line_start) {
+                    line_end = word_boundary;
+                }
+            }
+            
+            // Print this line
+            try terminal.Terminal.moveCursor(row, start_col);
+            try stdout.print("{s}", .{text[line_start..line_end]});
+            
+            row += 1;
+            
+            // Skip newline if present, or skip space at break
+            if (line_end < text.len and text[line_end] == '\n') {
+                line_start = line_end + 1;
+            } else if (line_end < text.len and text[line_end] == ' ') {
+                line_start = line_end + 1;
+            } else {
+                line_start = line_end;
+            }
+        }
+        
+        return row;
     }
 
     fn renderInputArea(self: *Self, rows: usize, cols: usize) !void {
         const area = self.layout.getInputArea(cols, rows);
         const stdout = std.io.getStdOut().writer();
-
+        const max_input_lines = 5; // Maximum visible lines for input
+        
         // Draw border line
         try terminal.Terminal.moveCursor(area.y, area.x);
         try stdout.print("─" ** 100, .{});
-
+        
+        // Calculate cursor position in multi-line buffer
+        var cursor_line: usize = 0;
+        var cursor_col: usize = 0;
+        var line_start_indices = std.ArrayList(usize).init(self.allocator);
+        defer line_start_indices.deinit();
+        try line_start_indices.append(0);
+        
+        for (self.state.input_buffer.items, 0..) |char, i| {
+            if (i == self.state.input_cursor) {
+                cursor_line = line_start_indices.items.len - 1;
+                cursor_col = i - line_start_indices.items[cursor_line];
+            }
+            if (char == '\n') {
+                try line_start_indices.append(i + 1);
+            }
+        }
+        
+        // Handle cursor at end of buffer
+        if (self.state.input_cursor >= self.state.input_buffer.items.len) {
+            cursor_line = line_start_indices.items.len - 1;
+            cursor_col = self.state.input_buffer.items.len - line_start_indices.items[cursor_line];
+        }
+        
+        // Calculate which lines to show (scrolling within input area)
+        var first_visible_line: usize = 0;
+        if (line_start_indices.items.len > max_input_lines) {
+            first_visible_line = if (cursor_line >= max_input_lines)
+                cursor_line - max_input_lines + 1
+            else
+                0;
+        }
+        
         // Input prompt
         try terminal.Terminal.moveCursor(area.y + 1, area.x + 1);
         try terminal.applyStyle(.{ .fg = .green, .bold = true });
         try stdout.print("> ", .{});
         try terminal.resetStyle();
-
-        // Input content
-        try stdout.print("{s}", .{self.state.input_buffer.items});
-
-        // Cursor
+        
+        // Display input content (multiple lines)
+        const content_width = area.width - 4; // -4 for "> " and margins
+        var display_line: usize = 0;
+        
+        for (first_visible_line..line_start_indices.items.len) |line_idx| {
+            if (display_line >= max_input_lines) break;
+            
+            const start_idx = line_start_indices.items[line_idx];
+            const end_idx = if (line_idx + 1 < line_start_indices.items.len)
+                line_start_indices.items[line_idx + 1] - 1
+            else
+                self.state.input_buffer.items.len;
+            
+            const line_content = self.state.input_buffer.items[start_idx..end_idx];
+            
+            // Wrap long lines
+            var col: usize = 0;
+            var line_row: usize = 0;
+            while (col < line_content.len and line_row < max_input_lines - display_line) {
+                const remaining = line_content.len - col;
+                const chunk_len = @min(remaining, content_width);
+                
+                try terminal.Terminal.moveCursor(area.y + 1 + display_line + line_row, area.x + 3 + if (line_row == 0) @as(usize, 0) else @as(usize, 0));
+                if (line_row > 0) {
+                    // Continuation line - indent slightly
+                    try terminal.Terminal.moveCursor(area.y + 1 + display_line + line_row, area.x + 5);
+                }
+                try stdout.print("{s}", .{line_content[col..col + chunk_len]});
+                
+                col += chunk_len;
+                line_row += 1;
+            }
+            
+            display_line += line_row;
+        }
+        
+        // Show hint for multi-line input
+        if (std.mem.indexOfScalar(u8, self.state.input_buffer.items, '\n') != null) {
+            try terminal.Terminal.moveCursor(area.y + area.height - 1, area.x + 1);
+            try terminal.applyStyle(.{ .fg = .bright_black });
+            try stdout.print("[Ctrl+Enter to submit]", .{});
+            try terminal.resetStyle();
+        }
+        
+        // Cursor positioning
         if (!self.state.is_streaming) {
-            try terminal.Terminal.moveCursor(area.y + 1, area.x + 3 + self.state.input_cursor);
+            const cursor_display_line = cursor_line - first_visible_line;
+            const cursor_display_col = if (cursor_display_line == 0) 
+                cursor_col + 3  // +3 for "> "
+            else 
+                cursor_col + 5; // +5 for continuation indent
+            try terminal.Terminal.moveCursor(area.y + 1 + cursor_display_line, area.x + cursor_display_col);
             try terminal.Terminal.showCursor();
         } else {
             try terminal.Terminal.hideCursor();
