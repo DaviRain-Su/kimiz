@@ -162,11 +162,14 @@ fn runInteractive(allocator: std.mem.Allocator) !void {
 
     // Get model from config
     const model_id = cfg.default_model;
-    const model = ai.models_registry.getModel(.openai, model_id) orelse {
+    const model = ai.models_registry.getModelById(model_id) orelse {
         print("❌ Unknown model: ");
         print(model_id);
-        print("\nUsing default: gpt-4o\n");
-        _ = ai.models_registry.getModel(.openai, "gpt-4o").?;
+        print("\nUsing default: kimi-k2.5\n");
+        _ = ai.models_registry.getModel(.kimi, "kimi-k2.5") orelse {
+            print("❌ Default model kimi-k2.5 not found\n");
+            return error.ModelNotFound;
+        };
         return error.ModelNotFound;
     };
 
@@ -283,8 +286,8 @@ fn runSkillCommand(allocator: std.mem.Allocator, args: []const []const u8) !void
     }
 
     // Initialize Agent
-    const model = ai.models_registry.getModel(.openai, "gpt-4o") orelse {
-        printLine("❌ Failed to get default model");
+    const model = ai.models_registry.getModelById("kimi-k2.5") orelse {
+        printLine("❌ Failed to get default model kimi-k2.5");
         return;
     };
 
@@ -338,14 +341,16 @@ fn printHelp() void {
         \\  kimiz skill <id>   Execute a skill
         \\
         \\Environment:
-        \\  KIMIZ_MODEL        Default model (default: gpt-4o)
+        \\  KIMIZ_MODEL        Default model (default: kimi-k2.5)
+        \\  KIMI_API_KEY       Kimi API key (recommended)
         \\  OPENAI_API_KEY     OpenAI API key
         \\  ANTHROPIC_API_KEY  Anthropic API key
         \\  GOOGLE_API_KEY     Google API key
-        \\  KIMI_API_KEY       Kimi API key
         \\  FIREWORKS_API_KEY  Fireworks API key
         \\  OPENROUTER_API_KEY OpenRouter API key
         \\  KIMIZ_YOLO_MODE    Enable YOLO mode (1/true/yes)
+        \\  
+        \\Note: Kimi (kimi-k2.5) is the recommended default model with 256k context window.
         \\
     ;
     print(help);
