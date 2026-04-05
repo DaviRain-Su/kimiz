@@ -1,344 +1,182 @@
 # kimiz
 
-> **The AI Coding Agent that learns you** — Skill-Centric, High-Performance, Self-Learning
+> A fast, terminal-based AI coding assistant written in Zig.
 
-[![Zig Version](https://img.shields.io/badge/zig-0.15.2-orange.svg)](https://ziglang.org/)
+[![Zig Version](https://img.shields.io/badge/zig-0.16-orange.svg)](https://ziglang.org/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Status](https://img.shields.io/badge/status-alpha-yellow.svg)](https://github.com/DaviRain-Su/kimiz)
 
-**kimiz** is a next-generation AI coding agent that learns your preferences, understands your codebase, and grows smarter with every interaction. Unlike stateless AI assistants, kimiz builds a persistent knowledge base about your coding style, frequently used patterns, and project-specific insights.
-
----
-
-## 🌟 What Makes kimiz Different?
-
-### Skill-Centric Architecture
-
-kimiz organizes all capabilities as composable **Skills** rather than simple tools:
-
-```
-User Request → Skill Selection → Execution Plan → Tool Orchestration → Result
-```
-
-**Benefits**:
-- 🔄 **Reusable**: Define once, use everywhere
-- 🧩 **Composable**: Chain skills into complex workflows
-- 📚 **Learnable**: Agent improves skill usage over time
-- 🔌 **Extensible**: Add custom skills for your workflow
-
-### Three-Layer Memory System
-
-```
-┌─────────────────────────────────────────────────┐
-│  Short-Term Memory (Current Session)            │
-│  • Active conversation context                  │
-│  • Recent code changes                          │
-└─────────────────────────────────────────────────┘
-                    ↓
-┌─────────────────────────────────────────────────┐
-│  Working Memory (Project-Level)                 │
-│  • Tech stack detection                         │
-│  • Code patterns & conventions                  │
-│  • Important files & dependencies               │
-└─────────────────────────────────────────────────┘
-                    ↓
-┌─────────────────────────────────────────────────┐
-│  Long-Term Memory (User Preferences)            │
-│  • Coding style preferences                     │
-│  • Frequently used tools                        │
-│  • Model performance history                    │
-└─────────────────────────────────────────────────┘
-```
-
-### Adaptive Learning
-
-kimiz **learns** from every interaction:
-- 📊 Tracks which models work best for different tasks
-- 🎯 Adapts to your coding style (indentation, naming, patterns)
-- 🚀 Optimizes tool selection based on success rates
-- 💡 Suggests better approaches based on historical data
-
-### Native Performance
-
-Built with Zig for **blazing-fast** performance:
-- ⚡ **<100ms** startup time (vs 1-3s for TypeScript/Python agents)
-- 🔋 **Low memory footprint** (<50MB)
-- 📦 **Single binary** - no runtime dependencies
-- 🎯 **Native compilation** - no JIT overhead
+**kimiz** is a command-line AI agent for coding tasks. It runs as an interactive REPL, can read and edit files, execute shell commands, and search your codebase — all in a single lightweight binary.
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
-### Prerequisites
+**Time: ~5 minutes**
 
-- [Zig 0.15.2](https://ziglang.org/download/) (0.16 migration in progress)
-- API keys for at least one provider:
-  - OpenAI (GPT-4o, o1, o3)
-  - Anthropic (Claude 3.5 Sonnet)
-  - Google (Gemini 2.0 Flash)
-  - Kimi (Moonshot k1)
+### 1. Install Zig 0.16
 
-### Installation
+See [ziglang.org/download](https://ziglang.org/download/).
+
+### 2. Get API Key
+
+kimiz uses **Kimi** (`kimi-for-coding`) by default. Get a key from [platform.moonshot.cn](https://platform.moonshot.cn):
 
 ```bash
-# Clone the repository
+export KIMI_API_KEY="your-key-here"
+```
+
+(_Optional_) Other providers work too:
+- `OPENAI_API_KEY`
+- `ANTHROPIC_API_KEY`
+- `GOOGLE_API_KEY`
+
+### 3. Build
+
+```bash
 git clone https://github.com/DaviRain-Su/kimiz.git
 cd kimiz
-
-# Build
 zig build
-
-# The binary will be in zig-out/bin/kimiz
 ```
 
-### Configuration
+### 4. Run
 
 ```bash
-# Set up API keys (choose one or more)
-export OPENAI_API_KEY="sk-..."
-export ANTHROPIC_API_KEY="sk-ant-..."
-export GOOGLE_API_KEY="..."
-export KIMI_API_KEY="..."
-
-# Optional: Configure default model
-./zig-out/bin/kimiz config set default_model gpt-4o
+./zig-out/bin/kimiz
 ```
 
-### Basic Usage
+You will enter the REPL. Example:
 
-```bash
-# Interactive REPL mode
-./zig-out/bin/kimiz repl
-
-# One-shot command
-./zig-out/bin/kimiz run "Add error handling to src/main.zig"
-
-# With specific model
-./zig-out/bin/kimiz run --model claude-3.5-sonnet "Review this PR"
-
-# Enable thinking mode for complex tasks
-./zig-out/bin/kimiz run --thinking high "Refactor the HTTP client"
+```
+> read src/main.zig
+> explain what this file does
+> add a function that prints hello world
+> exit
 ```
 
 ---
 
-## 🎯 Features
+## What Can It Do?
 
-### Token Optimization 🔥
+### Core Tools
 
-kimiz integrates [rtk](https://github.com/rtk-ai/rtk) for intelligent command output compression, reducing LLM token consumption by **60-90%**:
+| Tool | Description | Example |
+|------|-------------|---------|
+| `read_file` | Read any file in your project | `read src/http.zig` |
+| `write_file` | Create new files | `write a test.zig` |
+| `edit` | Replace code blocks in existing files | `change error handler to string-based` |
+| `grep` | Search file contents (powered by **fff** — fast fuzzy finder) | `find all TODOs` |
+| `file_search` | Fuzzy-find files by name | `open file search agent.zig` |
+| `bash` | Run shell commands with timeout protection | `run zig build test` |
+
+### Modes
+
+- **REPL** (`./zig-out/bin/kimiz`) — continuous, multi-turn conversation
+- **Direct prompt** — pass a one-shot request (if your wrapper supports it)
+
+---
+
+## Troubleshooting
+
+### "API Key not configured"
+
+Make sure `KIMI_API_KEY` is exported in your shell:
 
 ```bash
-# Standard git status: ~2,000 tokens
-# RTK optimized: ~200 tokens (-90%)
-kimiz skill rtk-optimize command="git status"
-
-#Output:
-📌 main...origin/main [ahead 6]
-📝 Modified: 4 files
-   src/agent/agent.zig
-   src/skills/builtin.zig
-   ...
+export KIMI_API_KEY="sk-..."
 ```
 
-**Supported Commands**: git, ls, find, grep, tests (cargo/npm/pytest/go), linters (tsc/eslint/clippy), and 100+ more.
+### "Cannot connect to AI service"
 
-**Installation**:
-```bash
-brew install rtk
-# or download from https://github.com/rtk-ai/rtk/releases
-```
+Check your network and proxy settings. If behind a VPN or corporate firewall, ensure `https://api.kimi.com` is reachable.
 
-See [RTK Skill Documentation](docs/skills/rtk-optimize.md) for details.
+### "Tool not found"
 
-### Built-in Skills
+This usually means the model returned an unknown tool name. It is harmless — just tell the agent to re-read the file list or try again.
 
-kimiz comes with powerful built-in skills:
+### Build fails on macOS / Linux
 
-- **🔍 Code Review**: Analyze code quality, detect bugs, suggest improvements
-- **🔨 Refactoring**: Modernize code, extract functions, improve structure
-- **🧪 Test Generation**: Create unit tests, integration tests, E2E tests
-- **📝 Documentation**: Generate docstrings, README, API docs
-- **🐛 Debugging**: Trace issues, analyze stack traces, suggest fixes
+- Requires **Zig 0.16.0-dev** or newer.
+- On macOS, the `libfff_c.dylib` is pre-built and linked automatically.
+- On Linux, you may need to build the C FFI library first (see `ffi/` directory).
 
-### Agent Tools
-
-7 built-in tools for code manipulation:
-
-- **📄 File Operations**: `read_file`, `write_file`
-- **🔎 Search**: `grep`, `glob` (pattern matching)
-- **⚙️ Execution**: `bash` (run commands)
-- **🌐 Web**: `web_search`, `url_summary`
-
-### Multi-Provider Support
-
-Smart model routing automatically selects the best model for each task:
-
-| Provider | Models | Use Case |
-|----------|--------|----------|
-| **OpenAI** | GPT-4o, o1, o3-mini | General coding, complex reasoning |
-| **Anthropic** | Claude 3.5 Sonnet | Code review, long context |
-| **Google** | Gemini 2.0 Flash | Fast iterations, prototyping |
-| **Kimi** | k1, Moonshot-v1 | Chinese language, specialized tasks |
-| **Fireworks** | Open source models | Cost-effective, local deployment |
-
-### Intelligent Model Routing
-
-kimiz automatically chooses the optimal model based on:
-- 📊 **Task complexity**: Simple vs complex reasoning
-- 💰 **Cost efficiency**: Balance quality and cost
-- 🎯 **Historical performance**: Learn which models work best
-- ⚡ **Speed requirements**: Fast iteration vs deep thinking
-
----
-
-## 📖 Documentation
-
-- **[Product Requirements](docs/01-PRD.md)** - Vision and roadmap
-- **[Architecture Guide](docs/02-architecture.md)** - System design
-- **[Task Management](tasks/README.md)** - Development tasks
-- **[Project Audit](docs/08-project-audit-report.md)** - Current status
-- **[Zig 0.16 Migration](docs/11-zig-0.16-migration-guide.md)** - Upgrade guide
-
----
-
-## 🏗️ Project Status
-
-**Version**: 0.0.0 (Alpha)  
-**Zig**: 0.15.2 → 0.16 (migration in progress)
-
-### What's Working ✅
-
-- ✅ Core type system
-- ✅ 5 AI providers (OpenAI, Anthropic, Google, Kimi, Fireworks)
-- ✅ 7 agent tools (file, search, execution, web)
-- ✅ 5 built-in skills (review, refactor, test, docs, debug)
-- ✅ Three-layer memory system
-- ✅ Adaptive learning framework
-- ✅ REPL mode
-- ✅ Smart model routing
-- ✅ Session management
-- ✅ Logging system
-
-### Known Issues ⚠️
-
-- ❌ **Compilation errors** (2 issues, fixes documented)
-- ⚠️ **Memory leaks** (9 P1 issues identified)
-- ⚠️ **E2E tests** incomplete
-- ⚠️ **TUI mode** framework only
-
-See [Critical Fixes Summary](tasks/CRITICAL-FIXES-SUMMARY.md) for details.
-
-### Roadmap 🗺️
-
-**Sprint 1** (Current):
-- [x] Core infrastructure
-- [x] Multi-provider support
-- [x] Memory & learning systems
-- [ ] Fix compilation errors
-- [ ] Complete E2E tests
-
-**Sprint 2** (Next):
-- [ ] Skill marketplace
-- [ ] Advanced learning algorithms
-- [ ] Performance optimization (io_uring)
-- [ ] Plugin system
-
-**Sprint 3** (Future):
-- [ ] TUI interface
-- [ ] Multi-modal support
-- [ ] Distributed execution
-- [ ] Cloud sync
-
----
-
-## 🛠️ Development
-
-### Building from Source
+### Tests fail
 
 ```bash
-# Development build
-zig build
-
-# Release build (optimized)
-zig build -Doptimize=ReleaseFast
-
-# Run tests
 zig build test
-
-# Run specific test
-zig test src/core/root.zig
 ```
 
-### Project Structure
+If a specific test fails, run it in isolation:
 
-```
-kimiz/
-├── src/
-│   ├── core/           # Core types and constants
-│   ├── ai/             # AI providers and routing
-│   │   └── providers/  # OpenAI, Anthropic, Google, Kimi, Fireworks
-│   ├── agent/          # Agent runtime and tools
-│   │   └── tools/      # Built-in tools (7 tools)
-│   ├── skills/         # Skill system (5 built-in skills)
-│   ├── memory/         # Three-layer memory system
-│   ├── learning/       # Adaptive learning engine
-│   ├── cli/            # CLI interface
-│   ├── prompts/        # Prompt templates
-│   └── utils/          # Config, logging, session
-├── docs/               # Documentation
-├── tasks/              # Task management
-├── tests/              # Test suite
-└── build.zig           # Build configuration
+```bash
+zig test src/ai/providers/openai.zig
 ```
 
-### Contributing
+---
 
-We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for:
-- Code style guidelines
-- Commit message conventions
-- Pull request process
-- Testing requirements
+## Project Status
 
-**Current Priority Tasks**:
-1. 🔴 Fix compilation errors ([URGENT-FIX](tasks/backlog/bugfix/URGENT-FIX-compilation-errors.md))
-2. 🔴 Fix memory leaks ([TASK-BUG-001 to 003](tasks/backlog/bugfix/))
-3. 🟡 Complete E2E tests ([T-009](tasks/active/sprint-01-core/T-009-e2e-tests.md))
+**Current version: v0.4.0 (MVP)**
+
+- ✅ REPL with stable agent loop
+- ✅ 6 core tools (read, write, edit, grep, file_search, bash)
+- ✅ Default Kimi for Coding (OpenAI/Anthropic compatible)
+- ✅ Error handling with user-friendly messages
+- ✅ Test coverage for core parsing and tools
+- ✅ 26ms startup, 6MB binary
+
+### Not in MVP
+
+- ❌ No Web UI
+- ❌ No MCP integration
+- ❌ No complex TUI (basic REPL only)
+- ❌ No cross-session memory (single-session context only)
 
 ---
 
-## 🤝 Community
+## Development
 
-- **Issues**: [GitHub Issues](https://github.com/DaviRain-Su/kimiz/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/DaviRain-Su/kimiz/discussions)
-- **Documentation**: [docs/](docs/)
+```bash
+zig build              # build
+zig build test         # run all tests
+zig build -Doptimize=ReleaseFast  # release build
+```
 
----
+### Project Layout
 
-## 📜 License
-
-MIT License - see [LICENSE](LICENSE) for details.
-
----
-
-## 🙏 Acknowledgments
-
-Inspired by:
-- [pi-mono](https://github.com/badlogic/pi-mono) - Architecture patterns
-- [Claude Code](https://github.com/didilili/claude-code-restored) - Agent design
-- [Factory](https://factory.ai/) - Skill-centric approach
-
-Built with:
-- [Zig](https://ziglang.org/) - Programming language
-- [OpenAI](https://openai.com/), [Anthropic](https://anthropic.com/), [Google AI](https://ai.google/), [Moonshot AI](https://moonshot.ai/) - AI providers
-
----
-
-## 🌟 Star History
-
-If kimiz helps you, please consider giving it a star ⭐
+```
+src/
+├── cli/        REPL and CLI entry
+├── ai/         AI providers (Kimi, OpenAI, Anthropic, Google)
+├── agent/      Agent loop and tools
+│   └── tools/
+│       ├── read_file.zig
+│       ├── write_file.zig
+│       ├── edit.zig
+│       ├── bash.zig
+│       └── fff.zig       # grep + file_search
+├── memory/     Session-level context
+├── skills/     Built-in skills (token optimize, etc.)
+└── utils/      Error handling, config, logging
+```
 
 ---
 
-**Built with ❤️ using Zig**
+## Roadmap
+
+| Phase | Status | Focus |
+|-------|--------|-------|
+| **A** | ✅ Done | Core stability (REPL, tools, Kimi default) |
+| **B** | ✅ Done | Quality (errors, tests, performance) |
+| **C** | Pending | Selective enhancements based on real usage |
+
+Phase C candidates:
+- Better code-diff display
+- Git integration
+- More providers / models
+- Simple TUI improvements
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE).

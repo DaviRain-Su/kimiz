@@ -4,6 +4,8 @@
 
 The RTK Token Optimizer skill integrates the [rtk](https://github.com/rtk-ai/rtk) tool to compress command outputs, reducing LLM token consumption by 60-90%.
 
+> **Note**: As of Phase 2, kimiz also includes **native Zig filters** for common commands (`git status`, `git log`, `git diff`, `ls`, `find`) that work without installing RTK. These are automatically applied when token optimization is enabled. The `rtk-optimize` skill remains available for commands not yet covered by native filters.
+
 **Skill ID**: `rtk-optimize`  
 **Category**: Miscellaneous  
 **Version**: 1.0.0
@@ -12,10 +14,51 @@ The RTK Token Optimizer skill integrates the [rtk](https://github.com/rtk-ai/rtk
 
 - ✅ Reduces token consumption by 60-90% for common dev commands
 - ✅ Supports git, file operations, tests, and build tools
-- ✅ Zero-configuration - works with rtk defaults
+- ✅ **Native Zig filters** for core commands (no external dependency)
+- ✅ **RTK skill wrapper** for 100+ extended commands
+- ✅ Configurable via environment variables
 - ✅ <10ms overhead
 
-## Prerequisites
+## Native Filters (Phase 2)
+
+kimiz now includes **native Zig token optimization filters** that work out of the box:
+
+### Supported Native Commands
+
+| Command | Filter | Reduction | Configurable |
+|---------|--------|-----------|--------------|
+| `git status` | `git_status_filter.zig` | ~56% | Yes |
+| `git log` | `git_log_filter.zig` | ~85% | Yes |
+| `git diff` | `git_diff_filter.zig` | ~75% | Yes |
+| `ls -la` | `ls_filter.zig` | ~72% | Yes |
+| `find` | `find_filter.zig` | ~63% | Yes |
+
+### How Native Filters Work
+
+Native filters are **automatically applied** when the bash tool executes a matching command, if token optimization is enabled in configuration.
+
+```bash
+# Enable globally
+export KIMIZ_TOKEN_OPTIMIZE=true
+export KIMIZ_TOKEN_STRATEGY=balanced  # or conservative, aggressive
+
+# Now bash tool calls are auto-optimized:
+$ kimiz "Run git status"
+# Output goes through native git status filter automatically
+```
+
+### Configuration
+
+Environment variables:
+- `KIMIZ_TOKEN_OPTIMIZE` - `true`/`1`/`yes` to enable
+- `KIMIZ_TOKEN_STRATEGY` - `conservative` | `balanced` | `aggressive`
+- `KIMIZ_USE_NATIVE_FILTERS` - `true` to prefer native over RTK
+
+## RTK Skill (Phase 1)
+
+For commands **not yet covered** by native filters, use the `rtk-optimize` skill with the external [rtk](https://github.com/rtk-ai/rtk) tool.
+
+### Prerequisites
 
 RTK must be installed on your system:
 
@@ -47,7 +90,9 @@ The `strategy` parameter accepts three values:
 - `balanced` - Default optimization (~70-80% reduction)
 - `aggressive` - Maximum compression (~90% reduction)
 
-**Note**: Currently, all strategies use rtk's default optimizations. Future enhancements will map strategies to command-specific flags (e.g., `-u` for ultra-compact git status).
+**Behavior**:
+- For **native filters**, strategy controls truncation limits and detail level
+- For **RTK skill**, all strategies currently use rtk's default optimizations
 
 ## Usage
 
@@ -176,7 +221,20 @@ Makefile  6.4K
 📊 3 files, 4 dirs
 ```
 
-## Error Handling
+## Native Filter Error Handling
+
+### Command Not Covered by Native Filter
+
+If a command has no native filter and RTK is not installed, the bash tool will return the raw unoptimized output.
+
+### Missing KIMIZ_TOKEN_OPTIMIZE
+
+Native filters only activate when explicitly enabled:
+```bash
+export KIMIZ_TOKEN_OPTIMIZE=true
+```
+
+## RTK Skill Error Handling
 
 ### RTK Not Installed
 
@@ -211,37 +269,48 @@ Error: Missing required parameter: command
 
 ### Memory Management
 
-The skill properly manages memory using kimiz's allocator system:
+Both native filters and the RTK skill properly manage memory using kimiz's allocator system:
 - Command output is allocated and returned to the caller
 - Caller (CLI) is responsible for freeing the result strings
 - No memory leaks in normal operation
 
 ### Performance
 
-- **Overhead**: <10ms (C popen execution)
+**Native Filters**:
+- **Overhead**: ~1-2ms (pure Zig processing)
 - **Output limit**: 100KB (prevents excessive memory use)
+
+**RTK Skill**:
+- **Overhead**: <10ms (C popen execution)
+- **Output limit**: 100KB
 - **Timeout**: Inherited from rtk (30s default)
 
 ### Architecture
 
 ```
-User → CLI → SkillEngine → token_optimize.zig → rtk (C popen) → Output
-                                                      ↓
-                                                  Filtered
-                                                  Compressed
-                                                  -60-90% tokens
+                      Native Filters (Phase 2)
+User → bash tool ─────────────────────────────→ Filtered Output
+              ↓      ┌──────────────────┐
+           git status  │ git_status_filter.zig │
+           ls -la      │ ls_filter.zig         │
+           find        │ find_filter.zig       │
+              ↓      └──────────────────┘
+
+                      RTK Skill (Phase 1)
+User → CLI → SkillEngine → token_optimize.zig → rtk → Output
 ```
 
 ## Future Enhancements
 
-### Phase 2: Native Implementation (Planned)
+### Phase 2 Extension
 
-- [ ] Remove rtk dependency - implement filters in native Zig
-- [ ] Strategy parameter maps to actual compression levels
-- [ ] Command-specific optimizations (git, test, lint)
-- [ ] Configurable compression rules
+- [x] Native git filters (status, log, diff)
+- [x] Native file filters (ls, find)
+- [x] Configurable via environment variables
+- [ ] Native test runner filters (cargo test, npm test, pytest)
+- [ ] Native build/lint filters (tsc, eslint, clippy)
 
-### Phase 3: Advanced Features (Planned)
+### Phase 3: Advanced Features
 
 - [ ] Adaptive compression based on context window
 - [ ] Learn user preferences
@@ -249,6 +318,19 @@ User → CLI → SkillEngine → token_optimize.zig → rtk (C popen) → Output
 - [ ] Skill composition (chain with other skills)
 
 ## Troubleshooting
+
+### Native filters not working
+
+Check that optimization is enabled:
+```bash
+echo $KIMIZ_TOKEN_OPTIMIZE  # Should print 'true'
+```
+
+Check that the command is supported by native filters:
+```bash
+# Currently supported: git status, git log, git diff, ls, find
+# All other commands require RTK skill
+```
 
 ### rtk command not found
 
@@ -286,10 +368,17 @@ brew upgrade rtk
 
 ## Changelog
 
+### v1.1.0 (2026-04-05)
+
+- ✅ Phase 2 native filters integrated
+- ✅ Native support for git status, git log, git diff, ls, find
+- ✅ Environment variable configuration
+- ✅ Bash tool auto-optimization
+
 ### v1.0.0 (2026-04-05)
 
-- ✅ Initial implementation
-- ✅ Git, file, test, and lint command support
+- ✅ Initial implementation (Phase 1)
+- ✅ RTK external tool wrapper
+- ✅ Git, file, test, and lint command support via RTK
 - ✅ Basic error handling
 - ✅ Memory leak fixes
-- ⚠️  Strategy parameter reserved for future use
