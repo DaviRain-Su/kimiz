@@ -1,10 +1,8 @@
 const std = @import("std");
-const kimiz = @import("kimiz");
+const cli = @import("cli/root.zig");
 
 pub fn main() !void {
-    // Prints to stderr, ignoring potential errors.
-    std.debug.print("All your {s} are belong to us.\n", .{"codebase"});
-    try kimiz.bufferedPrint();
+    try cli.main();
 }
 
 test "simple test" {
