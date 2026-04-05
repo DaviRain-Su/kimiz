@@ -18,14 +18,23 @@
 
 ## Phase 0-2: 项目基础与核心 Agent 编码规范
 
+### Zig 版本策略
+
+- **目标 Zig 版本**: `0.16.0-dev`
+- **所有新代码必须使用 Zig 0.16 API**
+- **禁止**: 使用 Zig 0.15 中已废弃或在 0.16 中移除的 API
+- **示例**: `main()` 必须使用 `std.process.Init` 签名；`std.http.Client` 必须传入 `std.Io`
+
 ### Zig 代码质量基线
 
 | 文档 | 核心要点 | 应用场景 |
 |------|----------|----------|
 | [TigerBeetle Patterns](TIGERBEETLE-PATTERNS-ANALYSIS.md) | 状态机、显式错误处理、无隐藏分配、Arena 模式 | **所有 Zig 代码** |
 | [NullClaw Lessons](NULLCLAW-LESSONS-QUICKREF.md) | 工具沙箱、优雅降级、日志可观测、资源边界 | **Agent Loop、工具实现** |
+| [Zig 0.16 Breaking Changes](ZIG-0.16-BREAKING-CHANGES-SUMMARY.md) | 0.15→0.16 迁移差异对照 | **API 选型时必读** |
 
 **关键原则（写入代码时必须遵守）**:
+- **Zig 0.16 优先**: 新实现优先使用 0.16 引入的 API，不向后兼容 0.15
 - **无隐藏分配**: 所有分配必须通过 `allocator` 参数显式传入
 - **状态机显式化**: Agent Loop 必须用明确的 enum 状态，不要用隐式跳转
 - **错误传播**: 底层错误要映射到语义化的 `AiError`，不要 `catch unreachable`

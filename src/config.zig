@@ -149,64 +149,64 @@ pub const Config = struct {
     /// Load configuration from environment variables
     pub fn loadFromEnv(self: *Self) !void {
         // Load API keys
-        if (try cli.getEnvVar(self.allocator, "OPENAI_API_KEY")) |key| {
+        if (cli.getEnvVar(self.allocator, "OPENAI_API_KEY")) |key| {
             self.openai_api_key = key;
-        } else {}
+        } else |_| {}
         
-        if (try cli.getEnvVar(self.allocator, "ANTHROPIC_API_KEY")) |key| {
+        if (cli.getEnvVar(self.allocator, "ANTHROPIC_API_KEY")) |key| {
             self.anthropic_api_key = key;
-        } else {}
+        } else |_| {}
         
-        if (try cli.getEnvVar(self.allocator, "GOOGLE_API_KEY")) |key| {
+        if (cli.getEnvVar(self.allocator, "GOOGLE_API_KEY")) |key| {
             self.google_api_key = key;
-        } else {}
+        } else |_| {}
         
-        if (try cli.getEnvVar(self.allocator, "KIMI_API_KEY")) |key| {
+        if (cli.getEnvVar(self.allocator, "KIMI_API_KEY")) |key| {
             self.kimi_api_key = key;
-        } else {}
+        } else |_| {}
         
-        if (try cli.getEnvVar(self.allocator, "FIREWORKS_API_KEY")) |key| {
+        if (cli.getEnvVar(self.allocator, "FIREWORKS_API_KEY")) |key| {
             self.fireworks_api_key = key;
-        } else {}
+        } else |_| {}
         
-        if (try cli.getEnvVar(self.allocator, "OPENROUTER_API_KEY")) |key| {
+        if (cli.getEnvVar(self.allocator, "OPENROUTER_API_KEY")) |key| {
             self.openrouter_api_key = key;
-        } else {}
+        } else |_| {}
         
         // Load model settings
-        if (try cli.getEnvVar(self.allocator, "KIMIZ_MODEL")) |model| {
+        if (cli.getEnvVar(self.allocator, "KIMIZ_MODEL")) |model| {
             self.default_model = model;
-        } else {}
+        } else |_| {}
         
         // Load behavior settings
-        if (try cli.getEnvVar(self.allocator, "KIMIZ_YOLO_MODE")) |val| {
+        if (cli.getEnvVar(self.allocator, "KIMIZ_YOLO_MODE")) |val| {
             defer self.allocator.free(val);
             self.yolo_mode = std.mem.eql(u8, val, "1") or 
                             std.mem.eql(u8, val, "true") or
                             std.mem.eql(u8, val, "yes");
-        } else {}
+        } else |_| {}
         
         // Load token optimization settings (Phase 2)
-        if (try cli.getEnvVar(self.allocator, "KIMIZ_TOKEN_OPTIMIZE")) |val| {
+        if (cli.getEnvVar(self.allocator, "KIMIZ_TOKEN_OPTIMIZE")) |val| {
             defer self.allocator.free(val);
             self.token_optimization.enabled = std.mem.eql(u8, val, "1") or 
                                               std.mem.eql(u8, val, "true") or
                                               std.mem.eql(u8, val, "yes");
-        } else {}
+        } else |_| {}
         
-        if (try cli.getEnvVar(self.allocator, "KIMIZ_TOKEN_STRATEGY")) |val| {
+        if (cli.getEnvVar(self.allocator, "KIMIZ_TOKEN_STRATEGY")) |val| {
             defer self.allocator.free(val);
             if (TokenOptimizationConfig.Strategy.fromString(val)) |strategy| {
                 self.token_optimization.strategy = strategy;
             }
-        } else {}
+        } else |_| {}
         
-        if (try cli.getEnvVar(self.allocator, "KIMIZ_USE_NATIVE_FILTERS")) |val| {
+        if (cli.getEnvVar(self.allocator, "KIMIZ_USE_NATIVE_FILTERS")) |val| {
             defer self.allocator.free(val);
             self.token_optimization.use_native_filters = std.mem.eql(u8, val, "1") or 
                                                          std.mem.eql(u8, val, "true") or
                                                          std.mem.eql(u8, val, "yes");
-        } else {}
+        } else |_| {}
     }
     
     /// Get API key for a provider

@@ -2,19 +2,15 @@ const std = @import("std");
 const cli = @import("cli/root.zig");
 const utils = @import("utils/root.zig");
 
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+pub fn main(init: std.process.Init) !u8 {
+    const allocator = init.gpa;
 
-    // Initialize global IoManager (no-op on Zig 0.15)
-    try utils.initIoManager(allocator);
+    // Initialize global IoManager with the Io from process Init
+    try utils.initIoManager(allocator, init.io);
     defer utils.deinitIoManager();
 
-    const args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args);
-
-    try cli.run(allocator, args);
+    try cli.run(allocator, init.environ_map, init.minimal.args);
+    return 0;
 }
 
 test "simple test" {

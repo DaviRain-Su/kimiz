@@ -1,9 +1,29 @@
 # FIX-ZIG-015: 修复 Zig 0.15.2 编译兼容性
 
 **任务类型**: Bugfix  
-**优先级**: P0  
-**阻塞**: 所有其他任务  
-**预计耗时**: 1.5h
+**优先级**: P0 → **已取消 (cancelled)**  
+**状态**: 项目已确认目标版本为 **Zig 0.16**，此修复不再适用。为 0.15 做的兼容性修改已全部回滚。
+
+---
+
+## 历史记录
+
+> 以下内容保留作为历史参考。当前代码已恢复为 Zig 0.16 API。
+
+### 原始问题
+
+项目代码在最近几次提交中被部分改写成 **Zig 0.16** API，但某个开发环境仍然是 **Zig 0.15.2**。这导致 `zig build` 完全失败。
+
+### 修复内容（已回滚）
+
+- `src/main.zig`: 回退到 `pub fn main() !void`（移除 `std.process.Init`）
+- `src/http.zig`: 移除 `std.Io` 依赖
+- `src/utils/io_manager.zig`: 改成 Zig 0.15 no-op shim
+- `src/cli/root.zig`: 修复 args/env 类型以适配 0.15
+
+### 回滚原因
+
+项目 Makefile 明确指定使用 `$(HOME)/zig-0.16.0-dev/zig`，且团队统一目标版本为 0.16。因此 0.15 兼容性修复与项目方向冲突，已被撤销。
 
 ---
 
@@ -12,12 +32,6 @@
 - [TigerBeetle Patterns](../TIGERBEETLE-PATTERNS-ANALYSIS.md) - Zig 代码质量基线（显式错误处理、资源边界）
 - [NullClaw Lessons](../NULLCLAW-LESSONS-QUICKREF.md) - 错误恢复与资源管理原则
 - [Zig 0.16 Breaking Changes](../ZIG-0.16-BREAKING-CHANGES-SUMMARY.md) - 0.15→0.16 API 差异对照
-
----
-
-## 问题描述
-
-项目代码在最近几次提交中被部分改写成 **Zig 0.16** API，但当前构建环境仍然是 **Zig 0.15.2**。这导致 `zig build` 完全失败，项目无法编译、无法测试、无法运行。
 
 ### 编译错误输出
 

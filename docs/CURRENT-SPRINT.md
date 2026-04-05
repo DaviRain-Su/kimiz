@@ -20,14 +20,9 @@
 ### P0 - 阻塞级
 
 #### FIX-ZIG-015: 修复 Zig 0.15.2 编译兼容性
-- **状态**: `done`
-- **Spec**: `docs/specs/FIX-ZIG-015-compatibility.md`
-- **问题**: 代码使用了 Zig 0.16 API（`std.process.Init`, `std.Io`），但环境是 0.15.2
-- **影响文件**: `src/main.zig`, `src/http.zig`, `src/utils/io_manager.zig` 等
-- **验收**:
-  - [ ] `zig build` 成功
-  - [ ] `zig build test` 成功
-  - [ ] REPL 可启动
+- **状态**: `cancelled`
+- **说明**: 已确认项目目标版本为 Zig 0.16，此任务不再适用。之前为 0.15 做的兼容性修复已全部回滚。
+- **影响文件**: `src/main.zig`, `src/http.zig`, `src/utils/io_manager.zig`, `src/cli/root.zig` 等
 
 #### T-092-VERIFY: 验证 delegate subagent 注册
 - **状态**: `todo`

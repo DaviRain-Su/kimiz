@@ -109,54 +109,64 @@ fn handleAgentEvent(evt: agent.AgentEvent) void {
     }
 }
 
-/// Get environment variable value (allocates a copy)
-pub fn getEnvVar(allocator: std.mem.Allocator, name: []const u8) error{OutOfMemory}!?[]const u8 {
-    const nt_name = try allocator.dupeZ(u8, name);
-    defer allocator.free(nt_name);
-    const ptr = std.c.getenv(nt_name) orelse return null;
-    return try allocator.dupe(u8, std.mem.sliceTo(ptr, 0));
+// Global environment map storage
+var g_environ_map: ?*std.process.Environ.Map = null;
+
+/// Initialize environment variable access
+pub fn initEnvVars(environ_map: *std.process.Environ.Map) void {
+    g_environ_map = environ_map;
+}
+
+/// Get environment variable value
+pub fn getEnvVar(allocator: std.mem.Allocator, name: []const u8) error{NotFound, OutOfMemory}![]const u8 {
+    const env_map = g_environ_map orelse return error.NotFound;
+    const value = env_map.get(name) orelse return error.NotFound;
+    return allocator.dupe(u8, value);
 }
 
 pub fn run(
     allocator: std.mem.Allocator,
-    args: []const []const u8,
+    environ_map: *std.process.Environ.Map,
+    args: std.process.Args,
 ) !void {
-    // args is []const []const u8 from main
+    // Initialize environment variables
+    initEnvVars(environ_map);
+    // Parse simple args using iterator
+    var it = args.iterate();
+    
+    // Collect args into a list for easier handling
+    var args_list: std.ArrayList([]const u8) = .empty;
+    defer args_list.deinit(allocator);
+    
+    while (it.next()) |arg| {
+        try args_list.append(allocator, arg);
+    }
+    
+    const args_slice = args_list.items;
 
-    // Check if we have any arguments (skip program name at index 0)
-    if (args.len > 1) {
-        const first = args[1];
-
-        // Check for help
-        if (std.mem.eql(u8, first, "--help") or
-            std.mem.eql(u8, first, "-h") or
-            std.mem.eql(u8, first, "help"))
-        {
-            printHelp();
-            return;
-        }
-
-        // Check for version
-        if (std.mem.eql(u8, first, "--version") or
-            std.mem.eql(u8, first, "-v") or
-            std.mem.eql(u8, first, "version"))
-        {
-            printLine("kimiz version 0.3.0");
-            return;
-        }
-
-        // Check for skill command
-        if (std.mem.eql(u8, first, "skill")) {
-            if (args.len < 3) {
-                printLine("Usage: kimiz skill <skill_id> [param=value...]");
-                return;
-            }
-            try runSkillCommand(allocator, args[2..args.len]);
-            return;
-        }
+    // Check for help
+    if (args_slice.len > 1 and (std.mem.eql(u8, args_slice[1], "--help") or std.mem.eql(u8, args_slice[1], "-h") or std.mem.eql(u8, args_slice[1], "help"))) {
+        printHelp();
+        return;
     }
 
-    // Interactive mode (no args or unknown command)
+    // Check for version
+    if (args_slice.len > 1 and (std.mem.eql(u8, args_slice[1], "--version") or std.mem.eql(u8, args_slice[1], "-v") or std.mem.eql(u8, args_slice[1], "version"))) {
+        printLine("kimiz version 0.3.0");
+        return;
+    }
+
+    // Check for skill command
+    if (args_slice.len > 1 and std.mem.eql(u8, args_slice[1], "skill")) {
+        if (args_slice.len < 3) {
+            printLine("Usage: kimiz skill <skill_id> [param=value...]");
+            return;
+        }
+        try runSkillCommand(allocator, args_slice[2..]);
+        return;
+    }
+
+    // Interactive mode
     try runInteractive(allocator);
 }
 
@@ -192,7 +202,10 @@ fn runInteractive(allocator: std.mem.Allocator) !void {
 
     // Get working directory
     var cwd_buf: [std.fs.max_path_bytes]u8 = undefined;
-    const cwd = std.posix.getcwd(&cwd_buf) catch ".";
+    const cwd = if (std.c.getcwd(&cwd_buf, cwd_buf.len)) |ptr|
+        std.mem.sliceTo(ptr, 0)
+    else
+        ".";
 
     // Collect workspace context
     print("📁 Collecting workspace context...\n");

@@ -8,13 +8,14 @@
 ## 0. 环境约束（必须先确认）
 
 ```bash
-zig version  # 必须是 0.15.2
+zig version  # 必须是 0.16.0-dev+
 ```
 
-- **Zig 版本**: `0.15.2`
+- **Zig 版本**: `0.16.0-dev`（Makefile 使用 `$(HOME)/zig-0.16.0-dev/zig`）
 - **项目路径**: `/Users/davirian/dev/active/kimiz`
-- **构建命令**: `zig build` / `zig build test`
-- **当前状态**: ❌ **无法编译**（代码部分迁移到了 Zig 0.16 API，但环境仍是 0.15.2）
+- **构建命令**: `make build` / `make test`（推荐）或 `zig build` / `zig build test`
+- **当前状态**: ✅ **代码已升级到 Zig 0.16 API**
+- **⚠️ 注意**: 部分开发/CI 环境可能仍为 0.15.2，需优先保证 0.16 编译通过
 
 ---
 
@@ -40,7 +41,7 @@ zig version  # 必须是 0.15.2
 
 | # | 优先级 | 任务ID | 标题 | 状态 | Spec 文档 | 预计 |
 |---|--------|--------|------|------|-----------|------|
-| 1 | P0 | **FIX-ZIG-015** | 修复 Zig 0.15.2 编译兼容性 | `done` | [`docs/specs/FIX-ZIG-015-compatibility.md`](docs/specs/FIX-ZIG-015-compatibility.md) | 1.5h |
+| 1 | P0 | **FIX-ZIG-015** | ~~修复 Zig 0.15.2 编译兼容性~~ | `cancelled` | 已确认项目目标为 Zig 0.16，此修复回滚 | - |
 | 2 | P0 | **T-092-VERIFY** | 验证 delegate subagent 注册（代码已提交，待验证） | `todo` | [`docs/specs/T-092-verify-delegate-tool.md`](docs/specs/T-092-verify-delegate-tool.md) | 30min |
 | 3 | P0 | **T-119-VERIFY** | 验证 git worktree 隔离（代码已提交，待验证） | `todo` | [`docs/specs/T-119-verify-worktree.md`](docs/specs/T-119-verify-worktree.md) | 1h |
 | 4 | P1 | **T-009-E2E** | 补充 E2E 测试（核心工具 + Agent Loop） | `todo` | [`docs/specs/T-009-e2e-tests.md`](docs/specs/T-009-e2e-tests.md) | 4h |
@@ -54,8 +55,10 @@ zig version  # 必须是 0.15.2
 1. **从队列中选第一个 `todo` 任务**
 2. **阅读对应的 Technical Spec**（`docs/specs/` 下的 `.md` 文件）
 3. **根据任务阶段，阅读 `docs/DESIGN-REFERENCES.md` 中的相关参考文档**
-4. **实现代码**（遵守参考文档中的设计原则）
-5. **运行 `zig build test`**（必须全绿）
+4. **实现代码**
+   - 遵守参考文档中的设计原则
+   - **必须使用 Zig 0.16 API**（如 `std.process.Init`, `std.Io` 等），禁止使用已废弃的 0.15 API
+5. **运行 `zig build test`**（在 Zig 0.16 环境下必须全绿）
 6. **更新本文件中的状态**（把 `todo` 改成 `done`）
 7. **更新 `tasks/active/sprint-2026-04/README.md` 中的状态**
 8. **提交 commit**，消息格式：
