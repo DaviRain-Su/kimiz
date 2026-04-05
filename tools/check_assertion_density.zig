@@ -43,24 +43,21 @@ const TotalStats = struct {
     }
 };
 
-pub fn main() !void {
-    // Use testing allocator for simplicity
-    const allocator = std.testing.allocator;
-
-    // Parse arguments
-    var args = try std.process.argsWithAllocator(allocator);
-    defer args.deinit();
-    
-    _ = args.next(); // Skip program name
+pub fn main(init: std.process.Init) !u8 {
+    const allocator = init.gpa;
+    const args = init.minimal.args;
     
     var config = Config{};
     
-    while (args.next()) |arg| {
+    var i: usize = 1; // Skip program name (args[0])
+    while (i < args.len) : (i += 1) {
+        const arg = args[i];
         if (std.mem.eql(u8, arg, "--ci")) {
             config.ci_mode = true;
         } else if (std.mem.eql(u8, arg, "--min-density")) {
-            if (args.next()) |value| {
-                config.min_density = try std.fmt.parseFloat(f64, value);
+            i += 1;
+            if (i < args.len) {
+                config.min_density = try std.fmt.parseFloat(f64, args[i]);
             }
         } else {
             config.directory = arg;
@@ -86,8 +83,9 @@ pub fn main() !void {
     
     // Exit code: 0 if meets target, 1 otherwise
     if (stats.density() < config.min_density) {
-        std.process.exit(1);
+        return 1;
     }
+    return 0;
 }
 
 fn scanDirectory(

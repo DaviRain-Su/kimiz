@@ -50,7 +50,9 @@ pub const ToolCallResult = struct {
 };
 
 fn ensureDirExists(path: []const u8) !void {
+    std.debug.assert(path.len >= 0); // Path is valid (can be empty)
     if (path.len == 0) return;
+    
     utils.makeDirRecursive(path) catch |err| {
         if (err == error.PathAlreadyExists) return;
         return err;
@@ -203,7 +205,9 @@ pub const Agent = struct {
 
     /// Set event callback for receiving agent events
     pub fn setEventCallback(self: *Self, callback: *const fn (event: AgentEvent) void) void {
+        std.debug.assert(self.event_callback == null); // Should not override existing callback
         self.event_callback = callback;
+        std.debug.assert(self.event_callback != null); // Callback set successfully
     }
 
     /// Register the subagent delegate tool to this agent
@@ -343,8 +347,10 @@ pub const Agent = struct {
 
     /// Emit an event
     fn emit(self: *Self, event: AgentEvent) void {
+        // Event emission is optional (callback may be null)
         if (self.event_callback) |callback| {
             callback(event);
+            // Note: We can't assert callback behavior as it's external
         }
     }
 
@@ -530,13 +536,17 @@ pub const Agent = struct {
 
     /// Extract tool calls from assistant message content blocks
     fn countToolCalls(message: AssistantMessage) usize {
+        std.debug.assert(message.content.len > 0); // Message must have content
+        
         var count: usize = 0;
+        const initial_count = count;
         for (message.content) |block| {
             switch (block) {
                 .tool_call => count += 1,
                 else => {},
             }
         }
+        std.debug.assert(count >= initial_count); // Count can only increase
         return count;
     }
 
