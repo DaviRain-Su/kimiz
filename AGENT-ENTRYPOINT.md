@@ -1,7 +1,7 @@
 # 🤖 KimiZ Coding Agent Entrypoint
 
-> **如果你是来修改 KimiZ 代码的 Agent，这是你的唯一入口。**  
-> 不要猜测，不要读旧的任务归档。一切当前可执行的任务都在这里。
+> **如果你是来修改 KimiZ 代码的 Agent，先读 `AGENTS.md`，再读本文档。**  
+> `AGENTS.md` 是通用行为规范，本文档是当前执行状态的实时看板。
 
 ---
 
