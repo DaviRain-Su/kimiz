@@ -176,7 +176,8 @@ const AnthropicDelta = union(enum) {
 // ============================================================================
 
 pub fn complete(http_client: *HttpClient, ctx: core.Context) !core.AssistantMessage {
-    const api_key = core.getApiKey(http_client.allocator, .anthropic) orelse return core.AiError.ApiKeyNotFound;
+    const provider_key = ctx.model.provider.known;
+    const api_key = core.getApiKey(http_client.allocator, provider_key) orelse return core.AiError.ApiKeyNotFound;
     defer http_client.allocator.free(api_key);
 
     const request_body = try serializeRequest(http_client.allocator, ctx);
@@ -197,7 +198,9 @@ pub fn complete(http_client: *HttpClient, ctx: core.Context) !core.AssistantMess
         .value = "application/json",
     });
 
-    const url = core.ANTHROPIC_BASE_URL ++ "/v1/messages";
+    const base_url = getBaseUrl(ctx);
+    const url = try std.fmt.allocPrint(http_client.allocator, "{s}/v1/messages", .{base_url});
+    defer http_client.allocator.free(url);
 
     var response = try http_client.postJson(url, headers.items, request_body);
     defer response.deinit();
@@ -214,7 +217,8 @@ pub fn stream(
     ctx: core.Context,
     callback: *const fn (event: ai.SseEvent) void,
 ) !void {
-    const api_key = core.getApiKey(http_client.allocator, .anthropic) orelse return core.AiError.ApiKeyNotFound;
+    const provider_key = ctx.model.provider.known;
+    const api_key = core.getApiKey(http_client.allocator, provider_key) orelse return core.AiError.ApiKeyNotFound;
     defer http_client.allocator.free(api_key);
 
     var streaming_ctx = ctx;
@@ -242,7 +246,9 @@ pub fn stream(
         .value = "text/event-stream",
     });
 
-    const url = core.ANTHROPIC_BASE_URL ++ "/v1/messages";
+    const base_url = getBaseUrl(ctx);
+    const url = try std.fmt.allocPrint(http_client.allocator, "{s}/v1/messages", .{base_url});
+    defer http_client.allocator.free(url);
 
     const stream_ctx = StreamContext{
         .callback = callback,
@@ -525,6 +531,17 @@ fn parseResponse(allocator: std.mem.Allocator, body: []const u8) !core.Assistant
             .cache_read_input_tokens = response.usage.cache_read_input_tokens,
         },
     };
+}
+
+fn getBaseUrl(ctx: core.Context) []const u8 {
+    switch (ctx.model.api) {
+        .known => |api| switch (api) {
+            .@"kimi-code-anthropic" => return core.KIMI_CODE_BASE_URL,
+            else => {},
+        },
+        .custom => {},
+    }
+    return core.ANTHROPIC_BASE_URL;
 }
 
 fn mapStopReason(reason: ?[]const u8) core.StopReason {

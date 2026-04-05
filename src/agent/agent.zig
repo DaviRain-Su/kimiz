@@ -168,57 +168,7 @@ pub const Agent = struct {
         try self.runLoop();
     }
 
-    /// Continue from a tool result
-    pub fn continueFromToolResult(
-        self: *Self,
-        tool_call_id: []const u8,
-        tool_name: []const u8,
-        result: ToolResult,
-    ) anyerror!void {
-        // Deep copy content blocks
-        const content = try self.allocator.alloc(core.UserContentBlock, result.content.len);
-        errdefer self.allocator.free(content);
-
-        for (result.content, 0..) |block, i| {
-            content[i] = switch (block) {
-                .text => |text| .{ .text = try self.allocator.dupe(u8, text) },
-                .image => |img| .{ .image = .{
-                    .data = try self.allocator.dupe(u8, img),
-                    .mime_type = "image/png", // Default mime type
-                }},
-                .image_url => |img_url| .{ .image_url = .{
-                    .url = try self.allocator.dupe(u8, img_url.url),
-                    .detail = .auto,
-                }},
-            };
-        }
-
-        // Ensure content is freed if subsequent operations fail
-        errdefer {
-            for (content) |block| {
-                switch (block) {
-                    .text => |text| self.allocator.free(text),
-                    .image => |img| self.allocator.free(img.data),
-                    .image_url => |img_url| self.allocator.free(img_url.url),
-                }
-            }
-        }
-
-        const tool_result_msg = Message{
-            .tool_result = .{
-                .tool_call_id = try self.allocator.dupe(u8, tool_call_id),
-                .tool_name = try self.allocator.dupe(u8, tool_name),
-                .content = content,
-                .is_error = result.is_error,
-            },
-        };
-        try self.messages.append(self.allocator, tool_result_msg);
-
-        // Continue the loop
-        try self.runLoop();
-    }
-
-    /// Main agent loop
+    /// Main agent loop - Fixed version with proper iteration handling
     fn runLoop(self: *Self) !void {
         self.iteration_count = 0;
 
@@ -238,10 +188,28 @@ pub const Agent = struct {
                 .tools = self.getToolDefinitions(),
             };
 
-            // Call AI using the reused client
+            // Call AI using the reused client with error recovery
             const response = self.ai_client.complete(ctx) catch |err| {
                 self.state = .err;
-                self.emit(.{ .err = @errorName(err) });
+                const err_msg = try std.fmt.allocPrint(self.allocator, "AI call failed: {s}", .{@errorName(err)});
+                defer self.allocator.free(err_msg);
+                self.emit(.{ .err = err_msg });
+                
+                // Add error message to history so the conversation can continue
+                const error_assistant_msg = Message{
+                    .assistant = .{
+                        .content = &[_]core.AssistantContentBlock{.{
+                            .text = .{ .text = "I encountered an error. Let me try again." },
+                        }},
+                        .stop_reason = .stop,
+                    },
+                };
+                try self.messages.append(self.allocator, error_assistant_msg);
+                
+                // Continue loop instead of returning - allow retry
+                if (self.iteration_count < self.options.max_iterations) {
+                    continue;
+                }
                 return err;
             };
 
@@ -253,42 +221,66 @@ pub const Agent = struct {
 
             self.emit(.{ .message_complete = response });
 
-            // Check for tool calls
-            const has_tool_calls = self.hasToolCalls(response);
-
-            if (has_tool_calls) {
+            // Check for tool calls and execute them all
+            const tool_calls = self.extractToolCalls(response);
+            
+            if (tool_calls.len > 0) {
                 self.state = .tool_calling;
 
-                // Execute tools
-                for (response.content) |block| {
-                    switch (block) {
-                        .tool_call => |tc| {
-                            self.emit(.{ .tool_call_start = .{
-                                .id = tc.tool_call.id,
-                                .name = tc.tool_call.name,
-                            } });
+                // Execute all tool calls
+                for (tool_calls, 0..) |tc, i| {
+                    self.emit(.{ .tool_call_start = .{
+                        .id = tc.id,
+                        .name = tc.name,
+                    } });
 
-                            // Find and execute the tool
-                            const result = try self.executeTool(tc.tool_call);
+                    // Find and execute the tool with error recovery
+                    const result = self.executeToolWithRecovery(tc) catch |err| {
+                        const end_time = utils.milliTimestamp();
+                        const execution_time = @as(i64, end_time - utils.milliTimestamp());
 
-                            self.emit(.{ .tool_call_complete = .{
-                                .id = tc.tool_call.id,
-                                .name = tc.tool_call.name,
-                            } });
+                        // Record failed tool execution (log error but don't fail)
+                        self.recordToolExecution(tc.name, false, execution_time) catch |e| {
+                            std.log.warn("Failed to record tool execution: {s}", .{@errorName(e)});
+                        };
 
-                            // Continue loop with tool result
-                            try self.continueFromToolResult(
-                                tc.tool_call.id,
-                                tc.tool_call.name,
-                                result,
-                            );
+                        // Create error result that allows conversation to continue
+                        const err_result = ToolResult{
+                            .content = &[_]tool_mod.UserContentBlock{.{
+                                .text = try self.allocator.dupe(u8, @errorName(err)),
+                            }},
+                            .is_error = true,
+                        };
 
-                            // Only handle one tool call at a time for now
-                            return;
-                        },
-                        else => {},
+                        self.emit(.{ .tool_call_complete = .{
+                            .id = tc.id,
+                            .name = tc.name,
+                        } });
+
+                        // Add tool result to messages and continue
+                        try self.addToolResultToMessages(tc.id, tc.name, err_result);
+                        
+                        // Continue to next tool call if any
+                        continue;
+                    };
+
+                    self.emit(.{ .tool_call_complete = .{
+                        .id = tc.id,
+                        .name = tc.name,
+                    } });
+
+                    // Add tool result to messages
+                    try self.addToolResultToMessages(tc.id, tc.name, result);
+
+                    // Only the first tool call in this batch triggers a new AI call
+                    // Subsequent tool calls will be processed in the next iteration
+                    if (i == 0) {
+                        break;
                     }
                 }
+                
+                // Continue to next iteration to let AI process the tool results
+                continue;
             } else {
                 // No tool calls, we're done
                 self.state = .completed;
@@ -300,10 +292,150 @@ pub const Agent = struct {
         if (self.iteration_count >= self.options.max_iterations) {
             self.state = .err;
             self.emit(.{ .err = "Max iterations reached" });
+            return error.MaxIterationsReached;
         }
     }
 
-    /// Check if response has tool calls
+    /// Extract all tool calls from assistant message
+    fn extractToolCalls(self: *Self, message: AssistantMessage) []const core.ToolCall {
+        _ = self;
+        var tool_calls: [16]core.ToolCall = undefined;
+        var count: usize = 0;
+        
+        for (message.content) |block| {
+            switch (block) {
+                .tool_call => |tc| {
+                    if (count < 16) {
+                        tool_calls[count] = tc.tool_call;
+                        count += 1;
+                    }
+                },
+                else => {},
+            }
+        }
+        
+        // Return slice of the tool calls found
+        return tool_calls[0..count];
+    }
+
+    /// Execute tool with error recovery
+    fn executeToolWithRecovery(self: *Self, tool_call: core.ToolCall) !ToolResult {
+        const start_time = utils.milliTimestamp();
+
+        // Find the tool
+        for (self.options.tools) |agent_tool| {
+            if (std.mem.eql(u8, agent_tool.tool.name, tool_call.name)) {
+                // Parse arguments with error recovery
+                const parsed = std.json.parseFromSlice(
+                    std.json.Value,
+                    self.allocator,
+                    tool_call.arguments,
+                    .{},
+                ) catch {
+                    return ToolResult{
+                        .content = &[_]tool_mod.UserContentBlock{.{ .text = "Failed to parse arguments" }},
+                        .is_error = true,
+                    };
+                };
+                defer parsed.deinit();
+
+                // Execute the tool with arena
+                var arena = std.heap.ArenaAllocator.init(self.allocator);
+                defer arena.deinit();
+
+                var arena_mut = arena;
+                const result = agent_tool.execute(arena_mut.allocator(), parsed.value) catch |err| {
+                    const end_time = utils.milliTimestamp();
+                    const execution_time = @as(i64, end_time - start_time);
+                    
+                    // Record failed execution (log error but don't fail)
+                    self.recordToolExecution(tool_call.name, false, execution_time) catch |e| {
+                        std.log.warn("Failed to record tool execution: {s}", .{@errorName(e)});
+                    };
+
+                    return ToolResult{
+                        .content = &[_]tool_mod.UserContentBlock{.{ .text = @errorName(err) }},
+                        .is_error = true,
+                    };
+                };
+
+                const end_time = utils.milliTimestamp();
+                const execution_time = @as(i64, end_time - start_time);
+
+                // Record successful execution (log error but don't fail)
+                self.recordToolExecution(tool_call.name, true, execution_time) catch |e| {
+                    std.log.warn("Failed to record tool execution: {s}", .{@errorName(e)});
+                };
+
+                self.emit(.{ .tool_result = .{
+                    .tool_call_id = tool_call.id,
+                    .tool_name = tool_call.name,
+                    .result = result,
+                    .execution_time_ms = @intCast(end_time - start_time),
+                } });
+
+                return result;
+            }
+        }
+
+        return error.ToolNotFound;
+    }
+
+    /// Add tool result to messages
+    fn addToolResultToMessages(self: *Self, tool_call_id: []const u8, tool_name: []const u8, result: ToolResult) !void {
+        // Deep copy content blocks
+        const content = try self.allocator.alloc(core.UserContentBlock, result.content.len);
+        errdefer self.allocator.free(content);
+
+        for (result.content, 0..) |block, i| {
+            content[i] = switch (block) {
+                .text => |text| .{ .text = try self.allocator.dupe(u8, text) },
+                .image => |img| .{ .image = .{
+                    .data = try self.allocator.dupe(u8, img),
+                    .mime_type = "image/png",
+                }},
+                .image_url => |img_url| .{ .image_url = .{
+                    .url = try self.allocator.dupe(u8, img_url.url),
+                    .detail = .auto,
+                }},
+            };
+        }
+
+        const tool_result_msg = Message{
+            .tool_result = .{
+                .tool_call_id = try self.allocator.dupe(u8, tool_call_id),
+                .tool_name = try self.allocator.dupe(u8, tool_name),
+                .content = content,
+                .is_error = result.is_error,
+            },
+        };
+        try self.messages.append(self.allocator, tool_result_msg);
+    }
+
+    /// Record tool execution for analytics
+    fn recordToolExecution(self: *Self, tool_name: []const u8, success: bool, execution_time_ms: i64) !void {
+        // Record to memory manager
+        if (self.memory_manager) |*mm| {
+            const mem_content = try std.fmt.allocPrint(
+                self.allocator,
+                "Tool: {s}, Success: {}, Time: {d}ms",
+                .{ tool_name, success, execution_time_ms },
+            );
+            defer self.allocator.free(mem_content);
+            mm.remember(.tool_usage, mem_content, if (success) 50 else 60) catch |e| {
+                std.log.debug("Failed to record to memory: {s}", .{@errorName(e)});
+            };
+        }
+
+        // Track in learning engine
+        if (self.learning_engine) |*le| {
+            le.recordToolUsage(tool_name, success, execution_time_ms) catch |e| {
+                std.log.debug("Failed to record to learning engine: {s}", .{@errorName(e)});
+            };
+        }
+    }
+
+    /// Check if response has tool calls (legacy, kept for compatibility)
     fn hasToolCalls(self: *Self, message: AssistantMessage) bool {
         _ = self;
         for (message.content) |block| {
@@ -326,97 +458,13 @@ pub const Agent = struct {
                 .description = agent_tool.tool.description,
                 .parameters_json = agent_tool.tool.parameters_json,
             };
-            tools.append(self.allocator, core_tool) catch {};
+            tools.append(self.allocator, core_tool) catch |e| {
+                std.log.warn("Failed to append tool {s}: {s}", .{ agent_tool.tool.name, @errorName(e) });
+                continue;
+            };
         }
 
         return tools.toOwnedSlice(self.allocator) catch &[_]core.Tool{};
-    }
-
-    /// Execute a tool
-    fn executeTool(self: *Self, tool_call: core.ToolCall) !ToolResult {
-        self.state = .executing_tool;
-
-        const start_time = utils.milliTimestamp();
-
-        // Find the tool
-        for (self.options.tools) |agent_tool| {
-            if (std.mem.eql(u8, agent_tool.tool.name, tool_call.name)) {
-                // Parse arguments
-                const parsed = std.json.parseFromSlice(
-                    std.json.Value,
-                    self.allocator,
-                    tool_call.arguments,
-                    .{},
-                ) catch {
-                    return ToolResult{
-                        .content = &[_]tool_mod.UserContentBlock{.{ .text = "Failed to parse arguments" }},
-                        .is_error = true,
-                    };
-                };
-                defer parsed.deinit();
-
-                // Execute the tool
-                var arena = std.heap.ArenaAllocator.init(self.allocator);
-                defer arena.deinit();
-
-                var arena_mut = arena;
-                const result = agent_tool.execute(arena_mut.allocator(), parsed.value) catch |err| {
-                    const end_time = utils.milliTimestamp();
-                    const execution_time = @as(i64, end_time - start_time);
-
-                    // Record tool execution to memory
-                    if (self.memory_manager) |*mm| {
-                        const mem_content = try std.fmt.allocPrint(
-                            self.allocator,
-                            "Tool: {s}, Success: false, Error: {s}",
-                            .{ tool_call.name, @errorName(err) },
-                        );
-                        defer self.allocator.free(mem_content);
-                        mm.remember(.tool_usage, mem_content, 60) catch {};
-                    }
-
-                    // Track tool usage in learning engine
-                    if (self.learning_engine) |*le| {
-                        le.recordToolUsage(tool_call.name, false, execution_time) catch {};
-                    }
-
-                    return ToolResult{
-                        .content = &[_]tool_mod.UserContentBlock{.{ .text = @errorName(err) }},
-                        .is_error = true,
-                    };
-                };
-
-                const end_time = utils.milliTimestamp();
-                const execution_time = @as(i64, end_time - start_time);
-
-                // Record successful tool execution to memory
-                if (self.memory_manager) |*mm| {
-                    const mem_content = try std.fmt.allocPrint(
-                        self.allocator,
-                        "Tool: {s}, Success: true",
-                        .{tool_call.name},
-                    );
-                    defer self.allocator.free(mem_content);
-                    mm.remember(.tool_usage, mem_content, 50) catch {};
-                }
-
-                // Track tool usage in learning engine
-                if (self.learning_engine) |*le| {
-                    le.recordToolUsage(tool_call.name, true, execution_time) catch {};
-                }
-
-                self.emit(.{ .tool_result = .{
-                    .tool_call_id = tool_call.id,
-                    .tool_name = tool_call.name,
-                    .result = result,
-                    .execution_time_ms = @intCast(end_time - start_time),
-                } });
-
-                return result;
-            }
-        }
-
-        return error.ToolNotFound;
     }
 
     /// Execute a skill with given arguments

@@ -78,8 +78,10 @@ pub fn parseArguments(
 /// Create text content block
 pub fn textContent(arena: std.mem.Allocator, text: []const u8) !ToolResult {
     const content = try arena.dupe(u8, text);
+    const blocks = try arena.alloc(UserContentBlock, 1);
+    blocks[0] = .{ .text = content };
     return ToolResult{
-        .content = &[_]UserContentBlock{.{ .text = content }},
+        .content = blocks,
         .is_error = false,
     };
 }
@@ -87,8 +89,10 @@ pub fn textContent(arena: std.mem.Allocator, text: []const u8) !ToolResult {
 /// Create error result
 pub fn errorResult(arena: std.mem.Allocator, err_msg: []const u8) !ToolResult {
     const content = try arena.dupe(u8, err_msg);
+    const blocks = try arena.alloc(UserContentBlock, 1);
+    blocks[0] = .{ .text = content };
     return ToolResult{
-        .content = &[_]UserContentBlock{.{ .text = content }},
+        .content = blocks,
         .is_error = true,
     };
 }

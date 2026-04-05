@@ -13,11 +13,11 @@
 | 任务 | 文件 | 描述 | 预计 |
 |------|------|------|------|
 | TASK-TODO-001 | google.zig, kimi.zig, anthropic.zig | AI Provider JSON 序列化 | 6h |
-| TASK-TODO-002 | http.zig | 完整 HTTP 客户端实现 | 8h |
+| ~~TASK-TODO-002~~ | http.zig | ~~完整 HTTP 客户端实现~~ | ✅ 已完成 |
 
 **关键路径**:
 ```
-TASK-TODO-002 (HTTP) → TASK-TODO-001 (JSON) → API 调用正常工作
+TASK-TODO-002 (HTTP) ✅ 已完成 → TASK-TODO-001 (JSON) → API 调用正常工作
 ```
 
 ### P1 - 高优先级 (2个任务)

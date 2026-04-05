@@ -392,7 +392,7 @@ pub const SelfReview = struct {
 
         // Run lint check if enabled
         if (self.config.run_lint) {
-            var lint_result = try agent_linter.lintOutput(self.allocator, output, output_type);
+            const lint_result = try agent_linter.lintOutput(self.allocator, output, output_type);
             result.lint_result = lint_result;
 
             // Convert lint issues to findings

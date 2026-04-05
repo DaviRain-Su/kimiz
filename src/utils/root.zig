@@ -29,17 +29,25 @@ pub const rename = fs.rename;
 pub const deleteFile = fs.deleteFile;
 pub const realpath = fs.realpath;
 
-// Time compatibility functions
+// Time compatibility functions using C library
+const c = @cImport({
+    @cInclude("time.h");
+});
+
 /// Get current timestamp in milliseconds
-/// Compatible replacement for std.time.milliTimestamp()
 pub fn milliTimestamp() i64 {
-    // Use POSIX clock_gettime for Zig 0.16 compatibility
-    const ts = std.posix.clock_gettime(std.posix.CLOCK.REALTIME) catch return 0;
-    return @as(i64, ts.sec) * 1000 + @divFloor(@as(i64, ts.nsec), 1_000_000);
+    var ts: c.struct_timespec = undefined;
+    if (c.clock_gettime(c.CLOCK_REALTIME, &ts) != 0) {
+        return 0;
+    }
+    return @as(i64, ts.tv_sec) * 1000 + @divFloor(@as(i64, ts.tv_nsec), 1_000_000);
 }
 
 /// Get current timestamp in seconds
 pub fn timestamp() i64 {
-    const ts = std.posix.clock_gettime(std.posix.CLOCK.REALTIME) catch return 0;
-    return ts.sec;
+    var ts: c.struct_timespec = undefined;
+    if (c.clock_gettime(c.CLOCK_REALTIME, &ts) != 0) {
+        return 0;
+    }
+    return ts.tv_sec;
 }

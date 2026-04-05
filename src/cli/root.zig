@@ -175,7 +175,10 @@ fn runInteractive(allocator: std.mem.Allocator) !void {
 
     // Get working directory
     var cwd_buf: [std.fs.max_path_bytes]u8 = undefined;
-    const cwd = std.posix.getcwd(&cwd_buf) catch ".";
+    const cwd = if (std.c.getcwd(&cwd_buf, cwd_buf.len)) |ptr|
+        std.mem.sliceTo(ptr, 0)
+    else
+        ".";
 
     // Collect workspace context
     print("📁 Collecting workspace context...\n");

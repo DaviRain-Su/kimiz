@@ -1,55 +1,39 @@
-### TASK-INFRA-008: 实现 HTTP Client (简化版)
+### TASK-INFRA-008: u5b9eu73b0 HTTP Client
 
-**状态**: 已完成 ✅
-**完成日期**: 2026-04-05
-**实际耗时**: 2小时
+**u72b6u6001**: u2705 u5df2u5b8cu6210uff08u5df2u5347u7ea7u4e3au5b8cu6574u5b9eu73b0uff09
+**u5b8cu6210u65e5u671f**: 2026-04-05
+**u5b9eu9645u8017u65f6**: 3u5c0fu65f6
 
-**说明**:
-由于 Zig 0.16 的 `std.Io.IoUring` 有内部编译错误，无法使用 `std.http.Client`。因此实现了简化版 HTTP Client。
+**u8bf4u660e**:
+u521du59cbu7248u672cu56e0 Zig 0.16 u7684 `std.Io.IoUring` u65e0u6cd5u4f7fu7528u800cu91c7u7528u5360u4f4du5b9eu73b0u3002
+u540eu6765u53d1u73b0u6b63u786eu65b9u6cd5u662fu901au8fc7 `std.process.Init.io` u83b7u53d6 `std.Io`uff0c
+u73b0u5df2u5b8cu5168u91cdu5199u4e3au4f7fu7528 Zig 0.16 u7684 `std.http.Client` u5b9eu9645 APIu3002
 
-**实现内容**:
-1. ✅ 创建了 `src/http.zig` - 简化版 HTTP Client
-2. ✅ 实现了 `HttpClient` 结构体
-3. ✅ 实现了 `postJson` 方法 (占位实现)
-4. ✅ 实现了 `postStream` 方法 (占位实现)
-5. ✅ 实现了 `Response` 结构体
-6. ✅ 修复了所有调用方的代码
+**u5b9eu73b0u5185u5bb9**:
+1. u2705 `HttpClient.initWithIo(allocator, io)` - u63a5u53d7 `std.Io` u53c2u6570
+2. u2705 `HttpClient.init(allocator)` - u4eceu5168u5c40 IoManager u83b7u53d6 Io
+3. u2705 `postJson()` - u4f7fu7528 `request`/`sendBodyComplete`/`receiveHead`/`allocRemaining`
+4. u2705 `postStream()` - SSE u6d41u5f0fu8bfbu53d6uff0cu4f7fu7528 `readVec` u9010u5757u8bfbu53d6
+5. u2705 `IoManager` - u5b58u50a8 `std.Io` u5b9eu4f8buff0cu4ece `main` u521du59cbu5316
 
-**代码结构**:
-```zig
-pub const HttpClient = struct {
-    allocator: std.mem.Allocator,
-    retry_count: u3 = 3,
-    timeout_ms: u32 = 30000,
-    
-    pub fn init(allocator: std.mem.Allocator) Self
-    pub fn deinit(self: *Self) void
-    pub fn postJson(...) !Response
-    pub fn postStream(...) !void
-};
+**u67b6u6784**:
+```
+main.zig
+  u2514u2500 init.io u2500u2500u2192 IoManager (u5168u5c40u5355u4f8b)
+                      u2514u2500u2192 HttpClient.init() u2500u2500u2192 std.http.Client
 ```
 
-**已知限制**:
-- 当前是占位实现，返回模拟响应
-- 需要实现实际的 HTTP 请求逻辑 (使用 POSIX sockets)
-- 需要实现 HTTPS/TLS 支持
+**u5df2u77e5u9650u5236**:
+- HTTP u91cdu8bd5u65e0u5ef6u8fdfuff08`std.time.sleep` u5728 Zig 0.16 u9700u8981 `std.Io`uff09
+- u672au5b9eu73b0u8fdeu63a5u6c60u548c Keep-Alive u4f18u5316
 
-**后续工作**:
-- 实现完整的 HTTP/1.1 客户端
-- 添加 TLS 支持 (使用 BearSSL 或 OpenSSL)
-- 实现连接池和 Keep-Alive
-- 实现请求超时和重试逻辑
+**u76f8u5173u6587u4ef6**:
+- `src/http.zig` - HTTP Client u5b9eu73b0
+- `src/utils/io_manager.zig` - IoManager
+- `src/main.zig` - IoManager u521du59cbu5316
 
-**相关文件**:
-- `src/http.zig` - HTTP Client 实现
-- `src/ai/root.zig` - AI 模块调用
-- `src/ai/providers/*.zig` - Provider 调用
-
-**编译状态**:
+**u7f16u8bd1u72b6u6001**:
 ```bash
-$ zig build
-✅ 成功
-
-$ ./zig-out/bin/kimiz --help
-✅ 正常运行
+$ zig build      # u2705 u6210u529f
+$ zig build test # u2705 u6210u529f
 ```

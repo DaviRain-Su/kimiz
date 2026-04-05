@@ -175,7 +175,9 @@ pub fn stream(
     try http_client.postStream(url, headers.items, request_body, struct {
         fn onLine(line: []const u8) void {
             if (stream_context) |ctx_| {
-                processLine(ctx_.allocator, line, ctx_.callback) catch {};
+                processLine(ctx_.allocator, line, ctx_.callback) catch |e| {
+                    std.log.warn("Failed to process SSE line: {s}", .{@errorName(e)});
+                };
             }
         }
     }.onLine);

@@ -114,9 +114,21 @@ pub const model_table = &[_]Model{
     .{
         .id = "kimi-for-coding",
         .provider = .{ .known = .kimi },
-        .api = .{ .known = .@"kimi-code" },
-        .context_window = 256000,
-        .max_tokens = 8192,
+        .api = .{ .known = .@"kimi-code-openai" },
+        .context_window = 262144,
+        .max_tokens = 32768,
+        .cost = .{
+            .input_token_cost = 2.00,
+            .output_token_cost = 8.00,
+        },
+        .supports_thinking = true,
+    },
+    .{
+        .id = "kimi-for-coding-anthropic",
+        .provider = .{ .known = .kimi },
+        .api = .{ .known = .@"kimi-code-anthropic" },
+        .context_window = 262144,
+        .max_tokens = 32768,
         .cost = .{
             .input_token_cost = 2.00,
             .output_token_cost = 8.00,

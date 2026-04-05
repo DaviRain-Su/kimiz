@@ -35,67 +35,35 @@ pub const AiError = error{
 pub const HttpClient = struct {
     allocator: std.mem.Allocator,
     client: std.http.Client,
-    io_uring: ?std.Io.IoUring,
     retry_count: u3 = 3,
     timeout_ms: u32 = 30000,
-    owns_io: bool,
+    io_initialized: bool,
 
     const Self = @This();
 
-    /// Initialize the HTTP client
-    /// If IoManager is initialized, uses it; otherwise creates own IoUring
+    /// Initialize with an explicit std.Io instance (from std.process.Init)
+    pub fn initWithIo(allocator: std.mem.Allocator, io: std.Io) Self {
+        return .{
+            .allocator = allocator,
+            .client = .{ .allocator = allocator, .io = io },
+            .io_initialized = true,
+        };
+    }
+
+    /// Initialize without Io - will try to get from global IoManager
     pub fn init(allocator: std.mem.Allocator) Self {
-        // Try to get Io from global IoManager first
-        const io = utils.getIo() catch null;
-        
-        if (io) |io_instance| {
-            // Use global IoManager's Io instance
-            const client = std.http.Client{
-                .allocator = allocator,
-                .io = io_instance,
-            };
+        const io = utils.getIo() catch {
             return .{
                 .allocator = allocator,
-                .client = client,
-                .io_uring = null,
-                .owns_io = false,
+                .client = undefined,
+                .io_initialized = false,
             };
-        } else {
-            // Create our own IoUring
-            var io_uring: std.Io.IoUring = undefined;
-            io_uring.init(allocator) catch |err| {
-                std.log.err("Failed to initialize IoUring: {s}", .{@errorName(err)});
-                // Return a client that will fail on actual requests
-                // but won't crash the application
-                return .{
-                    .allocator = allocator,
-                    .client = undefined,
-                    .io_uring = null,
-                    .owns_io = false,
-                };
-            };
-            
-            const client = std.http.Client{
-                .allocator = allocator,
-                .io = io_uring.io(),
-            };
-            
-            return .{
-                .allocator = allocator,
-                .client = client,
-                .io_uring = io_uring,
-                .owns_io = true,
-            };
-        }
+        };
+        return initWithIo(allocator, io);
     }
 
     pub fn deinit(self: *Self) void {
-        // Clean up our own IoUring if we created it
-        if (self.owns_io) {
-            if (self.io_uring) |*io_uring| {
-                io_uring.deinit();
-            }
-        }
+        _ = self;
     }
 
     /// Make a POST request with JSON body
@@ -106,8 +74,7 @@ pub const HttpClient = struct {
         headers: []const std.http.Header,
         body: []const u8,
     ) !Response {
-        // Check if client is properly initialized
-        if (self.owns_io and self.io_uring == null) {
+        if (!self.io_initialized) {
             return AiError.IoManagerNotInitialized;
         }
 
@@ -117,11 +84,7 @@ pub const HttpClient = struct {
         while (attempts < self.retry_count) : (attempts += 1) {
             return self.postJsonOnce(url, headers, body) catch |err| {
                 last_error = err;
-                if (attempts + 1 < self.retry_count) {
-                    // Exponential backoff: 100ms, 200ms, 400ms
-                    const delay_ms = @as(u64, 100) << attempts;
-                    std.time.sleep(delay_ms * std.time.ns_per_ms);
-                }
+                // TODO: Add exponential backoff when std.Io is available
                 continue;
             };
         }
@@ -137,45 +100,39 @@ pub const HttpClient = struct {
     ) !Response {
         const uri = std.Uri.parse(url) catch return AiError.InvalidUrl;
 
-        // Setup request options
-        const server_header_buffer = try self.allocator.alloc(u8, 8192);
-        defer self.allocator.free(server_header_buffer);
-
-        const options = std.http.Client.RequestOptions{
-            .server_header_buffer = server_header_buffer,
-        };
-
-        // Start the request
-        var req = try self.client.open(.POST, uri, options);
-        defer req.deinit();
-
-        // Add headers
-        try req.appendHeader("Content-Type", "application/json");
+        var all_headers: std.ArrayList(std.http.Header) = .empty;
+        defer all_headers.deinit(self.allocator);
         for (headers) |header| {
-            try req.appendHeader(header.name, header.value);
+            try all_headers.append(self.allocator, header);
         }
 
-        // Send the body
-        try req.send(body);
-        try req.finish();
+        var req = self.client.request(.POST, uri, .{
+            .headers = .{ .content_type = .{ .override = "application/json" } },
+            .extra_headers = all_headers.items,
+        }) catch return AiError.HttpRequestFailed;
+        defer req.deinit();
 
-        // Wait for response
-        try req.wait();
+        const body_copy = try self.allocator.dupe(u8, body);
+        defer self.allocator.free(body_copy);
+        req.sendBodyComplete(body_copy) catch return AiError.HttpRequestFailed;
 
-        // Read response body
-        const body_reader = req.reader();
-        const body_content = try body_reader.readAllAlloc(self.allocator, 1024 * 1024); // 1MB max
+        var redirect_buf: [8192]u8 = undefined;
+        var response = req.receiveHead(&redirect_buf) catch return AiError.HttpResponseReadFailed;
 
-        // Check status
-        const status = req.response.status;
+        const status = response.head.status;
+        var transfer_buf: [8192]u8 = undefined;
+        const reader = response.reader(&transfer_buf);
+
         if (status == .ok or status == .created) {
+            const body_content = reader.allocRemaining(self.allocator, .limited(1024 * 1024)) catch
+                return AiError.HttpResponseReadFailed;
             return Response{
                 .status = status,
                 .body = body_content,
                 .allocator = self.allocator,
             };
         } else {
-            self.allocator.free(body_content);
+            _ = reader.discardRemaining() catch 0;
             return mapStatusToError(status);
         }
     }
@@ -189,78 +146,70 @@ pub const HttpClient = struct {
         body: []const u8,
         callback: *const fn (line: []const u8) void,
     ) !void {
-        // Check if client is properly initialized
-        if (self.owns_io and self.io_uring == null) {
+        if (!self.io_initialized) {
             return AiError.IoManagerNotInitialized;
         }
 
         const uri = std.Uri.parse(url) catch return AiError.InvalidUrl;
 
-        // Setup request options
-        const server_header_buffer = try self.allocator.alloc(u8, 8192);
-        defer self.allocator.free(server_header_buffer);
+        var all_headers = std.ArrayList(std.http.Header).init(self.allocator);
+        defer all_headers.deinit();
+        for (headers) |header| {
+            try all_headers.append(self.allocator, header);
+        }
 
-        const options = std.http.Client.RequestOptions{
-            .server_header_buffer = server_header_buffer,
-        };
-
-        // Start the request
-        var req = try self.client.open(.POST, uri, options);
+        var req = self.client.request(.POST, uri, .{
+            .headers = .{
+                .content_type = .{ .override = "application/json" },
+                .accept_encoding = .{ .override = "identity" },
+            },
+            .extra_headers = all_headers.items,
+        }) catch return AiError.HttpRequestFailed;
         defer req.deinit();
 
-        // Add headers
-        try req.appendHeader("Content-Type", "application/json");
-        try req.appendHeader("Accept", "text/event-stream");
-        for (headers) |header| {
-            try req.appendHeader(header.name, header.value);
+        const body_copy = try self.allocator.dupe(u8, body);
+        defer self.allocator.free(body_copy);
+        req.sendBodyComplete(body_copy) catch return AiError.HttpRequestFailed;
+
+        var redirect_buf: [8192]u8 = undefined;
+        var response = req.receiveHead(&redirect_buf) catch return AiError.HttpResponseReadFailed;
+
+        if (response.head.status != .ok) {
+            return mapStatusToError(response.head.status);
         }
 
-        // Send the body
-        try req.send(body);
-        try req.finish();
-
-        // Wait for response headers
-        try req.wait();
-
-        // Check status
-        const status = req.response.status;
-        if (status != .ok) {
-            return mapStatusToError(status);
-        }
-
-        // Read response body line by line (SSE format)
-        const body_reader = req.reader();
+        var transfer_buf: [8192]u8 = undefined;
+        const body_reader = response.reader(&transfer_buf);
         var line_buf: [SSE_LINE_BUF_SIZE]u8 = undefined;
         var line_pos: usize = 0;
 
+        // Read chunks and process SSE lines
+        var read_buf: [4096]u8 = undefined;
+        var iov = [_][]u8{&read_buf};
         while (true) {
-            const byte = body_reader.readByte() catch |err| switch (err) {
-                error.EndOfStream => break,
-                else => return AiError.HttpResponseReadFailed,
-            };
-
-            if (byte == '\n') {
-                // Line complete
-                if (line_pos > 0) {
-                    // Remove \r if present (CRLF handling)
-                    const line_len = if (line_pos > 0 and line_buf[line_pos - 1] == '\r')
-                        line_pos - 1
-                    else
-                        line_pos;
-                    callback(line_buf[0..line_len]);
+            const n = body_reader.readVec(&iov) catch return AiError.HttpResponseReadFailed;
+            if (n == 0) break;
+            for (read_buf[0..n]) |byte| {
+                if (byte == '\n') {
+                    if (line_pos > 0) {
+                        const line_len = if (line_buf[line_pos - 1] == '\r')
+                            line_pos - 1
+                        else
+                            line_pos;
+                        callback(line_buf[0..line_len]);
+                    }
                     line_pos = 0;
-                }
-            } else {
-                if (line_pos < line_buf.len) {
-                    line_buf[line_pos] = byte;
-                    line_pos += 1;
+                } else {
+                    if (line_pos < line_buf.len) {
+                        line_buf[line_pos] = byte;
+                        line_pos += 1;
+                    }
                 }
             }
         }
 
-        // Handle last line if no trailing newline
         if (line_pos > 0) {
-            const line_len = if (line_pos > 0 and line_buf[line_pos - 1] == '\r')
+            const line_len = if (line_buf[line_pos - 1] == '\r')
                 line_pos - 1
             else
                 line_pos;

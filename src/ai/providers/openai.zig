@@ -128,8 +128,8 @@ pub fn complete(http_client: *HttpClient, ctx: core.Context) !core.AssistantMess
     });
 
     // Get base URL
-    const base_url = getBaseUrl(ctx.model.provider.known);
-    const url = try std.fmt.allocPrint(http_client.allocator, "{s}/v1/chat/completions", .{base_url});
+    const base_url = getBaseUrl(ctx);
+    const url = try std.fmt.allocPrint(http_client.allocator, "{s}/chat/completions", .{base_url});
     defer http_client.allocator.free(url);
 
     // Make request
@@ -183,8 +183,8 @@ pub fn stream(
     });
 
     // Get base URL
-    const base_url = getBaseUrl(ctx.model.provider.known);
-    const url = try std.fmt.allocPrint(http_client.allocator, "{s}/v1/chat/completions", .{base_url});
+    const base_url = getBaseUrl(ctx);
+    const url = try std.fmt.allocPrint(http_client.allocator, "{s}/chat/completions", .{base_url});
     defer http_client.allocator.free(url);
 
     // Make streaming request
@@ -532,12 +532,23 @@ fn parseResponse(allocator: std.mem.Allocator, body: []const u8) !core.Assistant
 // Utilities
 // ============================================================================
 
-fn getBaseUrl(provider: core.KnownProvider) []const u8 {
-    return switch (provider) {
-        .openai => core.OPENAI_BASE_URL,
-        .fireworks => core.FIREWORKS_BASE_URL,
-        else => core.OPENAI_BASE_URL,
-    };
+fn getBaseUrl(ctx: core.Context) []const u8 {
+    switch (ctx.model.api) {
+        .known => |api| switch (api) {
+            .@"kimi-code-openai" => return core.KIMI_CODE_OPENAI_BASE_URL,
+            else => {},
+        },
+        .custom => {},
+    }
+    switch (ctx.model.provider) {
+        .known => |provider| return switch (provider) {
+            .openai => core.OPENAI_BASE_URL,
+            .kimi => core.KIMI_BASE_URL,
+            .fireworks => core.FIREWORKS_BASE_URL,
+            else => core.OPENAI_BASE_URL,
+        },
+        .custom => return core.OPENAI_BASE_URL,
+    }
 }
 
 fn mapFinishReason(reason: []const u8) core.StopReason {

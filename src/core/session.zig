@@ -28,7 +28,7 @@ pub const Session = struct {
             .allocator = allocator,
             .id = try allocator.dupe(u8, id),
             .created_at = utils.milliTimestamp(),
-            .messages = std.ArrayList(core.Message).init(allocator),
+            .messages = .empty,
             .metadata = .{
                 .working_dir = try allocator.dupe(u8, "."),
                 .model_id = try allocator.dupe(u8, "default"),
@@ -211,7 +211,7 @@ pub const Session = struct {
         if (self.parent_id) |id| {
             self.allocator.free(id);
         }
-        self.messages.deinit();
+        self.messages.deinit(self.allocator);
     }
 };
 

@@ -9,30 +9,17 @@
 
 ### 编译和基础功能
 
-- [ ] **TASK-INFRA-007**: 编译修复批量任务 (协调任务)
-  - 📁 `tasks/backlog/infra/TASK-INFRA-007-create-compilation-fix-batch.md`
-  - ⏱️ 30分钟
-  - 🎯 协调并执行所有编译错误修复
-  - 🚫 **阻塞**: 所有开发工作
+- [x] **TASK-INFRA-007**: 编译修复批量任务 (协调任务) ✅ 2026-04-05
+  - 📁 `tasks/active/COMPILATION-FIX-QUICKSTART.md`
+  - 🎯 所有编译错误已修复，`zig build` 和 `zig build test` 均通过
 
-- [ ] **TASK-BUG-026**: 修复 Zig 0.16 argsAlloc API 变更
-  - 📁 `tasks/backlog/bugfix/TASK-BUG-026-fix-zig-016-argsAlloc.md`
-  - 📄 `src/cli/root.zig:86`
-  - ⏱️ 15分钟
-  - 🎯 使用 `std.process.ArgIterator` 替换 `argsAlloc`
-  - 🚫 **阻塞**: 所有开发工作
+- [x] **TASK-BUG-026**: 修复 Zig 0.16 argsAlloc API 变更 ✅ 已在之前修复
+  - 📄 `src/cli/root.zig` - 已使用 `std.process.Args`
 
-- [ ] **TASK-BUG-027**: 修复未使用的 task_type 参数
-  - 📁 `tasks/backlog/bugfix/TASK-BUG-027-fix-unused-task_type-param.md`
-  - 📄 `src/learning/root.zig:160`
-  - ⏱️ 5分钟
-  - 🎯 添加 `_ = task_type;` 消除编译错误
-  - 🚫 **阻塞**: 所有开发工作
+- [x] **TASK-BUG-027**: 修复未使用的 task_type 参数 ✅ 已在之前修复
+  - 📄 `src/learning/root.zig`
 
-- [ ] ~~**URGENT-FIX**: 修复编译错误~~
-  - 📁 ~~`tasks/backlog/bugfix/URGENT-FIX-compilation-errors.md`~~
-  - ⏱️ ~~30分钟~~
-  - 📝 **状态**: 被 TASK-BUG-026 和 TASK-BUG-027 覆盖，待删除
+- [x] ~~**URGENT-FIX**: 修复编译错误~~ ✅ 被 TASK-INFRA-007 覆盖
 
 - [ ] **TASK-BUG-013**: 修复 page_allocator 滥用
   - 📁 `tasks/backlog/bugfix/TASK-BUG-013-fix-page-allocator-abuse.md`
@@ -57,12 +44,10 @@
   - 🎯 实现完整的请求/响应 JSON 序列化
   - 🚫 **阻塞**: AI API 调用
 
-- [ ] **TASK-TODO-002**: 实现完整 HTTP 客户端
-  - 📁 `tasks/backlog/infra/TASK-TODO-002-implement-full-http-client.md`
-  - 📄 `src/http.zig`
-  - ⏱️ 8小时
-  - 🎯 实现完整的 HTTP/HTTPS 客户端
-  - 🚫 **阻塞**: 所有外部 API 调用
+- [x] **TASK-TODO-002**: 实现完整 HTTP 客户端 ✅ 2026-04-05
+  - 📄 `src/http.zig` - 已使用 Zig 0.16 `std.http.Client` 实现
+  - 🎯 支持 POST JSON 和 SSE 流式读取
+  - 📝 待优化: 连接池、重试延迟、Keep-Alive
 
 ---
 
@@ -329,21 +314,16 @@
 
 ## 推荐执行顺序
 
-### 阶段 1: 紧急修复（立即执行）
-1. ✅ TASK-INFRA-007 - 编译修复协调 (30分钟)
-2. ✅ TASK-BUG-027 - 修复未使用参数 (5分钟)
-3. ✅ TASK-BUG-026 - 修复 argsAlloc API (15分钟)
-4. ✅ TASK-BUG-014 - CLI 实现 (6小时)
-5. ✅ TASK-BUG-013 - page_allocator (4小时)
+### 阶段 1: 紧急修复
+1. ✅ TASK-INFRA-007 - 编译修复协调 **已完成 2026-04-05**
+2. ✅ TASK-BUG-027 - 修复未使用参数 **已完成**
+3. ✅ TASK-BUG-026 - 修复 argsAlloc API **已完成**
+4. ✅ TASK-TODO-002 - 实现 HTTP Client **已完成 2026-04-05**
+5. ⏳ TASK-BUG-014 - CLI 实现 (6小时)
+6. ⏳ TASK-BUG-013 - page_allocator (4小时)
 
 **目标**: 项目可编译、可运行
-
-**关键路径**:
-```
-TASK-BUG-027 (5分钟) ─┐
-                      ├──→ 验证编译 → 继续后续任务
-TASK-BUG-026 (15分钟)─┘
-```
+**状态**: 编译已通过，剩余 BUG-014 和 BUG-013 待完成
 
 ### 阶段 2: 核心稳定（本周）
 4. ✅ TASK-BUG-019 - getApiKey (2小时)
@@ -374,11 +354,12 @@ TASK-BUG-026 (15分钟)─┘
 
 ```
 TASK-BUG-027 ─┐
-              ├→ 编译成功
+              ├→ 编译成功 ✅ 已完成
 TASK-BUG-026 ─┘
     ↓
-TASK-BUG-014 (CLI)
+TASK-TODO-002 (HTTP Client) ✅ 已完成
     ↓
+TASK-BUG-014 (CLI) ← 当前
 TASK-BUG-013 (内存管理)
     ↓
 TASK-BUG-019 (API Key)
@@ -394,8 +375,8 @@ TASK-FEAT-001 (TUI)
 
 所有任务完成后必须满足：
 
-- [ ] `zig build` 编译成功，无错误
-- [ ] `zig build test` 所有测试通过
+- [x] `zig build` 编译成功，无错误 ✅ 2026-04-05
+- [x] `zig build test` 所有测试通过 ✅ 2026-04-05
 - [ ] `kimiz repl` 可以正常对话
 - [ ] `kimiz tui` 显示完整界面
 - [ ] 流式响应实时显示
@@ -415,7 +396,7 @@ TASK-FEAT-001 (TUI)
 
 ---
 
-**下一步**: 立即执行 URGENT-FIX，然后按优先级顺序执行修复
+**下一步**: 编译已修复，继续 MVP Phase A (TASK-BUG-014 CLI 实现)
 
 ---
 

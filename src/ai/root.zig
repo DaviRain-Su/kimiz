@@ -79,12 +79,11 @@ pub const Ai = struct {
                     .google => @import("providers/google.zig").complete(&self.http_client, ctx),
                     .kimi => {
                         return switch (ctx.model.api) {
-                            .known => |api| {
-                                return switch (api) {
-                                    .@"openai-completions" => @import("providers/openai.zig").complete(&self.http_client, ctx),
-                                    .@"kimi-code" => @import("providers/kimi.zig").completeCode(&self.http_client, ctx),
-                                    else => error.ProviderNotSupported,
-                                };
+                            .known => |api| switch (api) {
+                                .@"openai-completions", .@"kimi-code-openai" => @import("providers/openai.zig").complete(&self.http_client, ctx),
+                                .@"kimi-code-anthropic" => @import("providers/anthropic.zig").complete(&self.http_client, ctx),
+                                .@"kimi-code" => @import("providers/kimi.zig").completeCode(&self.http_client, ctx),
+                                else => error.ProviderNotSupported,
                             },
                             .custom => error.ProviderNotSupported,
                         };
@@ -110,16 +109,15 @@ pub const Ai = struct {
                     .anthropic => @import("providers/anthropic.zig").stream(&self.http_client, ctx, callback),
                     .google => @import("providers/google.zig").stream(&self.http_client, ctx, callback),
                     .kimi => {
-                        switch (ctx.model.api) {
-                            .known => |api| {
-                                return switch (api) {
-                                    .@"openai-completions" => @import("providers/openai.zig").stream(&self.http_client, ctx, callback),
-                                    .@"kimi-code" => @import("providers/kimi.zig").streamCode(&self.http_client, ctx, callback),
-                                    else => error.ProviderNotSupported,
-                                };
+                        return switch (ctx.model.api) {
+                            .known => |api| switch (api) {
+                                .@"openai-completions", .@"kimi-code-openai" => @import("providers/openai.zig").stream(&self.http_client, ctx, callback),
+                                .@"kimi-code-anthropic" => @import("providers/anthropic.zig").stream(&self.http_client, ctx, callback),
+                                .@"kimi-code" => @import("providers/kimi.zig").streamCode(&self.http_client, ctx, callback),
+                                else => error.ProviderNotSupported,
                             },
                             .custom => error.ProviderNotSupported,
-                        }
+                        };
                     },
                     .fireworks => @import("providers/fireworks.zig").stream(&self.http_client, ctx, callback),
                     .openrouter => error.ProviderNotSupported,

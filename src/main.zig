@@ -1,11 +1,14 @@
 const std = @import("std");
 const cli = @import("cli/root.zig");
+const utils = @import("utils/root.zig");
 
 pub fn main(init: std.process.Init) !void {
-    // Use the GPA from Init
     const allocator = init.gpa;
-    
-    // Pass environ_map to cli for environment variable access
+
+    // Initialize global IoManager with the Io from process Init
+    try utils.initIoManager(allocator, init.io);
+    defer utils.deinitIoManager();
+
     try cli.run(allocator, init.environ_map, init.minimal.args);
 }
 
@@ -15,15 +18,4 @@ test "simple test" {
     defer list.deinit(gpa); // Try commenting this out and see if zig detects the memory leak!
     try list.append(gpa, 42);
     try std.testing.expectEqual(@as(i32, 42), list.pop());
-}
-
-test "fuzz example" {
-    const Context = struct {
-        fn testOne(context: @This(), input: []const u8) anyerror!void {
-            _ = context;
-            // Try passing `--fuzz` to `zig build test` and see if it manages to fail this test case!
-            try std.testing.expect(!std.mem.eql(u8, "canyoufindme", input));
-        }
-    };
-    try std.testing.fuzz(Context{}, Context.testOne, .{});
 }

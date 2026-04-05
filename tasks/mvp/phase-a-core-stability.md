@@ -4,6 +4,13 @@
 **时间**: 2 周  
 **优先级**: P0 (最高)
 
+## 前置条件 ✅ 已完成 (2026-04-05)
+
+- [x] 编译通过 (`zig build` + `zig build test`)
+- [x] HTTP Client 实现（使用 Zig 0.16 `std.http.Client`）
+- [x] IoManager 初始化（通过 `std.process.Init.io`）
+- [x] Zig 0.16 API 迁移完成
+
 ---
 
 ## 任务清单
@@ -66,7 +73,7 @@ SessionMemory: 仅保存当前会话上下文
 
 ### MVP-A3: 默认使用 Kimi（保留其他 Provider）
 
-**状态**: pending  
+**状态**: ✅ completed (默认模型已设为 kimi-k2.5)  
 **预计工时**: 2 小时  
 **指派给**: TBD
 

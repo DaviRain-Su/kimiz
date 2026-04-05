@@ -23,11 +23,12 @@ pub const DEFAULT_MAX_TOKENS = 8192;
 pub const DEFAULT_TEMPERATURE: f32 = 1.0;
 
 // API Base URLs
-pub const OPENAI_BASE_URL = "https://api.openai.com";
+pub const OPENAI_BASE_URL = "https://api.openai.com/v1";
 pub const ANTHROPIC_BASE_URL = "https://api.anthropic.com";
 pub const GOOGLE_BASE_URL = "https://generativelanguage.googleapis.com";
-pub const KIMI_BASE_URL = "https://api.moonshot.cn";
+pub const KIMI_BASE_URL = "https://api.moonshot.cn/v1";
 pub const KIMI_CODE_BASE_URL = "https://api.kimi.com/coding";
+pub const KIMI_CODE_OPENAI_BASE_URL = "https://api.kimi.com/coding/v1";
 pub const FIREWORKS_BASE_URL = "https://api.fireworks.ai/inference/v1";
 pub const ANTHROPIC_API_VERSION = "2023-06-01";
 
@@ -84,6 +85,8 @@ pub const KnownApi = enum {
     @"anthropic-messages",
     @"google-generative-ai",
     @"kimi-code",
+    @"kimi-code-openai",
+    @"kimi-code-anthropic",
 };
 
 pub const Provider = union(enum) {

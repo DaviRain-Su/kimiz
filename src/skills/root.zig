@@ -87,7 +87,7 @@ pub const SkillRegistry = struct {
             .allocator = allocator,
             .skills = std.StringHashMap(Skill).init(allocator),
             .categories = std.EnumArray(Skill.SkillCategory, std.ArrayListUnmanaged([]const u8)).initFill(
-                std.ArrayListUnmanaged([]const u8){},
+                std.ArrayListUnmanaged([]const u8).empty,
             ),
         };
     }
@@ -214,12 +214,12 @@ pub const SkillEngine = struct {
             }
         }
 
-        var timer = try std.time.Timer.start();
+        // TODO: Add timing when std.Io is available in this context
         var arena = std.heap.ArenaAllocator.init(self.allocator);
         defer arena.deinit();
 
         const result = skill.execute_fn(ctx, args, arena.allocator()) catch |err| {
-            const elapsed_ms = timer.read() / std.time.ns_per_ms;
+            const elapsed_ms: u64 = 0;
             return SkillResult{
                 .success = false,
                 .output = "",
