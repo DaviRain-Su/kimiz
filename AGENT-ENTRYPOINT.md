@@ -56,22 +56,26 @@ zig version  # 必须是 0.16.0-dev+
 
 ## 3. 工作流程（每做一个任务必须执行）
 
-1. **从队列中选第一个 `todo` 任务**
-2. **阅读对应的 Technical Spec**（`docs/specs/` 下的 `.md` 文件）
-3. **根据任务阶段，阅读 `docs/DESIGN-REFERENCES.md` 中的相关参考文档**
-4. **实现代码**
+1. **阅读 `docs/DOCUMENT-DRIVEN-WORKFLOW.md`**，确认当前任务所处的生命周期状态
+2. **从队列中选第一个 `todo` 或 `in-progress` 任务**
+3. **阅读任务文件本身**（检查 `Research` 和 `Log` 章节）
+4. **阅读对应的 Technical Spec**（`docs/specs/` 下的 `.md` 文件）
+5. **根据任务阶段，阅读 `docs/DESIGN-REFERENCES.md` 中的相关参考文档**
+6. **实现代码**
    - 遵守参考文档中的设计原则
    - **必须使用 Zig 0.16 API**（如 `std.process.Init`, `std.Io` 等），禁止使用已废弃的 0.15 API
-5. **运行 `zig build test`**（在 Zig 0.16 环境下必须全绿）
-6. **更新本文件中的状态**（把 `todo` 改成 `done`）
-7. **更新 `tasks/active/sprint-2026-04/README.md` 中的状态**
-8. **提交 commit**，消息格式：
-   ```
-   fix: 简短描述 (任务ID)
+7. **在任务文件的 `Log` 章节追加你的执行记录**
+8. **运行 `zig build test`**（在 Zig 0.16 环境下必须全绿）
+9. **完成任务后，填写 `Lessons Learned` 并检查是否需要更新 `DESIGN-REFERENCES.md` 或 `lessons-learned.md`**
+10. **更新本文件中的状态**（把 `todo` 改成 `done`）
+11. **更新 `tasks/active/sprint-2026-04/README.md` 中的状态**
+12. **提交 commit**，消息格式：
+    ```
+    fix: 简短描述 (任务ID)
 
-   - 具体修改
-   - 验证方式: zig build test 通过
-   ```
+    - 具体修改
+    - 验证方式: zig build test 通过
+    ```
 
 ---
 

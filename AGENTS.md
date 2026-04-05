@@ -57,13 +57,20 @@ Current queue:
 3. **T-009-E2E** — Add end-to-end tests
 
 ### How to Pick Up a Task
-1. Read the task spec in `tasks/active/sprint-2026-04/`
-2. Read the corresponding spec in `docs/specs/`
-3. Read `docs/DESIGN-REFERENCES.md` for relevant design docs
-4. Implement
-5. Run `make test`
-6. Update task status to `done` in both the task file and `AGENT-ENTRYPOINT.md`
-7. Commit with format: `feat: description (TASK-ID)`
+
+Every task follows the **Document-Driven Workflow** defined in `docs/DOCUMENT-DRIVEN-WORKFLOW.md`. Read it before picking up any task.
+
+1. Check the task's lifecycle state (`research` → `spec` → `implement` → `verify`)
+2. Read the task file in `tasks/active/sprint-2026-04/` (pay special attention to `Research` and `Log`)
+3. Read the corresponding spec in `docs/specs/`
+4. Read `docs/DESIGN-REFERENCES.md` for relevant design docs
+5. Implement
+6. **Append a log entry to the task file's `Log` section after every meaningful step**
+7. Run `make test`
+8. Fill out `Lessons Learned` before marking the task `done`
+9. Check if `docs/DESIGN-REFERENCES.md` or `docs/lessons-learned.md` needs updating
+10. Update task status to `done` in both the task file and `AGENT-ENTRYPOINT.md`
+11. Commit with format: `feat: description (TASK-ID)`
 
 ---
 
