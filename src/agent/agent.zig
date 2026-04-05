@@ -466,6 +466,7 @@ pub const Agent = struct {
 
                         // Add tool result to messages and continue
                         try self.addToolResultToMessages(tc.id, tc.name, err_result);
+                        self.freeToolResultContent(err_result);
                         
                         // Continue to next tool call if any
                         continue;
@@ -478,6 +479,7 @@ pub const Agent = struct {
 
                     // Add tool result to messages
                     try self.addToolResultToMessages(tc.id, tc.name, result);
+                    self.freeToolResultContent(result);
                 }
                 
                 // Continue to next iteration to let AI process the tool results
@@ -547,10 +549,9 @@ pub const Agent = struct {
 
                 // Execute the tool with arena
                 var arena = std.heap.ArenaAllocator.init(self.allocator);
-                defer arena.deinit();
 
-                var arena_mut = arena;
-                const result = agent_tool.execute(arena_mut.allocator(), parsed.value) catch |err| {
+                const result = agent_tool.execute(arena.allocator(), parsed.value) catch |err| {
+                    arena.deinit();
                     const end_time = utils.milliTimestamp();
                     const execution_time = @as(i64, end_time - start_time);
                     
@@ -580,7 +581,27 @@ pub const Agent = struct {
                     .execution_time_ms = @intCast(end_time - start_time),
                 } });
 
-                return result;
+                // Deep copy result content before destroying arena
+                const copied_content = try self.allocator.alloc(tool_mod.UserContentBlock, result.content.len);
+                errdefer self.allocator.free(copied_content);
+                for (result.content, 0..) |block, i| {
+                    copied_content[i] = switch (block) {
+                        .text => |text| .{ .text = try self.allocator.dupe(u8, text) },
+                        .image => |img| .{ .image = try self.allocator.dupe(u8, img) },
+                        .image_url => |img_url| blk: {
+                            const url = try self.allocator.dupe(u8, img_url.url);
+                            break :blk .{ .image_url = .{
+                                .url = url,
+                                .detail = img_url.detail,
+                            }};
+                        },
+                    };
+                }
+                arena.deinit();
+                return ToolResult{
+                    .content = copied_content,
+                    .is_error = result.is_error,
+                };
             }
         }
 
@@ -616,6 +637,21 @@ pub const Agent = struct {
             },
         };
         try self.messages.append(self.allocator, tool_result_msg);
+    }
+
+    /// Free content blocks allocated for a ToolResult
+    fn freeToolResultContent(self: *Self, result: ToolResult) void {
+        for (result.content) |block| {
+            switch (block) {
+                .text => |text| self.allocator.free(text),
+                .image => |img| self.allocator.free(img),
+                .image_url => |img_url| {
+                    self.allocator.free(img_url.url);
+                    if (img_url.detail) |d| self.allocator.free(d);
+                },
+            }
+        }
+        self.allocator.free(@constCast(result.content));
     }
 
     /// Record tool execution for analytics

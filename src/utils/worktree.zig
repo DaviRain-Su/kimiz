@@ -143,7 +143,10 @@ pub const WorktreeManager = struct {
             .argv = &.{ "sh", "-c", command },
             .stdout_limit = @enumFromInt(1024 * 1024),
             .stderr_limit = @enumFromInt(1024 * 1024),
-        }) catch return error.CommandFailed;
+        }) catch |err| {
+            std.log.warn("execShell failed for command '{s}': {s}", .{ command, @errorName(err) });
+            return error.CommandFailed;
+        };
 
         // Combine stdout and stderr - all allocated in arena, auto-freed on deinit
         if (result.stdout.len > 0 and result.stderr.len > 0) {

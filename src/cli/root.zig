@@ -448,25 +448,24 @@ fn executeShellCommand(allocator: std.mem.Allocator, command: []const u8) ![]u8 
         .stdout_limit = @enumFromInt(100 * 1024),
         .stderr_limit = @enumFromInt(100 * 1024),
     }) catch return error.ShellExecutionFailed;
+    defer {
+        allocator.free(result.stdout);
+        allocator.free(result.stderr);
+    }
 
     // Combine stdout and stderr
-    var combined: []const u8 = "";
-    if (result.stdout.len > 0 and result.stderr.len > 0) {
-        combined = try std.mem.concat(allocator, u8, &.{ result.stdout, result.stderr });
-    } else if (result.stdout.len > 0) {
-        combined = result.stdout;
-    } else if (result.stderr.len > 0) {
-        combined = result.stderr;
-    }
+    const combined = if (result.stdout.len > 0 and result.stderr.len > 0)
+        try std.mem.concat(allocator, u8, &.{ result.stdout, result.stderr })
+    else if (result.stdout.len > 0)
+        try allocator.dupe(u8, result.stdout)
+    else if (result.stderr.len > 0)
+        try allocator.dupe(u8, result.stderr)
+    else
+        try allocator.dupe(u8, "");
+    defer allocator.free(combined);
 
     const trimmed = std.mem.trim(u8, combined, "\n");
-    const result_str = try allocator.dupe(u8, trimmed);
-
-    if (result.stdout.len > 0 and result.stderr.len > 0) {
-        allocator.free(combined);
-    }
-
-    return result_str;
+    return try allocator.dupe(u8, trimmed);
 }
 
 fn printHelp() void {

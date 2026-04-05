@@ -96,6 +96,10 @@ fn checkRTKInstalled(allocator: std.mem.Allocator) !bool {
         .stdout_limit = @enumFromInt(1024),
         .stderr_limit = @enumFromInt(1024),
     }) catch return false;
+    defer {
+        allocator.free(result.stdout);
+        allocator.free(result.stderr);
+    }
 
     return switch (result.term) {
         .exited => |code| code == 0,
@@ -113,6 +117,10 @@ fn getRTKVersion(allocator: std.mem.Allocator) ![]const u8 {
         .stdout_limit = @enumFromInt(1024),
         .stderr_limit = @enumFromInt(1024),
     }) catch return error.RTKVersionFailed;
+    defer {
+        allocator.free(result.stdout);
+        allocator.free(result.stderr);
+    }
 
     if (result.stdout.len > 0) {
         return try allocator.dupe(u8, result.stdout);
