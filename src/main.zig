@@ -2,7 +2,10 @@ const std = @import("std");
 const cli = @import("cli/root.zig");
 
 pub fn main() !void {
-    try cli.main();
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+    try cli.run(allocator);
 }
 
 test "simple test" {

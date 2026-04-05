@@ -52,9 +52,9 @@ pub const Logger = struct {
 
     pub fn init(allocator: std.mem.Allocator, log_dir: []const u8, min_level: LogLevel) !Self {
         // Create log directory
-        std.fs.cwd().makeDir(log_dir) catch |err| switch (err) {
+        std.fs.cwd().makeDir(log_dir) catch |e| switch (e) {
             error.PathAlreadyExists => {},
-            else => return err,
+            else => return e,
         };
 
         return .{

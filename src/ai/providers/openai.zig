@@ -105,35 +105,39 @@ const OpenAITokenDetails = struct {
 // ============================================================================
 
 pub fn complete(http_client: *HttpClient, ctx: core.Context) !core.AssistantMessage {
-    const api_key = core.getApiKey(ctx.model.provider.known) orelse return core.AiError.ApiKeyNotFound;
+    const api_key = core.getApiKey(http_client.allocator, ctx.model.provider.known) orelse return core.AiError.ApiKeyNotFound;
+    defer http_client.allocator.free(api_key);
 
     // Serialize request
-    const request_body = try serializeRequest(ctx);
-    defer std.heap.page_allocator.free(request_body);
+    const request_body = try serializeRequest(http_client.allocator, ctx);
+    defer http_client.allocator.free(request_body);
 
     // Setup headers
+    const auth_header = try std.fmt.allocPrint(http_client.allocator, "Bearer {s}", .{api_key});
+    defer http_client.allocator.free(auth_header);
+
     var headers: std.ArrayList(std.http.Header) = .empty;
-    defer headers.deinit(std.heap.page_allocator);
-    try headers.append(std.heap.page_allocator, .{
+    defer headers.deinit(http_client.allocator);
+    try headers.append(http_client.allocator, .{
         .name = "Authorization",
-        .value = try std.fmt.allocPrint(std.heap.page_allocator, "Bearer {s}", .{api_key}),
+        .value = auth_header,
     });
-    try headers.append(std.heap.page_allocator, .{
+    try headers.append(http_client.allocator, .{
         .name = "Content-Type",
         .value = "application/json",
     });
 
     // Get base URL
     const base_url = getBaseUrl(ctx.model.provider.known);
-    const url = try std.fmt.allocPrint(std.heap.page_allocator, "{s}/v1/chat/completions", .{base_url});
-    defer std.heap.page_allocator.free(url);
+    const url = try std.fmt.allocPrint(http_client.allocator, "{s}/v1/chat/completions", .{base_url});
+    defer http_client.allocator.free(url);
 
     // Make request
     var response = try http_client.postJson(url, headers.items, request_body);
-    defer response.deinit(std.heap.page_allocator);
+    defer response.deinit(http_client.allocator);
 
     // Parse response
-    return try parseResponse(response.body);
+    return try parseResponse(http_client.allocator, response.body);
 }
 
 // ============================================================================
@@ -145,47 +149,50 @@ pub fn stream(
     ctx: core.Context,
     callback: *const fn (event: ai.SseEvent) void,
 ) !void {
-    const api_key = core.getApiKey(ctx.model.provider.known) orelse return core.AiError.ApiKeyNotFound;
+    const api_key = core.getApiKey(http_client.allocator, ctx.model.provider.known) orelse return core.AiError.ApiKeyNotFound;
 
     // Create streaming context with mutable state
     var stream_ctx = StreamContext{
         .callback = callback,
         .current_tool_call = null,
         .accumulated_text = .empty,
+        .allocator = http_client.allocator,
     };
-    defer stream_ctx.accumulated_text.deinit(std.heap.page_allocator);
+    defer stream_ctx.accumulated_text.deinit(http_client.allocator);
 
     // Serialize request with stream=true
     var streaming_ctx = ctx;
     streaming_ctx.stream = true;
-    const request_body = try serializeRequest(streaming_ctx);
-    defer std.heap.page_allocator.free(request_body);
+    const request_body = try serializeRequest(http_client.allocator, streaming_ctx);
+    defer http_client.allocator.free(request_body);
 
     // Setup headers
     var headers: std.ArrayList(std.http.Header) = .empty;
-    defer headers.deinit(std.heap.page_allocator);
-    try headers.append(std.heap.page_allocator, .{
+    defer headers.deinit(http_client.allocator);
+    try headers.append(http_client.allocator, .{
         .name = "Authorization",
-        .value = try std.fmt.allocPrint(std.heap.page_allocator, "Bearer {s}", .{api_key}),
+        .value = try std.fmt.allocPrint(http_client.allocator, "Bearer {s}", .{api_key}),
     });
-    try headers.append(std.heap.page_allocator, .{
+    try headers.append(http_client.allocator, .{
         .name = "Content-Type",
         .value = "application/json",
     });
-    try headers.append(std.heap.page_allocator, .{
+    try headers.append(http_client.allocator, .{
         .name = "Accept",
         .value = "text/event-stream",
     });
 
     // Get base URL
     const base_url = getBaseUrl(ctx.model.provider.known);
-    const url = try std.fmt.allocPrint(std.heap.page_allocator, "{s}/v1/chat/completions", .{base_url});
-    defer std.heap.page_allocator.free(url);
+    const url = try std.fmt.allocPrint(http_client.allocator, "{s}/v1/chat/completions", .{base_url});
+    defer http_client.allocator.free(url);
 
     // Make streaming request
     try http_client.postStream(url, headers.items, request_body, struct {
         fn onLine(line: []const u8, ctx_ptr: *StreamContext) void {
-            ctx_ptr.processLine(line) catch {};
+            ctx_ptr.processLine(line) catch |err| {
+                std.log.err("Failed to process SSE line: {s}", .{@errorName(err)});
+            };
         }
     }.onLine);
 }
@@ -194,6 +201,7 @@ const StreamContext = struct {
     callback: *const fn (event: ai.SseEvent) void,
     current_tool_call: ?ToolCallState,
     accumulated_text: std.ArrayList(u8),
+    allocator: std.mem.Allocator,
 
     const ToolCallState = struct {
         id: []const u8,
@@ -213,8 +221,8 @@ const StreamContext = struct {
         }
 
         // Parse JSON
-        const parsed = try std.json.parseFromSlice(OpenAIStreamChunk, std.heap.page_allocator, data, .{});
-        defer parsed.deinit(std.heap.page_allocator);
+        const parsed = try std.json.parseFromSlice(OpenAIStreamChunk, self.allocator, data, .{});
+        defer parsed.deinit(self.allocator);
 
         const chunk = parsed.value;
         if (chunk.choices.len == 0) return;
@@ -265,26 +273,26 @@ const OpenAIStreamChunk = struct {
 // Serialization
 // ============================================================================
 
-fn serializeRequest(ctx: core.Context) ![]u8 {
+fn serializeRequest(allocator: std.mem.Allocator, ctx: core.Context) ![]u8 {
     var messages: std.ArrayList(OpenAIMessage) = .empty;
-    defer messages.deinit(std.heap.page_allocator);
+    defer messages.deinit(allocator);
 
     for (ctx.messages) |msg| {
         const openai_msg = switch (msg) {
             .user => |user_msg| blk: {
                 // Concatenate all content blocks
                 var content: std.ArrayList(u8) = .empty;
-                defer content.deinit(std.heap.page_allocator);
+                defer content.deinit(allocator);
                 for (user_msg.content) |block| {
                     switch (block) {
-                        .text => |text| try content.appendSlice(std.heap.page_allocator, text),
-                        .image => |img| try std.fmt.format(content.writer(std.heap.page_allocator), "[Image: {s}]", .{img.mime_type}),
-                        .image_url => |img_url| try std.fmt.format(content.writer(std.heap.page_allocator), "[Image: {s}]", .{img_url.url}),
+                        .text => |text| try content.appendSlice(allocator, text),
+                        .image => |img| try std.fmt.format(content.writer(allocator), "[Image: {s}]", .{img.mime_type}),
+                        .image_url => |img_url| try std.fmt.format(content.writer(allocator), "[Image: {s}]", .{img_url.url}),
                     }
                 }
                 break :blk OpenAIMessage{
                     .role = "user",
-                    .content = try std.heap.page_allocator.dupe(u8, content.items),
+                    .content = try allocator.dupe(u8, content.items),
                 };
             },
             .assistant => |assistant_msg| blk: {
@@ -298,7 +306,7 @@ fn serializeRequest(ctx: core.Context) ![]u8 {
                             if (tool_calls == null) {
                                 tool_calls = std.ArrayList(OpenAIToolCall){ .items = &.{}, .capacity = 0 };
                             }
-                            try tool_calls.?.append(std.heap.page_allocator, OpenAIToolCall{
+                            try tool_calls.?.append(allocator, OpenAIToolCall{
                                 .id = tc.tool_call.id,
                                 .function = .{
                                     .name = tc.tool_call.name,
@@ -312,7 +320,7 @@ fn serializeRequest(ctx: core.Context) ![]u8 {
 
                 var tool_calls_slice: ?[]const OpenAIToolCall = null;
                 if (tool_calls) |*tc| {
-                    tool_calls_slice = try tc.toOwnedSlice(std.heap.page_allocator);
+                    tool_calls_slice = try tc.toOwnedSlice(allocator);
                 }
 
                 break :blk OpenAIMessage{
@@ -323,119 +331,119 @@ fn serializeRequest(ctx: core.Context) ![]u8 {
             },
             .tool_result => |tool_result| blk: {
                 var content: std.ArrayList(u8) = .empty;
-                defer content.deinit(std.heap.page_allocator);
+                defer content.deinit(allocator);
                 for (tool_result.content) |block| {
                     switch (block) {
-                        .text => |text| try content.appendSlice(std.heap.page_allocator, text),
-                        .image => |img| try std.fmt.format(content.writer(std.heap.page_allocator), "[Image: {s}]", .{img.mime_type}),
+                        .text => |text| try content.appendSlice(allocator, text),
+                        .image => |img| try std.fmt.format(content.writer(allocator), "[Image: {s}]", .{img.mime_type}),
                         .image_url => {},
                     }
                 }
                 break :blk OpenAIMessage{
                     .role = "tool",
-                    .content = try std.heap.page_allocator.dupe(u8, content.items),
+                    .content = try allocator.dupe(u8, content.items),
                     .tool_call_id = tool_result.tool_call_id,
                 };
             },
         };
-        try messages.append(std.heap.page_allocator, openai_msg);
+        try messages.append(allocator, openai_msg);
     }
 
     // Convert tools - build JSON string manually for tools
     var tools_json: ?[]const u8 = null;
     if (ctx.tools.len > 0) {
         var tools_buf: std.ArrayList(u8) = .empty;
-        defer tools_buf.deinit(std.heap.page_allocator);
+        defer tools_buf.deinit(allocator);
         
-        try tools_buf.appendSlice(std.heap.page_allocator, "[");
+        try tools_buf.appendSlice(allocator, "[");
         for (ctx.tools, 0..) |tool, i| {
-            if (i > 0) try tools_buf.appendSlice(std.heap.page_allocator, ",");
+            if (i > 0) try tools_buf.appendSlice(allocator, ",");
             
             // Build tool JSON manually
-            try tools_buf.appendSlice(std.heap.page_allocator, "{\"type\":\"function\",\"function\":{\"name\":\"");
-            try tools_buf.appendSlice(std.heap.page_allocator, tool.name);
-            try tools_buf.appendSlice(std.heap.page_allocator, "\",\"description\":\"");
-            try tools_buf.appendSlice(std.heap.page_allocator, tool.description);
-            try tools_buf.appendSlice(std.heap.page_allocator, "\",\"parameters\":");
-            try tools_buf.appendSlice(std.heap.page_allocator, tool.parameters_json);
-            try tools_buf.appendSlice(std.heap.page_allocator, "}}");
+            try tools_buf.appendSlice(allocator, "{\"type\":\"function\",\"function\":{\"name\":\"");
+            try tools_buf.appendSlice(allocator, tool.name);
+            try tools_buf.appendSlice(allocator, "\",\"description\":\"");
+            try tools_buf.appendSlice(allocator, tool.description);
+            try tools_buf.appendSlice(allocator, "\",\"parameters\":");
+            try tools_buf.appendSlice(allocator, tool.parameters_json);
+            try tools_buf.appendSlice(allocator, "}}");
         }
-        try tools_buf.appendSlice(std.heap.page_allocator, "]");
-        tools_json = try tools_buf.toOwnedSlice(std.heap.page_allocator);
+        try tools_buf.appendSlice(allocator, "]");
+        tools_json = try tools_buf.toOwnedSlice(allocator);
     }
 
     // Build request JSON manually using simple string concatenation
     var req_buf: std.ArrayList(u8) = .empty;
-    defer req_buf.deinit(std.heap.page_allocator);
+    defer req_buf.deinit(allocator);
     
     // Start JSON
-    try req_buf.appendSlice(std.heap.page_allocator, "{\"model\":\"");
-    try req_buf.appendSlice(std.heap.page_allocator, ctx.model.id);
-    try req_buf.appendSlice(std.heap.page_allocator, "\",\"messages\":[");
+    try req_buf.appendSlice(allocator, "{\"model\":\"");
+    try req_buf.appendSlice(allocator, ctx.model.id);
+    try req_buf.appendSlice(allocator, "\",\"messages\":[");
     
     // Messages array
     for (messages.items, 0..) |msg, i| {
-        if (i > 0) try req_buf.appendSlice(std.heap.page_allocator, ",");
-        try req_buf.appendSlice(std.heap.page_allocator, "{\"role\":\"");
-        try req_buf.appendSlice(std.heap.page_allocator, msg.role);
-        try req_buf.appendSlice(std.heap.page_allocator, "\"");
+        if (i > 0) try req_buf.appendSlice(allocator, ",");
+        try req_buf.appendSlice(allocator, "{\"role\":\"");
+        try req_buf.appendSlice(allocator, msg.role);
+        try req_buf.appendSlice(allocator, "\"");
         
         if (msg.content) |content| {
-            try req_buf.appendSlice(std.heap.page_allocator, ",\"content\":\"");
-            try req_buf.appendSlice(std.heap.page_allocator, content);
-            try req_buf.appendSlice(std.heap.page_allocator, "\"");
+            try req_buf.appendSlice(allocator, ",\"content\":\"");
+            try req_buf.appendSlice(allocator, content);
+            try req_buf.appendSlice(allocator, "\"");
         }
         
         if (msg.tool_call_id) |id| {
-            try req_buf.appendSlice(std.heap.page_allocator, ",\"tool_call_id\":\"");
-            try req_buf.appendSlice(std.heap.page_allocator, id);
-            try req_buf.appendSlice(std.heap.page_allocator, "\"");
+            try req_buf.appendSlice(allocator, ",\"tool_call_id\":\"");
+            try req_buf.appendSlice(allocator, id);
+            try req_buf.appendSlice(allocator, "\"");
         }
         
         // TODO: Handle tool_calls serialization
-        try req_buf.appendSlice(std.heap.page_allocator, "}");
+        try req_buf.appendSlice(allocator, "}");
     }
     
     // Close messages, add other params
-    try req_buf.appendSlice(std.heap.page_allocator, "],\"temperature\":");
+    try req_buf.appendSlice(allocator, "],\"temperature\":");
     
     // Convert temperature to string
     var temp_buf: [32]u8 = undefined;
     const temp_str = try std.fmt.bufPrint(&temp_buf, "{d}", .{ctx.temperature});
-    try req_buf.appendSlice(std.heap.page_allocator, temp_str);
+    try req_buf.appendSlice(allocator, temp_str);
     
-    try req_buf.appendSlice(std.heap.page_allocator, ",\"max_tokens\":");
+    try req_buf.appendSlice(allocator, ",\"max_tokens\":");
     var max_tokens_buf: [16]u8 = undefined;
     const max_tokens_str = try std.fmt.bufPrint(&max_tokens_buf, "{d}", .{ctx.max_tokens});
-    try req_buf.appendSlice(std.heap.page_allocator, max_tokens_str);
+    try req_buf.appendSlice(allocator, max_tokens_str);
     
     // Stream flag
     if (ctx.stream) {
-        try req_buf.appendSlice(std.heap.page_allocator, ",\"stream\":true");
+        try req_buf.appendSlice(allocator, ",\"stream\":true");
     } else {
-        try req_buf.appendSlice(std.heap.page_allocator, ",\"stream\":false");
+        try req_buf.appendSlice(allocator, ",\"stream\":false");
     }
     
     // Tools
     if (tools_json) |tj| {
-        try req_buf.appendSlice(std.heap.page_allocator, ",\"tools\":");
-        try req_buf.appendSlice(std.heap.page_allocator, tj);
-        std.heap.page_allocator.free(tj);
+        try req_buf.appendSlice(allocator, ",\"tools\":");
+        try req_buf.appendSlice(allocator, tj);
+        allocator.free(tj);
     }
     
     // Close JSON
-    try req_buf.appendSlice(std.heap.page_allocator, "}");
+    try req_buf.appendSlice(allocator, "}");
     
-    return try req_buf.toOwnedSlice(std.heap.page_allocator);
+    return try req_buf.toOwnedSlice(allocator);
 }
 
 // ============================================================================
 // Response Parsing
 // ============================================================================
 
-fn parseResponse(body: []const u8) !core.AssistantMessage {
-    const parsed = try std.json.parseFromSlice(OpenAIResponse, std.heap.page_allocator, body, .{});
-    defer parsed.deinit(std.heap.page_allocator);
+fn parseResponse(allocator: std.mem.Allocator, body: []const u8) !core.AssistantMessage {
+    const parsed = try std.json.parseFromSlice(OpenAIResponse, allocator, body, .{});
+    defer parsed.deinit(allocator);
 
     const response = parsed.value;
     if (response.choices.len == 0) return error.ApiUnexpectedResponse;
@@ -445,15 +453,15 @@ fn parseResponse(body: []const u8) !core.AssistantMessage {
 
     // Convert content blocks
     var content: std.ArrayList(core.AssistantContentBlock) = .empty;
-    defer content.deinit(std.heap.page_allocator);
+    defer content.deinit(allocator);
 
     if (message.content) |text| {
-        try content.append(std.heap.page_allocator, .{ .text = .{ .text = text } });
+        try content.append(allocator, .{ .text = .{ .text = text } });
     }
 
     if (message.tool_calls) |tool_calls| {
         for (tool_calls) |tc| {
-            try content.append(std.heap.page_allocator, .{ .tool_call = .{
+            try content.append(allocator, .{ .tool_call = .{
                 .tool_call = .{
                     .id = tc.id,
                     .name = tc.function.name,

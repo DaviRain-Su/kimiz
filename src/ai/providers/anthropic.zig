@@ -176,22 +176,23 @@ const AnthropicDelta = union(enum) {
 // ============================================================================
 
 pub fn complete(http_client: *HttpClient, ctx: core.Context) !core.AssistantMessage {
-    const api_key = core.getApiKey(.anthropic) orelse return core.AiError.ApiKeyNotFound;
+    const api_key = core.getApiKey(http_client.allocator, .anthropic) orelse return core.AiError.ApiKeyNotFound;
+    defer http_client.allocator.free(api_key);
 
-    const request_body = try serializeRequest(ctx);
-    defer std.heap.page_allocator.free(request_body);
+    const request_body = try serializeRequest(http_client.allocator, ctx);
+    defer http_client.allocator.free(request_body);
 
     var headers: std.ArrayList(std.http.Header) = .empty;
-    defer headers.deinit(std.heap.page_allocator);
-    try headers.append(std.heap.page_allocator, .{
+    defer headers.deinit(http_client.allocator);
+    try headers.append(http_client.allocator, .{
         .name = "x-api-key",
         .value = api_key,
     });
-    try headers.append(std.heap.page_allocator, .{
+    try headers.append(http_client.allocator, .{
         .name = "anthropic-version",
         .value = core.ANTHROPIC_API_VERSION,
     });
-    try headers.append(std.heap.page_allocator, .{
+    try headers.append(http_client.allocator, .{
         .name = "Content-Type",
         .value = "application/json",
     });
@@ -199,9 +200,9 @@ pub fn complete(http_client: *HttpClient, ctx: core.Context) !core.AssistantMess
     const url = core.ANTHROPIC_BASE_URL ++ "/v1/messages";
 
     var response = try http_client.postJson(url, headers.items, request_body);
-    defer response.deinit(std.heap.page_allocator);
+    defer response.deinit(http_client.allocator);
 
-    return try parseResponse(response.body);
+    return try parseResponse(http_client.allocator, response.body);
 }
 
 // ============================================================================
@@ -213,29 +214,30 @@ pub fn stream(
     ctx: core.Context,
     callback: *const fn (event: ai.SseEvent) void,
 ) !void {
-    const api_key = core.getApiKey(.anthropic) orelse return core.AiError.ApiKeyNotFound;
+    const api_key = core.getApiKey(http_client.allocator, .anthropic) orelse return core.AiError.ApiKeyNotFound;
+    defer http_client.allocator.free(api_key);
 
     var streaming_ctx = ctx;
     streaming_ctx.stream = true;
 
-    const request_body = try serializeRequest(streaming_ctx);
-    defer std.heap.page_allocator.free(request_body);
+    const request_body = try serializeRequest(http_client.allocator, streaming_ctx);
+    defer http_client.allocator.free(request_body);
 
     var headers: std.ArrayList(std.http.Header) = .empty;
-    defer headers.deinit(std.heap.page_allocator);
-    try headers.append(std.heap.page_allocator, .{
+    defer headers.deinit(http_client.allocator);
+    try headers.append(http_client.allocator, .{
         .name = "x-api-key",
         .value = api_key,
     });
-    try headers.append(std.heap.page_allocator, .{
+    try headers.append(http_client.allocator, .{
         .name = "anthropic-version",
         .value = core.ANTHROPIC_API_VERSION,
     });
-    try headers.append(std.heap.page_allocator, .{
+    try headers.append(http_client.allocator, .{
         .name = "Content-Type",
         .value = "application/json",
     });
-    try headers.append(std.heap.page_allocator, .{
+    try headers.append(http_client.allocator, .{
         .name = "Accept",
         .value = "text/event-stream",
     });
@@ -246,7 +248,9 @@ pub fn stream(
 
     try http_client.postStream(url, headers.items, request_body, struct {
         fn onLine(line: []const u8, ctx_ptr: *StreamContext) void {
-            ctx_ptr.processLine(line) catch {};
+            ctx_ptr.processLine(line) catch |err| {
+                std.log.err("Failed to process SSE line: {s}", .{@errorName(err)});
+            };
         }
     }.onLine);
 }
@@ -274,24 +278,24 @@ const StreamContext = struct {
 // Serialization
 // ============================================================================
 
-fn serializeRequest(ctx: core.Context) ![]u8 {
+fn serializeRequest(allocator: std.mem.Allocator, ctx: core.Context) ![]u8 {
     // Convert messages
     var messages: std.ArrayList(AnthropicMessage) = .empty;
-    defer messages.deinit(std.heap.page_allocator);
+    defer messages.deinit(allocator);
 
     for (ctx.messages) |msg| {
         switch (msg) {
             .user => |user_msg| {
                 var content: std.ArrayList(AnthropicContent) = .empty;
-                defer content.deinit(std.heap.page_allocator);
+                defer content.deinit(allocator);
 
                 for (user_msg.content) |block| {
                     switch (block) {
                         .text => |text| {
-                            try content.append(std.heap.page_allocator, .{ .text = .{ .text = text } });
+                            try content.append(allocator, .{ .text = .{ .text = text } });
                         },
                         .image => |img| {
-                            try content.append(std.heap.page_allocator, .{ .image = .{
+                            try content.append(allocator, .{ .image = .{
                                 .source = .{
                                     .media_type = img.mime_type,
                                     .data = img.data,
@@ -302,24 +306,24 @@ fn serializeRequest(ctx: core.Context) ![]u8 {
                     }
                 }
 
-                try messages.append(std.heap.page_allocator, .{
+                try messages.append(allocator, .{
                     .role = "user",
-                    .content = try content.toOwnedSlice(std.heap.page_allocator),
+                    .content = try content.toOwnedSlice(allocator),
                 });
             },
             .assistant => |assistant_msg| {
                 var content: std.ArrayList(AnthropicContent) = .empty;
-                defer content.deinit(std.heap.page_allocator);
+                defer content.deinit(allocator);
 
                 for (assistant_msg.content) |block| {
                     switch (block) {
                         .text => |text| {
-                            try content.append(std.heap.page_allocator, .{ .text = .{ .text = text.text } });
+                            try content.append(allocator, .{ .text = .{ .text = text.text } });
                         },
                         .thinking => {}, // Anthropic handles thinking separately via API
                         .tool_call => |tc| {
-                            const parsed = try std.json.parseFromSlice(std.json.Value, std.heap.page_allocator, tc.tool_call.arguments, .{});
-                            try content.append(std.heap.page_allocator, .{ .tool_use = .{
+                            const parsed = try std.json.parseFromSlice(std.json.Value, allocator, tc.tool_call.arguments, .{});
+                            try content.append(allocator, .{ .tool_use = .{
                                 .id = tc.tool_call.id,
                                 .name = tc.tool_call.name,
                                 .input = parsed.value,
@@ -328,29 +332,29 @@ fn serializeRequest(ctx: core.Context) ![]u8 {
                     }
                 }
 
-                try messages.append(std.heap.page_allocator, .{
+                try messages.append(allocator, .{
                     .role = "assistant",
-                    .content = try content.toOwnedSlice(std.heap.page_allocator),
+                    .content = try content.toOwnedSlice(allocator),
                 });
             },
             .tool_result => |tool_result| {
                 var content: std.ArrayList(ContentBlock) = .empty;
-                defer content.deinit(std.heap.page_allocator);
+                defer content.deinit(allocator);
 
                 for (tool_result.content) |block| {
                     switch (block) {
-                        .text => |text| try content.append(std.heap.page_allocator, .{ .text = text }),
+                        .text => |text| try content.append(allocator, .{ .text = text }),
                         .image => {}, // Skip images in tool results for now
                         .image_url => {}, // Skip image URLs in tool results for now
                     }
                 }
 
-                try messages.append(std.heap.page_allocator, .{
+                try messages.append(allocator, .{
                     .role = "user",
                     .content = &[_]AnthropicContent{.{
                         .tool_result = .{
                             .tool_use_id = tool_result.tool_call_id,
-                            .content = try content.toOwnedSlice(std.heap.page_allocator),
+                            .content = try content.toOwnedSlice(allocator),
                         },
                     }},
                 });
@@ -363,8 +367,8 @@ fn serializeRequest(ctx: core.Context) ![]u8 {
     if (ctx.tools.len > 0) {
         tools = std.ArrayList(AnthropicTool){ .items = &.{}, .capacity = 0 };
         for (ctx.tools) |tool| {
-            const schema = try std.json.parseFromSlice(std.json.Value, std.heap.page_allocator, tool.parameters_json, .{});
-            try tools.?.append(std.heap.page_allocator, .{
+            const schema = try std.json.parseFromSlice(std.json.Value, allocator, tool.parameters_json, .{});
+            try tools.?.append(allocator, .{
                 .name = tool.name,
                 .description = tool.description,
                 .input_schema = schema.value,
@@ -397,42 +401,42 @@ fn serializeRequest(ctx: core.Context) ![]u8 {
     };
 
     var buf: std.ArrayList(u8) = .empty;
-    defer buf.deinit(std.heap.page_allocator);
-    try std.fmt.format(buf.writer(std.heap.page_allocator), "{f}", .{std.json.fmt(request, .{})});
-    return try buf.toOwnedSlice(std.heap.page_allocator);
+    defer buf.deinit(allocator);
+    try std.fmt.format(buf.writer(allocator), "{f}", .{std.json.fmt(request, .{})});
+    return try buf.toOwnedSlice(allocator);
 }
 
 // ============================================================================
 // Response Parsing
 // ============================================================================
 
-fn parseResponse(body: []const u8) !core.AssistantMessage {
-    const parsed = try std.json.parseFromSlice(AnthropicResponse, std.heap.page_allocator, body, .{});
-    defer parsed.deinit(std.heap.page_allocator);
+fn parseResponse(allocator: std.mem.Allocator, body: []const u8) !core.AssistantMessage {
+    const parsed = try std.json.parseFromSlice(AnthropicResponse, allocator, body, .{});
+    defer parsed.deinit(allocator);
 
     const response = parsed.value;
 
     // Convert content blocks
     var content: std.ArrayList(core.AssistantContentBlock) = .empty;
-    defer content.deinit(std.heap.page_allocator);
+    defer content.deinit(allocator);
 
     for (response.content) |block| {
         switch (block) {
             .text => |t| {
-                try content.append(std.heap.page_allocator, .{ .text = .{ .text = t.text } });
+                try content.append(allocator, .{ .text = .{ .text = t.text } });
             },
             .thinking => |t| {
-                try content.append(std.heap.page_allocator, .{ .thinking = .{
+                try content.append(allocator, .{ .thinking = .{
                     .thinking = t.thinking,
                     .thinking_signature = t.signature,
                 } });
             },
             .tool_use => |t| {
-                try content.append(std.heap.page_allocator, .{ .tool_call = .{
+                try content.append(allocator, .{ .tool_call = .{
                     .tool_call = .{
                         .id = t.id,
                         .name = t.name,
-                        .arguments = try std.json.stringifyAlloc(std.heap.page_allocator, t.input, .{}),
+                        .arguments = try std.json.stringifyAlloc(allocator, t.input, .{}),
                     },
                 } });
             },

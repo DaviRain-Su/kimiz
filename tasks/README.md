@@ -118,12 +118,38 @@ make task-create TYPE=feature TITLE="添加 PDF 支持"
 # 动态扩展，不影响已有任务
 ```
 
+## 紧急任务
+
+### 🔴 Zig 0.16 迁移
+
+Zig 0.16 引入了重大破坏性变更，特别是 I/O 系统的全面重构。详见：
+- [迁移任务清单](./zig-0.16-migration.md)
+- [迁移示例代码](../docs/migration-examples.md)
+- [I/O Helper 模块](../src/utils/io_helper.zig)
+
+**关键变更**:
+- `std.fs.File` → `std.Io.File`
+- I/O 操作需要 `std.Io` 实例
+- `writer.print()` → `writer.interface.print()`
+- ArrayList API 调整
+
+**状态**: 🔴 阻塞中 - 必须先完成才能继续其他开发
+
+---
+
 ## Sprint 规划
+
+### Sprint 0: Zig 0.16 迁移 (当前)
+- 目标: 适配 Zig 0.16 的破坏性变更
+- 任务数: 15+ 个原子任务
+- 产出: 可在 Zig 0.16 上编译运行的代码
+- **阻塞**: 所有其他开发任务
 
 ### Sprint 1: Core Infrastructure (Week 1-2)
 - 目标: 项目初始化 + 核心类型 + OpenAI Provider
 - 任务数: 8-10 个原子任务
 - 产出: 可运行的基础 CLI
+- **依赖**: Sprint 0 完成
 
 ### Sprint 2: Agent Runtime (Week 3-4)
 - 目标: Agent Loop + Tools + Memory

@@ -119,18 +119,22 @@ pub fn stream(
 // ============================================================================
 
 pub fn completeCode(http_client: *HttpClient, ctx: core.Context) !core.AssistantMessage {
-    const api_key = core.getApiKey(.kimi) orelse return core.AiError.ApiKeyNotFound;
+    const api_key = core.getApiKey(.kimi, http_client.allocator) orelse return core.AiError.ApiKeyNotFound;
+    defer http_client.allocator.free(api_key);
 
-    const request_body = try serializeCodeRequest(ctx);
-    defer std.heap.page_allocator.free(request_body);
+    const request_body = try serializeCodeRequest(http_client.allocator, ctx);
+    defer http_client.allocator.free(request_body);
+
+    const auth_header = try std.fmt.allocPrint(http_client.allocator, "Bearer {s}", .{api_key});
+    defer http_client.allocator.free(auth_header);
 
     var headers: std.ArrayList(std.http.Header) = .empty;
-    defer headers.deinit(std.heap.page_allocator);
-    try headers.append(std.heap.page_allocator, .{
+    defer headers.deinit(http_client.allocator);
+    try headers.append(http_client.allocator, .{
         .name = "Authorization",
-        .value = try std.fmt.allocPrint(std.heap.page_allocator, "Bearer {s}", .{api_key}),
+        .value = auth_header,
     });
-    try headers.append(std.heap.page_allocator, .{
+    try headers.append(http_client.allocator, .{
         .name = "Content-Type",
         .value = "application/json",
     });
@@ -138,9 +142,9 @@ pub fn completeCode(http_client: *HttpClient, ctx: core.Context) !core.Assistant
     const url = core.KIMI_CODE_BASE_URL ++ "/chat/completions";
 
     var response = try http_client.postJson(url, headers.items, request_body);
-    defer response.deinit(std.heap.page_allocator);
+    defer response.deinit(http_client.allocator);
 
-    return try parseCodeResponse(response.body);
+    return try parseCodeResponse(http_client.allocator, response.body);
 }
 
 pub fn streamCode(
@@ -148,25 +152,29 @@ pub fn streamCode(
     ctx: core.Context,
     callback: *const fn (event: ai.SseEvent) void,
 ) !void {
-    const api_key = core.getApiKey(.kimi) orelse return core.AiError.ApiKeyNotFound;
+    const api_key = core.getApiKey(.kimi, http_client.allocator) orelse return core.AiError.ApiKeyNotFound;
+    defer http_client.allocator.free(api_key);
 
     var streaming_ctx = ctx;
     streaming_ctx.stream = true;
 
-    const request_body = try serializeCodeRequest(streaming_ctx);
-    defer std.heap.page_allocator.free(request_body);
+    const request_body = try serializeCodeRequest(http_client.allocator, streaming_ctx);
+    defer http_client.allocator.free(request_body);
+
+    const auth_header = try std.fmt.allocPrint(http_client.allocator, "Bearer {s}", .{api_key});
+    defer http_client.allocator.free(auth_header);
 
     var headers: std.ArrayList(std.http.Header) = .empty;
-    defer headers.deinit(std.heap.page_allocator);
-    try headers.append(std.heap.page_allocator, .{
+    defer headers.deinit(http_client.allocator);
+    try headers.append(http_client.allocator, .{
         .name = "Authorization",
-        .value = try std.fmt.allocPrint(std.heap.page_allocator, "Bearer {s}", .{api_key}),
+        .value = auth_header,
     });
-    try headers.append(std.heap.page_allocator, .{
+    try headers.append(http_client.allocator, .{
         .name = "Content-Type",
         .value = "application/json",
     });
-    try headers.append(std.heap.page_allocator, .{
+    try headers.append(http_client.allocator, .{
         .name = "Accept",
         .value = "text/event-stream",
     });
@@ -175,7 +183,9 @@ pub fn streamCode(
 
     try http_client.postStream(url, headers.items, request_body, struct {
         fn onLine(line: []const u8) void {
-            processLine(line, callback) catch {};
+            processLine(http_client.allocator, line, callback) catch |err| {
+                std.log.err("Failed to process SSE line: {s}", .{@errorName(err)});
+            };
         }
     }.onLine);
 }
@@ -184,27 +194,27 @@ pub fn streamCode(
 // Serialization
 // ============================================================================
 
-fn serializeCodeRequest(ctx: core.Context) ![]u8 {
+fn serializeCodeRequest(allocator: std.mem.Allocator, ctx: core.Context) ![]u8 {
     var messages: std.ArrayList(KimiMessage) = .empty;
-    defer messages.deinit(std.heap.page_allocator);
+    defer messages.deinit(allocator);
 
     for (ctx.messages) |msg| {
         switch (msg) {
             .user => |user_msg| {
                 var content: std.ArrayList(u8) = .empty;
-                defer content.deinit(std.heap.page_allocator);
+                defer content.deinit(allocator);
 
                 for (user_msg.content) |block| {
                     switch (block) {
-                        .text => |text| try content.appendSlice(std.heap.page_allocator, text),
+                        .text => |text| try content.appendSlice(allocator, text),
                         .image => {}, // Kimi Code may not support images
                         .image_url => {},
                     }
                 }
 
-                try messages.append(std.heap.page_allocator, .{
+                try messages.append(allocator, .{
                     .role = "user",
-                    .content = try std.heap.page_allocator.dupe(u8, content.items),
+                    .content = try allocator.dupe(u8, content.items),
                 });
             },
             .assistant => |assistant_msg| {
@@ -219,7 +229,7 @@ fn serializeCodeRequest(ctx: core.Context) ![]u8 {
                             if (tool_calls == null) {
                                 tool_calls = std.ArrayList(KimiToolCall){ .items = &.{}, .capacity = 0 };
                             }
-                            try tool_calls.?.append(std.heap.page_allocator, KimiToolCall{
+                            try tool_calls.?.append(allocator, KimiToolCall{
                                 .id = tc.tool_call.id,
                                 .function = .{
                                     .name = tc.tool_call.name,
@@ -232,10 +242,10 @@ fn serializeCodeRequest(ctx: core.Context) ![]u8 {
 
                 var tool_calls_slice: ?[]const KimiToolCall = null;
                 if (tool_calls) |*tc| {
-                    tool_calls_slice = try tc.toOwnedSlice(std.heap.page_allocator);
+                    tool_calls_slice = try tc.toOwnedSlice(allocator);
                 }
 
-                try messages.append(std.heap.page_allocator, .{
+                try messages.append(allocator, .{
                     .role = "assistant",
                     .content = content,
                     .tool_calls = tool_calls_slice,
@@ -243,19 +253,19 @@ fn serializeCodeRequest(ctx: core.Context) ![]u8 {
             },
             .tool_result => |tool_result| {
                 var content: std.ArrayList(u8) = .empty;
-                defer content.deinit(std.heap.page_allocator);
+                defer content.deinit(allocator);
 
                 for (tool_result.content) |block| {
                     switch (block) {
-                        .text => |text| try content.appendSlice(std.heap.page_allocator, text),
+                        .text => |text| try content.appendSlice(allocator, text),
                         .image => {},
                         .image_url => {},
                     }
                 }
 
-                try messages.append(std.heap.page_allocator, .{
+                try messages.append(allocator, .{
                     .role = "tool",
-                    .content = try std.heap.page_allocator.dupe(u8, content.items),
+                    .content = try allocator.dupe(u8, content.items),
                     .tool_call_id = tool_result.tool_call_id,
                 });
             },
@@ -269,7 +279,7 @@ fn serializeCodeRequest(ctx: core.Context) ![]u8 {
         for (ctx.tools) |tool| {
             // In plan mode, only allow read-only tools
             // For now, include all tools
-            try tools.?.append(std.heap.page_allocator, KimiTool{
+            try tools.?.append(allocator, KimiTool{
                 .builtin_function = .{ .name = tool.name },
             });
         }
@@ -294,18 +304,18 @@ fn serializeCodeRequest(ctx: core.Context) ![]u8 {
     };
 
     var buf: std.ArrayList(u8) = .empty;
-    defer buf.deinit(std.heap.page_allocator);
-    try std.fmt.format(buf.writer(std.heap.page_allocator), "{f}", .{std.json.fmt(request, .{})});
-    return try buf.toOwnedSlice(std.heap.page_allocator);
+    defer buf.deinit(allocator);
+    try std.fmt.format(buf.writer(allocator), "{f}", .{std.json.fmt(request, .{})});
+    return try buf.toOwnedSlice(allocator);
 }
 
 // ============================================================================
 // Response Parsing
 // ============================================================================
 
-fn parseCodeResponse(body: []const u8) !core.AssistantMessage {
-    const parsed = try std.json.parseFromSlice(KimiCodeResponse, std.heap.page_allocator, body, .{});
-    defer parsed.deinit(std.heap.page_allocator);
+fn parseCodeResponse(allocator: std.mem.Allocator, body: []const u8) !core.AssistantMessage {
+    const parsed = try std.json.parseFromSlice(KimiCodeResponse, allocator, body, .{});
+    defer parsed.deinit(allocator);
 
     const response = parsed.value;
     if (response.choices.len == 0) return error.ApiUnexpectedResponse;
@@ -315,15 +325,15 @@ fn parseCodeResponse(body: []const u8) !core.AssistantMessage {
 
     // Convert content
     var content: std.ArrayList(core.AssistantContentBlock) = .empty;
-    defer content.deinit(std.heap.page_allocator);
+    defer content.deinit(allocator);
 
     if (message.content) |text| {
-        try content.append(std.heap.page_allocator, .{ .text = .{ .text = text } });
+        try content.append(allocator, .{ .text = .{ .text = text } });
     }
 
     if (message.tool_calls) |tool_calls| {
         for (tool_calls) |tc| {
-            try content.append(std.heap.page_allocator, .{ .tool_call = .{
+            try content.append(allocator, .{ .tool_call = .{
                 .tool_call = .{
                     .id = tc.id,
                     .name = tc.function.name,
@@ -344,9 +354,9 @@ fn parseCodeResponse(body: []const u8) !core.AssistantMessage {
         if (u.completion_tokens_details) |details| {
             // Add thinking as a separate content block
             if (details.reasoning_tokens > 0) {
-                try content.insert(std.heap.page_allocator, 0, .{ .thinking = .{
+                try content.insert(allocator, 0, .{ .thinking = .{
                     .thinking = try std.fmt.allocPrint(
-                        std.heap.page_allocator,
+                        allocator,
                         "[Thinking process used {d} tokens]",
                         .{details.reasoning_tokens},
                     ),
@@ -362,7 +372,7 @@ fn parseCodeResponse(body: []const u8) !core.AssistantMessage {
     };
 }
 
-fn processLine(line: []const u8, callback: *const fn (event: ai.SseEvent) void) !void {
+fn processLine(allocator: std.mem.Allocator, line: []const u8, callback: *const fn (event: ai.SseEvent) void) !void {
     if (line.len == 0) return;
     if (!std.mem.startsWith(u8, line, "data: ")) return;
 
@@ -372,8 +382,8 @@ fn processLine(line: []const u8, callback: *const fn (event: ai.SseEvent) void) 
         return;
     }
 
-    const parsed = try std.json.parseFromSlice(KimiCodeResponse, std.heap.page_allocator, data, .{});
-    defer parsed.deinit(std.heap.page_allocator);
+    const parsed = try std.json.parseFromSlice(KimiCodeResponse, allocator, data, .{});
+    defer parsed.deinit(allocator);
 
     const chunk = parsed.value;
     if (chunk.choices.len == 0) return;

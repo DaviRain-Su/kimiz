@@ -242,12 +242,26 @@ pub const SmartRouter = struct {
     }
 
     fn detectProvider(model_id: []const u8) ai.core.KnownProvider {
-        if (std.mem.startsWith(u8, model_id, "gpt-") or std.mem.startsWith(u8, model_id, "o")) return .openai;
+        // OpenAI models: gpt-*, o1-*, o3-*
+        if (std.mem.startsWith(u8, model_id, "gpt-")) return .openai;
+        if (std.mem.startsWith(u8, model_id, "o1-") or std.mem.startsWith(u8, model_id, "o3-")) return .openai;
+        
+        // Anthropic models: claude-*
         if (std.mem.startsWith(u8, model_id, "claude-")) return .anthropic;
+        
+        // Google models: gemini-*
         if (std.mem.startsWith(u8, model_id, "gemini-")) return .google;
+        
+        // Kimi models: kimi-*, moonshot-*, k1*
         if (std.mem.startsWith(u8, model_id, "kimi-")) return .kimi;
-        if (std.mem.eql(u8, model_id, "kimi-for-coding")) return .kimi;
-        return .openai; // default
+        if (std.mem.startsWith(u8, model_id, "moonshot-")) return .kimi;
+        if (std.mem.eql(u8, model_id, "kimi-for-coding") or std.mem.startsWith(u8, model_id, "k1")) return .kimi;
+        
+        // Fireworks models
+        if (std.mem.startsWith(u8, model_id, "accounts/fireworks")) return .fireworks;
+        
+        // Default to OpenAI
+        return .openai;
     }
 };
 

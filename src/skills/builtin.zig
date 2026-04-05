@@ -10,6 +10,7 @@ const code_review = @import("code_review.zig");
 const refactor = @import("refactor.zig");
 const test_gen = @import("test_gen.zig");
 const doc_gen = @import("doc_gen.zig");
+const debug = @import("debug.zig");
 
 /// Register all built-in skills with the registry
 pub fn registerAll(registry: *SkillRegistry) !void {
@@ -17,6 +18,7 @@ pub fn registerAll(registry: *SkillRegistry) !void {
     try registry.register(refactor.getSkill());
     try registry.register(test_gen.getSkill());
     try registry.register(doc_gen.getSkill());
+    try registry.register(debug.getSkill());
 }
 
 /// Get list of all built-in skill IDs
@@ -26,6 +28,7 @@ pub fn getBuiltinSkillIds() []const []const u8 {
         refactor.SKILL_ID,
         test_gen.SKILL_ID,
         doc_gen.SKILL_ID,
+        debug.SKILL_ID,
     };
 }
 
@@ -61,6 +64,14 @@ pub fn getSkillInfo(skill_id: []const u8) ?SkillInfo {
             .name = doc_gen.SKILL_NAME,
             .description = doc_gen.SKILL_DESCRIPTION,
             .version = doc_gen.SKILL_VERSION,
+        };
+    }
+    if (std.mem.eql(u8, skill_id, debug.SKILL_ID)) {
+        return .{
+            .id = debug.SKILL_ID,
+            .name = debug.SKILL_NAME,
+            .description = debug.SKILL_DESCRIPTION,
+            .version = debug.SKILL_VERSION,
         };
     }
     return null;

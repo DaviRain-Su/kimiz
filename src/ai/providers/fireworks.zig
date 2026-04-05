@@ -42,15 +42,15 @@ pub const StreamGuard = struct {
         };
     }
 
-    pub fn deinit(self: *Self) void {
+    pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
         // Free window strings
         for (0..self.window_count) |i| {
             const idx = (self.window_pos + i) % REPETITION_WINDOW_SIZE;
             if (self.window[idx].len > 0) {
-                self.allocator.free(self.window[idx]);
+                allocator.free(self.window[idx]);
             }
         }
-        self.accumulated_text.deinit(std.heap.page_allocator);
+        self.accumulated_text.deinit(allocator);
     }
 
     /// Add delta and check for repetition
@@ -97,7 +97,7 @@ pub const StreamGuard = struct {
             const idx = (self.window_pos + i) % REPETITION_WINDOW_SIZE;
             const prev = self.window[idx];
             if (prev.len > 0) {
-                const sim = try calculateSimilarity(delta, prev);
+                const sim = try calculateSimilarity(self.allocator, delta, prev);
                 total_similarity += sim;
                 count += 1;
             }
@@ -116,7 +116,7 @@ pub const StreamGuard = struct {
 
 /// Calculate similarity between two strings (0.0 - 1.0)
 /// Uses simplified Levenshtein-based similarity
-fn calculateSimilarity(a: []const u8, b: []const u8) !f64 {
+fn calculateSimilarity(allocator: std.mem.Allocator, a: []const u8, b: []const u8) !f64 {
     if (a.len == 0 and b.len == 0) return 1.0;
     if (a.len == 0 or b.len == 0) return 0.0;
     if (std.mem.eql(u8, a, b)) return 1.0;
@@ -135,7 +135,7 @@ fn calculateSimilarity(a: []const u8, b: []const u8) !f64 {
 
     // Count common trigrams
     var a_trigrams: std.StringHashMap(void) = .empty;
-    defer a_trigrams.deinit(std.heap.page_allocator);
+    defer a_trigrams.deinit(allocator);
 
     for (0..a.len - n + 1) |i| {
         try a_trigrams.put(a[i..][0..n], {});
@@ -173,33 +173,35 @@ pub fn stream(
     ctx: core.Context,
     callback: *const fn (event: ai.SseEvent) void,
 ) !void {
-    const api_key = core.getApiKey(.fireworks) orelse return core.AiError.ApiKeyNotFound;
+    const allocator = http_client.allocator;
+    const api_key = try core.getApiKey(allocator, .fireworks) orelse return core.AiError.ApiKeyNotFound;
+    defer allocator.free(api_key);
 
     // Create streaming context with repetition guard
     var stream_ctx = StreamContext{
         .callback = callback,
-        .guard = StreamGuard.init(std.heap.page_allocator),
+        .guard = StreamGuard.init(allocator),
     };
-    defer stream_ctx.guard.deinit(std.heap.page_allocator);
+    defer stream_ctx.guard.deinit(allocator);
 
     // Serialize request with stream=true
     var streaming_ctx = ctx;
     streaming_ctx.stream = true;
-    const request_body = try serializeRequest(streaming_ctx);
-    defer std.heap.page_allocator.free(request_body);
+    const request_body = try serializeRequest(allocator, streaming_ctx);
+    defer allocator.free(request_body);
 
     // Setup headers
     var headers: std.ArrayList(std.http.Header) = .empty;
-    defer headers.deinit(std.heap.page_allocator);
-    try headers.append(std.heap.page_allocator, .{
+    defer headers.deinit(allocator);
+    try headers.append(allocator, .{
         .name = "Authorization",
-        .value = try std.fmt.allocPrint(std.heap.page_allocator, "Bearer {s}", .{api_key}),
+        .value = try std.fmt.allocPrint(allocator, "Bearer {s}", .{api_key}),
     });
-    try headers.append(std.heap.page_allocator, .{
+    try headers.append(allocator, .{
         .name = "Content-Type",
         .value = "application/json",
     });
-    try headers.append(std.heap.page_allocator, .{
+    try headers.append(allocator, .{
         .name = "Accept",
         .value = "text/event-stream",
     });
@@ -210,7 +212,10 @@ pub fn stream(
     // Make streaming request with guard
     try http_client.postStream(url, headers.items, request_body, struct {
         fn onLine(line: []const u8, ctx_ptr: *StreamContext) void {
-            ctx_ptr.processLine(line) catch {};
+            const stream_allocator = ctx_ptr.guard.allocator;
+            ctx_ptr.processLine(stream_allocator, line) catch |err| {
+                std.log.err("Failed to process SSE line: {s}", .{@errorName(err)});
+            };
         }
     }.onLine);
 }
@@ -231,8 +236,8 @@ const StreamContext = struct {
         }
 
         // Parse JSON
-        const parsed = try std.json.parseFromSlice(FireworksStreamChunk, std.heap.page_allocator, data, .{});
-        defer parsed.deinit(std.heap.page_allocator);
+        const parsed = try std.json.parseFromSlice(FireworksStreamChunk, self.guard.allocator, data, .{});
+        defer parsed.deinit(self.guard.allocator);
 
         const chunk = parsed.value;
         if (chunk.choices.len == 0) return;
@@ -314,7 +319,7 @@ const FireworksFunctionCallDelta = struct {
 // Serialization
 // ============================================================================
 
-fn serializeRequest(ctx: core.Context) ![]u8 {
+fn serializeRequest(allocator: std.mem.Allocator, ctx: core.Context) ![]u8 {
     // Define local structs first (order matters!)
     const FireworksMessage = struct {
         role: []const u8,
@@ -341,13 +346,13 @@ fn serializeRequest(ctx: core.Context) ![]u8 {
     };
 
     var messages: std.ArrayList(FireworksMessage) = .empty;
-    defer messages.deinit(std.heap.page_allocator);
+    defer messages.deinit(allocator);
 
     for (ctx.messages) |msg| {
         const fw_msg = switch (msg) {
             .user => |user_msg| blk: {
                 var content: std.ArrayList(u8) = .empty;
-                defer content.deinit(std.heap.page_allocator);
+                defer content.deinit(allocator);
                 for (user_msg.content) |block| {
                     switch (block) {
                         .text => |text| try content.appendSlice(text),
@@ -357,12 +362,12 @@ fn serializeRequest(ctx: core.Context) ![]u8 {
                 }
                 break :blk FireworksMessage{
                     .role = "user",
-                    .content = try std.heap.page_allocator.dupe(u8, content.items),
+                    .content = try allocator.dupe(u8, content.items),
                 };
             },
             .assistant => |assistant_msg| blk: {
                 var content: std.ArrayList(u8) = .empty;
-                defer content.deinit(std.heap.page_allocator);
+                defer content.deinit(allocator);
                 for (assistant_msg.content) |block| {
                     switch (block) {
                         .text => |text| try content.appendSlice(text.text),
@@ -379,7 +384,7 @@ fn serializeRequest(ctx: core.Context) ![]u8 {
             },
             .tool_result => |tool_result| blk: {
                 var content: std.ArrayList(u8) = .empty;
-                defer content.deinit(std.heap.page_allocator);
+                defer content.deinit(allocator);
                 for (tool_result.content) |block| {
                     switch (block) {
                         .text => |text| try content.appendSlice(text),
@@ -388,12 +393,12 @@ fn serializeRequest(ctx: core.Context) ![]u8 {
                 }
                 break :blk FireworksMessage{
                     .role = "tool",
-                    .content = try std.heap.page_allocator.dupe(u8, content.items),
+                    .content = try allocator.dupe(u8, content.items),
                     .tool_call_id = tool_result.tool_call_id,
                 };
             },
         };
-        try messages.append(std.heap.page_allocator, fw_msg);
+        try messages.append(allocator, fw_msg);
     }
 
     // Convert tools
@@ -401,10 +406,10 @@ fn serializeRequest(ctx: core.Context) ![]u8 {
     if (ctx.tools.len > 0) {
         tools = std.ArrayList(FireworksTool){ .items = &.{}, .capacity = 0 };
         for (ctx.tools) |tool| {
-            const schema = try std.json.parseFromSlice(std.json.Value, std.heap.page_allocator, tool.parameters_json, .{});
-            defer std.heap.page_allocator.free(schema.value);
+            const schema = try std.json.parseFromSlice(std.json.Value, allocator, tool.parameters_json, .{});
+            defer allocator.free(schema.value);
 
-            try tools.?.append(std.heap.page_allocator, FireworksTool{
+            try tools.?.append(allocator, FireworksTool{
                 .function = .{
                     .name = tool.name,
                     .description = tool.description,
@@ -430,9 +435,9 @@ fn serializeRequest(ctx: core.Context) ![]u8 {
     };
 
     var buf: std.ArrayList(u8) = .empty;
-    defer buf.deinit(std.heap.page_allocator);
-    try std.fmt.format(buf.writer(std.heap.page_allocator), "{f}", .{std.json.fmt(request, .{})});
-    return try buf.toOwnedSlice(std.heap.page_allocator);
+    defer buf.deinit(allocator);
+    try std.fmt.format(buf.writer(allocator), "{f}", .{std.json.fmt(request, .{})});
+    return try buf.toOwnedSlice(allocator);
 }
 
 // ============================================================================
@@ -451,19 +456,19 @@ fn mapFinishReason(reason: []const u8) core.StopReason {
 // ============================================================================
 
 test "calculateSimilarity" {
-    const sim1 = try calculateSimilarity("hello world", "hello world");
+    const sim1 = try calculateSimilarity(std.testing.allocator, "hello world", "hello world");
     try std.testing.expectApproxEqAbs(@as(f64, 1.0), sim1, 0.01);
 
-    const sim2 = try calculateSimilarity("hello", "world");
+    const sim2 = try calculateSimilarity(std.testing.allocator, "hello", "world");
     try std.testing.expect(sim2 < 0.5);
 
-    const sim3 = try calculateSimilarity("", "");
+    const sim3 = try calculateSimilarity(std.testing.allocator, "", "");
     try std.testing.expectApproxEqAbs(@as(f64, 1.0), sim3, 0.01);
 }
 
 test "StreamGuard repetition detection" {
     var guard = StreamGuard.init(std.testing.allocator);
-    defer guard.deinit(std.heap.page_allocator);
+    defer guard.deinit(std.testing.allocator);
 
     // Add similar deltas
     const d1 = "The quick brown fox";

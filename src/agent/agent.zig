@@ -80,6 +80,7 @@ pub const Agent = struct {
     messages: std.ArrayList(Message),
     event_callback: ?*const fn (event: AgentEvent) void,
     iteration_count: u32 = 0,
+    ai_client: ai.Ai,
 
     const Self = @This();
 
@@ -90,11 +91,13 @@ pub const Agent = struct {
             .state = .idle,
             .messages = .empty,
             .event_callback = null,
+            .ai_client = ai.Ai.init(allocator),
         };
     }
 
     pub fn deinit(self: *Self) void {
         self.messages.deinit(self.allocator);
+        self.ai_client.deinit();
     }
 
     /// Set event callback for receiving agent events
@@ -130,10 +133,30 @@ pub const Agent = struct {
         tool_name: []const u8,
         result: ToolResult,
     ) !void {
-        // Add tool result message
+        // Deep copy content blocks
         const content = try self.allocator.alloc(core.UserContentBlock, result.content.len);
+        errdefer self.allocator.free(content);
+
         for (result.content, 0..) |block, i| {
-            content[i] = block;
+            content[i] = switch (block) {
+                .text => |text| .{ .text = try self.allocator.dupe(u8, text) },
+                .image => |img| .{ .image = try self.allocator.dupe(u8, img.data) },
+                .image_url => |img_url| .{ .image_url = .{
+                    .url = try self.allocator.dupe(u8, img_url.url),
+                    .detail = img_url.detail,
+                } },
+            };
+        }
+
+        // Ensure content is freed if subsequent operations fail
+        errdefer {
+            for (content) |block| {
+                switch (block) {
+                    .text => |text| self.allocator.free(text),
+                    .image => |img| self.allocator.free(img.data),
+                    .image_url => |img_url| self.allocator.free(img_url.url),
+                }
+            }
         }
 
         const tool_result_msg = Message{
@@ -170,11 +193,8 @@ pub const Agent = struct {
                 .tools = self.getToolDefinitions(),
             };
 
-            // Call AI
-            var ai_client = ai.Ai.init(self.allocator);
-            defer ai_client.deinit();
-
-            const response = ai_client.complete(ctx) catch |err| {
+            // Call AI using the reused client
+            const response = self.ai_client.complete(ctx) catch |err| {
                 self.state = .err;
                 self.emit(.{ .err = @errorName(err) });
                 return err;

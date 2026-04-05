@@ -197,7 +197,9 @@ pub fn calculateCost(model: Model, usage: core.TokenUsage) f64 {
 // API Key Management
 // ============================================================================
 
-pub fn getApiKey(provider: KnownProvider) ?[]const u8 {
+/// Get API key for a provider.
+/// Caller owns the returned memory and must free it with the provided allocator.
+pub fn getApiKey(allocator: std.mem.Allocator, provider: KnownProvider) ?[]const u8 {
     const env_var = switch (provider) {
         .openai => "OPENAI_API_KEY",
         .anthropic => "ANTHROPIC_API_KEY",
@@ -207,7 +209,7 @@ pub fn getApiKey(provider: KnownProvider) ?[]const u8 {
         .openrouter => "OPENROUTER_API_KEY",
     };
 
-    return std.process.getEnvVarOwned(std.heap.page_allocator, env_var) catch null;
+    return std.process.getEnvVarOwned(allocator, env_var) catch null;
 }
 
 // ============================================================================

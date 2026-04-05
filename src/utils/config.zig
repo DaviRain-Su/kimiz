@@ -246,17 +246,17 @@ test "Config API key management" {
     // Set API key
     try manager.setApiKey(&config, "openai", "sk-test123");
 
-    // Verify
-    const key = getApiKey(&config, "openai");
+    // Verify using the ConfigManager method
+    const key = ConfigManager.getApiKey(&config, "openai");
     try std.testing.expect(key != null);
     try std.testing.expectEqualStrings("sk-test123", key.?);
 
     // Update key
     try manager.setApiKey(&config, "openai", "sk-new456");
-    const new_key = getApiKey(&config, "openai");
+    const new_key = ConfigManager.getApiKey(&config, "openai");
     try std.testing.expectEqualStrings("sk-new456", new_key.?);
 
     // Non-existent key
-    const missing = getApiKey(&config, "unknown");
+    const missing = ConfigManager.getApiKey(&config, "unknown");
     try std.testing.expect(missing == null);
 }
