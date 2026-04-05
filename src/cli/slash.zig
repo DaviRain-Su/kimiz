@@ -179,6 +179,8 @@ fn cmdYolo(ctx: *SlashContext, args: []const u8) !void {
 
     if (new_state) |state| {
         ctx.cfg.yolo_mode = state;
+        ctx.agent.options.yolo_mode = state;
+        ctx.agent.approval_manager.policy = if (state) .auto else .moderate;
         const msg = try std.fmt.allocPrint(ctx.allocator, "✅ YOLO mode {s}", .{if (state) "enabled" else "disabled"});
         defer ctx.allocator.free(msg);
         ctx.printLine(msg);

@@ -141,7 +141,6 @@ pub const SkillRegistry = struct {
     pub fn listAll(self: *Self) ![]Skill {
         var list = std.ArrayList(Skill).init(self.allocator);
         defer list.deinit();
-
         var iter = self.skills.valueIterator();
         while (iter.next()) |skill| {
             try list.append(skill.*);

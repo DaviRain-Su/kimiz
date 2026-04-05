@@ -1,7 +1,8 @@
 ### T-088: implement-plan-mode
-**状态**: pending
+**状态**: active
 **优先级**: P1
 **创建**: 2026-04-05
+**更新**: 2026-04-05
 **预计耗时**: 10h
 
 **描述**:
@@ -14,7 +15,13 @@
 4. AI 输出规划到 Markdown 文件
 5. 用户审批后可自动执行规划
 
-参考文档: docs/KIMIZ-vs-KIMI-CLI-GAP-ANALYSIS.md
+**TigerBeetle 借鉴**:
+- Plan 模式状态转换使用高密度断言（如 `assert(plan_mode_tools.len > 0)`）
+- 规划文件的读写使用 arena 分配器，生成完成后一次性释放
+- 对规划步骤的合法性做正向+负向断言（如 `assert(steps.len < max_steps)` 且 `assert(!has_write_tool)`）
+- 参考 TigerBeetle 的"Crash on Corruption"哲学：Plan 生成过程中如果内部状态 corrupt，直接 panic 而不是输出错误规划
+
+参考文档: docs/KIMIZ-vs-KIMI-CLI-GAP-ANALYSIS.md, docs/TIGERBEETLE-PATTERNS-ANALYSIS.md
 
 **验收标准**:
 - [ ] 核心功能实现

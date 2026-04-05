@@ -1,7 +1,8 @@
 ### T-086: implement-session-persistence
-**状态**: pending
+**状态**: active
 **优先级**: P1
 **创建**: 2026-04-05
+**更新**: 2026-04-05
 **预计耗时**: 8h
 
 **描述**:
@@ -14,7 +15,12 @@
 4. 实现 `/sessions`, `/resume`, `/title` Slash 命令
 5. 会话启动时 replay 历史消息
 
-参考文档: docs/KIMIZ-vs-KIMI-CLI-GAP-ANALYSIS.md
+**TigerBeetle 借鉴**:
+- 会话队列管理参考 `stack.zig` / `queue.zig` 的侵入式链表模式，避免动态分配
+- 使用 `CountingAllocator` 在调试模式下监控会话加载/保存时的内存使用
+- 对会话状态转换增加高密度断言（如 `assert(session.messages.len > 0)` replay 前检查）
+
+参考文档: docs/KIMIZ-vs-KIMI-CLI-GAP-ANALYSIS.md, docs/TIGERBEETLE-PATTERNS-ANALYSIS.md
 
 **验收标准**:
 - [ ] 核心功能实现

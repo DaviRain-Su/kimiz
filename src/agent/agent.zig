@@ -13,6 +13,7 @@ const ai = @import("../ai/root.zig");
 const skills = @import("../skills/root.zig");
 const memory = @import("../memory/root.zig");
 const learning = @import("../learning/root.zig");
+const harness_tool_approval = @import("../harness/tool_approval.zig");
 const Message = core.Message;
 const Context = core.Context;
 const AssistantMessage = core.AssistantMessage;
@@ -93,6 +94,7 @@ pub const Agent = struct {
     skill_engine: skills.SkillEngine,
     memory_manager: ?memory.MemoryManager,
     learning_engine: ?learning.LearningEngine,
+    approval_manager: harness_tool_approval.ApprovalManager,
 
     const Self = @This();
 
@@ -118,6 +120,11 @@ pub const Agent = struct {
         var learning_engine: ?learning.LearningEngine = null;
         learning_engine = learning.LearningEngine.init(allocator);
         
+        const approval_policy: harness_tool_approval.ApprovalPolicy = if (options.yolo_mode)
+            .auto
+        else
+            .moderate;
+
         return .{
             .allocator = allocator,
             .options = options,
@@ -129,6 +136,7 @@ pub const Agent = struct {
             .skill_engine = skills.SkillEngine.init(allocator, &skill_registry),
             .memory_manager = memory_manager,
             .learning_engine = learning_engine,
+            .approval_manager = harness_tool_approval.ApprovalManager.init(allocator, approval_policy),
         };
     }
 
@@ -146,6 +154,7 @@ pub const Agent = struct {
         if (self.learning_engine) |*le| {
             le.deinit();
         }
+        self.approval_manager.deinit();
     }
 
     /// Set event callback for receiving agent events
@@ -327,6 +336,18 @@ pub const Agent = struct {
     /// Execute tool with error recovery
     fn executeToolWithRecovery(self: *Self, tool_call: core.ToolCall) !ToolResult {
         const start_time = utils.milliTimestamp();
+
+        // Approval check
+        const risk = harness_tool_approval.getToolRisk(tool_call.name);
+        if (self.approval_manager.needsApproval(tool_call.name, risk)) {
+            // For now, in non-interactive mode, deny if not auto-approved
+            // TODO: emit approval request event for interactive UI
+            const denied_msg = try std.fmt.allocPrint(self.allocator, "Tool '{s}' requires approval. Enable YOLO mode to auto-approve.", .{tool_call.name});
+            return ToolResult{
+                .content = &[_]tool_mod.UserContentBlock{.{ .text = denied_msg }},
+                .is_error = true,
+            };
+        }
 
         // Find the tool
         for (self.options.tools) |agent_tool| {

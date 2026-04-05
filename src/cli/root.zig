@@ -299,6 +299,26 @@ fn runInteractive(allocator: std.mem.Allocator) !void {
             continue;
         }
 
+        // Shell mode: detect `$` prefix for direct shell execution
+        if (input.len > 1 and input[0] == '$') {
+            const shell_cmd = std.mem.trim(u8, input[1..], " \t");
+            if (shell_cmd.len > 0) {
+                const result = executeShellCommand(allocator, shell_cmd) catch |err| {
+                    print("\n❌ Shell error: ");
+                    print(@errorName(err));
+                    print("\n");
+                    continue;
+                };
+                defer allocator.free(result);
+                print("\n$ ");
+                print(shell_cmd);
+                print("\n");
+                print(result);
+                print("\n");
+            }
+            continue;
+        }
+
         // Slash command handling
         if (slash.parse(input)) |cmd_info| {
             if (slash.find(cmd_info.name)) |cmd| {
@@ -407,6 +427,34 @@ fn runSkillCommand(allocator: std.mem.Allocator, args: []const []const u8) !void
     }
 }
 
+fn executeShellCommand(allocator: std.mem.Allocator, command: []const u8) ![]u8 {
+    const cc = @cImport({ @cInclude("stdlib.h"); @cInclude("stdio.h"); });
+
+    // Build command with stderr redirected
+    var cmd_buf: std.ArrayList(u8) = .empty;
+    defer cmd_buf.deinit(allocator);
+    try cmd_buf.appendSlice(allocator, command);
+    try cmd_buf.appendSlice(allocator, " 2>&1");
+
+    const c_cmd = try allocator.dupeZ(u8, cmd_buf.items);
+    defer allocator.free(c_cmd);
+
+    const pipe = cc.popen(c_cmd.ptr, "r") orelse return error.ShellExecutionFailed;
+    defer _ = cc.pclose(pipe);
+
+    var output: std.ArrayList(u8) = .empty;
+    defer output.deinit(allocator);
+    const max_output: usize = 100 * 1024; // 100KB limit
+    var buf: [4096]u8 = undefined;
+    while (output.items.len < max_output) {
+        const n = cc.fread(&buf, 1, buf.len, pipe);
+        if (n == 0) break;
+        try output.appendSlice(allocator, buf[0..n]);
+    }
+
+    return try allocator.dupe(u8, std.mem.trim(u8, output.items, "\n"));
+}
+
 fn printHelp() void {
     const help =
         \\kimiz - AI Coding Agent
@@ -415,6 +463,7 @@ fn printHelp() void {
         \\  help              Show this help
         \\  exit, quit        Exit the program
         \\  clear             Clear screen
+        \\  $ <cmd>           Execute shell command directly
         \\
         \\Usage:
         \\  kimiz              Start interactive mode

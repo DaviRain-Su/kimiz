@@ -22,6 +22,12 @@ pub const harness = @import("harness/root.zig");
 // Extension module - WASM-based extension system
 pub const extension = @import("extension/root.zig");
 
+// Memory module - memory management and recall
+pub const memory = @import("memory/root.zig");
+
+// Learning module - adaptive learning engine
+pub const learning = @import("learning/root.zig");
+
 // Config module - configuration management
 pub const config = @import("config.zig");
 
