@@ -85,6 +85,7 @@ pub const AgentOptions = struct {
     max_iterations: u32 = 50,
     project_path: ?[]const u8 = null,
     memory_db_path: ?[]const u8 = null,
+    max_messages: ?usize = null,  // null = no limit, useful for long sessions
 };
 
 // ============================================================================
@@ -503,6 +504,15 @@ pub const Agent = struct {
                 self.emit(.done);
                 break;
             }
+            
+            // Check and trim messages if needed (end of each iteration)
+            if (self.options.max_messages) |max| {
+                if (self.messages.items.len > max) {
+                    self.trimToRecentMessages(max) catch |err| {
+                        std.log.warn("Failed to trim messages: {s}", .{@errorName(err)});
+                    };
+                }
+            }
         }
 
         if (self.iteration_count >= self.options.max_iterations) {
@@ -806,7 +816,36 @@ pub const Agent = struct {
 
     /// Clear conversation history
     pub fn clearHistory(self: *Self) void {
-        self.messages.clearAndFree(self.allocator);
+        for (self.messages.items) |msg| msg.deinit(self.allocator);
+        self.messages.clearRetainingCapacity();
+    }
+
+    /// Trim to keep only recent N messages (oldest messages are freed)
+    /// Useful for long sessions to manage memory and context window
+    pub fn trimToRecentMessages(self: *Self, keep_recent: usize) !void {
+        if (self.messages.items.len <= keep_recent) return;
+        
+        const to_remove = self.messages.items.len - keep_recent;
+        
+        // Free old messages
+        for (self.messages.items[0..to_remove]) |msg| {
+            msg.deinit(self.allocator);
+        }
+        
+        // Move recent messages to the beginning
+        std.mem.copyForwards(
+            Message,
+            self.messages.items,
+            self.messages.items[to_remove..],
+        );
+        
+        // Update length
+        self.messages.items.len = keep_recent;
+        
+        std.log.info("Trimmed conversation history: {d} → {d} messages", .{
+            to_remove + keep_recent,
+            keep_recent,
+        });
     }
 
     /// Export conversation to JSON
@@ -861,4 +900,79 @@ test "Agent registerSubAgentTool" {
     try a.registerSubAgentTool();
     try std.testing.expectEqual(@as(usize, 1), a.options.tools.len);
     try std.testing.expectEqualStrings("delegate", a.options.tools[0].tool.name);
+}
+
+test "Agent trimToRecentMessages" {
+    const allocator = std.testing.allocator;
+    const model = core.Model{
+        .id = "gpt-4o",
+        .provider = .{ .known = .openai },
+        .api = .{ .known = .@"openai-completions" },
+        .context_window = 128000,
+        .max_tokens = 4096,
+        .cost = .{
+            .input_token_cost = 2.50,
+            .output_token_cost = 10.00,
+        },
+    };
+
+    var agent = try Agent.init(allocator, .{ .model = model });
+    defer agent.deinit();
+
+    // Add 20 messages
+    for (0..20) |i| {
+        const text = try std.fmt.allocPrint(allocator, "Message {d}", .{i});
+        const content = try allocator.alloc(core.UserContentBlock, 1);
+        content[0] = .{ .text = text };
+        try agent.messages.append(allocator, .{
+            .user = .{ .content = content },
+        });
+    }
+
+    try std.testing.expectEqual(@as(usize, 20), agent.messages.items.len);
+
+    // Trim to keep only 10 most recent
+    try agent.trimToRecentMessages(10);
+    try std.testing.expectEqual(@as(usize, 10), agent.messages.items.len);
+
+    // Verify we kept the most recent ones (index 10-19)
+    const first = agent.messages.items[0].user.content[0].text;
+    try std.testing.expect(std.mem.indexOf(u8, first, "Message 10") != null);
+
+    const last = agent.messages.items[9].user.content[0].text;
+    try std.testing.expect(std.mem.indexOf(u8, last, "Message 19") != null);
+}
+
+test "Agent trimToRecentMessages no-op when under limit" {
+    const allocator = std.testing.allocator;
+    const model = core.Model{
+        .id = "gpt-4o",
+        .provider = .{ .known = .openai },
+        .api = .{ .known = .@"openai-completions" },
+        .context_window = 128000,
+        .max_tokens = 4096,
+        .cost = .{
+            .input_token_cost = 2.50,
+            .output_token_cost = 10.00,
+        },
+    };
+
+    var agent = try Agent.init(allocator, .{ .model = model });
+    defer agent.deinit();
+
+    // Add 5 messages
+    for (0..5) |i| {
+        const text = try std.fmt.allocPrint(allocator, "Message {d}", .{i});
+        const content = try allocator.alloc(core.UserContentBlock, 1);
+        content[0] = .{ .text = text };
+        try agent.messages.append(allocator, .{
+            .user = .{ .content = content },
+        });
+    }
+
+    // Trim to 10 (more than we have)
+    try agent.trimToRecentMessages(10);
+    
+    // Should still have 5
+    try std.testing.expectEqual(@as(usize, 5), agent.messages.items.len);
 }

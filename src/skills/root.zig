@@ -6,6 +6,9 @@ const std = @import("std");
 const core = @import("../core/root.zig");
 const agent = @import("../agent/root.zig");
 
+pub const dsl = @import("dsl.zig");
+pub const defineSkill = dsl.defineSkill;
+
 // ============================================================================
 // Skill Types
 // ============================================================================
