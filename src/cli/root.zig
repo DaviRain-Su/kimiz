@@ -8,6 +8,7 @@ const extension = @import("../extension/root.zig");
 const harness = @import("../harness/root.zig");
 const workspace = @import("../workspace/root.zig");
 const config = @import("../config.zig");
+const skills = @import("../skills/root.zig");
 pub const slash = @import("slash.zig");
 
 const c = @cImport({
@@ -163,6 +164,16 @@ pub fn run(
             return;
         }
         try runSkillCommand(allocator, args_slice[2..]);
+        return;
+    }
+
+    // Check for generate-skill command
+    if (args_slice.len > 1 and std.mem.eql(u8, args_slice[1], "generate-skill")) {
+        if (args_slice.len < 4) {
+            printLine("Usage: kimiz generate-skill <name> <description>");
+            return;
+        }
+        try runGenerateSkillCommand(allocator, args_slice[2], args_slice[3]);
         return;
     }
 
@@ -372,6 +383,18 @@ fn runInteractive(allocator: std.mem.Allocator) !void {
     print("\n👋 Goodbye!\n");
 }
 
+fn runGenerateSkillCommand(allocator: std.mem.Allocator, name: []const u8, description: []const u8) !void {
+    var gen = try skills.generator.Generator.init(allocator);
+    defer gen.deinit();
+
+    gen.generate(name, description, 5) catch |err| {
+        print("❌ Generation failed: ");
+        print(@errorName(err));
+        print("\n");
+        return;
+    };
+}
+
 fn runSkillCommand(allocator: std.mem.Allocator, args: []const []const u8) !void {
     if (args.len < 1) {
         printLine("Usage: kimiz skill <skill_id> [param=value...]");
@@ -479,8 +502,10 @@ fn printHelp() void {
         \\  $ <cmd>           Execute shell command directly
         \\
         \\Usage:
-        \\  kimiz              Start interactive mode
-        \\  kimiz skill <id>   Execute a skill
+        \\  kimiz                          Start interactive mode
+        \\  kimiz skill <id>               Execute a skill
+        \\  kimiz generate-skill <name> <description>
+        \\                                 Generate a new skill via LLM
         \\
         \\Environment:
         \\  KIMIZ_MODEL        Default model (default: k2p5)

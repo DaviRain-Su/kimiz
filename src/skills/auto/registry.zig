@@ -4,6 +4,6 @@
 const skills = @import("../root.zig");
 
 pub fn registerAutoSkills(registry: *skills.SkillRegistry) !void {
-    _ = registry;
-    // Auto skill imports will be inserted here by the generator
+    @setEvalBranchQuota(10000);
+    try registry.register(@import("auto_hello.zig").getSkill());
 }

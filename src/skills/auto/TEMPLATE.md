@@ -23,7 +23,7 @@ fn {{NAME}}Handler(input: struct {
     // For enums:
     //   style: Style = .default_value,
     // where Style is defined above handler
-}) struct {
+}, arena: std.mem.Allocator) struct {
     success: bool,
     output: []const u8,
     error_message: ?[]const u8 = null,
@@ -35,7 +35,9 @@ fn {{NAME}}Handler(input: struct {
     // On unrecoverable error, return:
     //   .{ .success = false, .output = "", .error_message = "reason" }
 
-    return .{ .success = true, .output = w.buffered() };
+    // CRITICAL: copy output from stack buffer to arena before returning
+    const output = arena.dupe(u8, w.buffered()) catch return .{ .success = false, .output = "" };
+    return .{ .success = true, .output = output };
 }
 
 pub const {{Name}}DslSkill = skills.defineSkill(.{

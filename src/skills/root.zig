@@ -241,10 +241,14 @@ pub const SkillEngine = struct {
 // ============================================================================
 
 const builtin = @import("builtin.zig");
+const auto_registry = @import("auto/registry.zig");
 
 pub fn registerBuiltinSkills(registry: *SkillRegistry) !void {
     try builtin.registerAll(registry);
+    try auto_registry.registerAutoSkills(registry);
 }
+
+pub const generator = @import("generator.zig");
 
 // ============================================================================
 // Tests

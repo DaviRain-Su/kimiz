@@ -16,6 +16,7 @@ const learning = @import("../learning/root.zig");
 const harness_tool_approval = @import("../harness/tool_approval.zig");
 const session_mgmt = @import("../utils/session.zig");
 const subagent = @import("subagent.zig");
+const observability = @import("../observability/root.zig");
 const Message = core.Message;
 const Context = core.Context;
 const AssistantMessage = core.AssistantMessage;
@@ -113,6 +114,7 @@ pub const Agent = struct {
     session_id: ?[]const u8,
     subagent_delegate_ctx: ?*subagent.DelegateContext,
     subagent_tools_owned: bool,
+    metrics_collector: ?*observability.MetricsCollector,
 
     const Self = @This();
 
@@ -159,8 +161,37 @@ pub const Agent = struct {
         } else null;
         // Pre-allocate message ArrayList capacity to reduce allocations
         // Typical conversation: 1 system + 3-10 assistant/tool messages per iteration
-        var messages_list = try std.ArrayList(Message).initCapacity(allocator, 32);
-        errdefer messages_list.deinit();
+        var messages_list: std.ArrayList(Message) = .empty;
+        errdefer messages_list.deinit(allocator);
+        try messages_list.ensureTotalCapacity(allocator, 32);
+        
+        // Initialize metrics collector
+        const session_id = try observability.generateSessionId(allocator);
+        errdefer allocator.free(session_id);
+        
+        const metrics_collector = observability.MetricsCollector.init(allocator, session_id) catch |init_err| blk: {
+            std.log.warn("Failed to init metrics collector: {s}", .{@errorName(init_err)});
+            break :blk null;
+        };
+        
+        if (metrics_collector != null) {
+            const collector = metrics_collector.?;
+            
+            // Record session_start event
+            const model_id = options.model.id;
+            const snapshot = observability.MetricsSnapshot{
+                .timestamp = utils.milliTimestamp(),
+                .session_id = session_id,
+                .event_type = .session_start,
+                .data = .{ .session_start = .{
+                    .model = model_id,
+                    .max_iterations = options.max_iterations,
+                }},
+            };
+            collector.record(snapshot) catch |err| {
+                std.log.warn("Failed to record session_start: {s}", .{@errorName(err)});
+            };
+        }
         
         return .{
             .allocator = allocator,
@@ -179,6 +210,7 @@ pub const Agent = struct {
             .session_id = null,
             .subagent_delegate_ctx = null,
             .subagent_tools_owned = false,
+            .metrics_collector = metrics_collector,
         };
     }
 
@@ -200,6 +232,9 @@ pub const Agent = struct {
         }
         if (self.subagent_delegate_ctx) |ctx| {
             self.allocator.destroy(ctx);
+        }
+        if (self.metrics_collector) |collector| {
+            collector.deinit();
         }
     }
 

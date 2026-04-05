@@ -322,7 +322,8 @@ fn parseJsonValue(val: std.json.Value, comptime T: type, arena: std.mem.Allocato
 
 fn formatOutput(output: anytype, arena: std.mem.Allocator) ![]const u8 {
     if (@hasField(@TypeOf(output), "output")) {
-        if (@TypeOf(output.output) == []const u8) {
+        const OutputType = @TypeOf(output.output);
+        if (OutputType == []const u8 or OutputType == []u8) {
             return try arena.dupe(u8, output.output);
         }
     }

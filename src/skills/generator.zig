@@ -41,7 +41,6 @@ pub const Generator = struct {
         while (attempt <= max_retries) : (attempt += 1) {
             if (attempt > 0) {
                 std.debug.print("Retrying compilation fix ({d}/{d})...\n", .{ attempt, max_retries });
-                // Append compilation errors to prompt
                 const errors = try self.readLastCompileErrors();
                 defer self.allocator.free(errors);
                 try prompt_buf.appendSlice(self.allocator, "\n\nPrevious attempt failed with these Zig compilation errors:\n");
@@ -66,10 +65,16 @@ pub const Generator = struct {
     }
 
     fn buildPrompt(self: *Self, name: []const u8, description: []const u8, out: *std.ArrayList(u8)) !void {
-        var replaced = try replaceAll(self.allocator, self.template, "{{NAME}}", toUpperSnake(name));
+        const upper_snake = try toUpperSnake(self.allocator, name);
+        defer self.allocator.free(upper_snake);
+
+        const pascal = try toPascalCase(self.allocator, name);
+        defer self.allocator.free(pascal);
+
+        var replaced = try replaceAll(self.allocator, self.template, "{{NAME}}", upper_snake);
         defer self.allocator.free(replaced);
 
-        replaced = try replaceAll(self.allocator, replaced, "{{Name}}", toPascalCase(name));
+        replaced = try replaceAll(self.allocator, replaced, "{{Name}}", pascal);
         defer self.allocator.free(replaced);
 
         replaced = try replaceAll(self.allocator, replaced, "{{kebab-name}}", name);
@@ -90,13 +95,16 @@ pub const Generator = struct {
             return error.NoApiKeyConfigured;
         }
 
-        var ctx = core.Context{
+        const model = ai.models_registry.getModelById(cfg.default_model) orelse return error.ModelNotFound;
+
+        const system_msg = core.Message{ .role = .system, .content = "You are a Zig code generator." };
+        const user_msg = core.Message{ .role = .user, .content = prompt };
+        const messages = &[_]core.Message{ system_msg, user_msg };
+
+        const ctx = core.Context{
             .allocator = self.allocator,
-            .model = try core.Model.fromString(cfg.default_model),
-            .messages = &[_]core.Message{
-                .{ .role = .system, .content = "You are a Zig code generator." },
-                .{ .role = .user, .content = prompt },
-            },
+            .model = model,
+            .messages = messages,
             .temperature = cfg.default_temperature,
             .max_tokens = cfg.default_max_tokens,
         };
@@ -104,7 +112,6 @@ pub const Generator = struct {
         const response = try self.ai_client.complete(ctx);
         defer response.deinit(self.allocator);
 
-        // Extract raw text from assistant message
         var text_buf: std.ArrayList(u8) = .empty;
         defer text_buf.deinit(self.allocator);
         for (response.content) |block| {
@@ -115,9 +122,8 @@ pub const Generator = struct {
         }
 
         const raw = try text_buf.toOwnedSlice(self.allocator);
-        const code = try extractCodeBlock(self.allocator, raw);
-        self.allocator.free(raw);
-        return code;
+        defer self.allocator.free(raw);
+        return try extractCodeBlock(self.allocator, raw);
     }
 
     fn writeSkillFile(_: *Self, name: []const u8, code: []const u8) !void {
@@ -130,9 +136,11 @@ pub const Generator = struct {
     }
 
     fn compileTest(_: *Self) !bool {
-        const result = std.process.run(.{
-            .allocator = std.heap.page_allocator,
+        const io = @import("../utils/root.zig").getIo() catch return false;
+        const result = std.process.run(std.heap.page_allocator, io, .{
             .argv = &.{ "zig", "build", "test" },
+            .stdout_limit = @enumFromInt(256 * 1024),
+            .stderr_limit = @enumFromInt(256 * 1024),
         }) catch return false;
         defer {
             std.heap.page_allocator.free(result.stdout);
@@ -143,7 +151,6 @@ pub const Generator = struct {
             return true;
         }
 
-        // Save stderr for next retry prompt
         const err_file = std.fs.cwd().createFile(".zig-build-errors.txt", .{}) catch return false;
         defer err_file.close();
         _ = err_file.write(result.stderr) catch {};
@@ -164,9 +171,8 @@ pub const Generator = struct {
 // ============================================================================
 
 fn loadTemplate(allocator: std.mem.Allocator) ![]const u8 {
-    const file = try std.fs.cwd().openFile("src/skills/auto/TEMPLATE.md", .{});
-    defer file.close();
-    return try file.readToEndAlloc(allocator, 64 * 1024);
+    // Use utils to read template file (Zig 0.16 compatible)
+    return try utils.readFileAlloc(allocator, "src/skills/auto/TEMPLATE.md", 64 * 1024);
 }
 
 fn replaceAll(allocator: std.mem.Allocator, haystack: []const u8, needle: []const u8, replacement: []const u8) ![]u8 {
@@ -194,7 +200,6 @@ fn replaceAll(allocator: std.mem.Allocator, haystack: []const u8, needle: []cons
 }
 
 fn extractCodeBlock(allocator: std.mem.Allocator, text: []const u8) ![]u8 {
-    // Try to find ```zig ... ``` block
     const fence = "```zig\n";
     if (std.mem.indexOf(u8, text, fence)) |start| {
         const code_start = start + fence.len;
@@ -202,7 +207,6 @@ fn extractCodeBlock(allocator: std.mem.Allocator, text: []const u8) ![]u8 {
             return try allocator.dupe(u8, text[code_start..end]);
         }
     }
-    // Fallback: find plain ``` block
     const plain_fence = "```\n";
     if (std.mem.indexOf(u8, text, plain_fence)) |start| {
         const code_start = start + plain_fence.len;
@@ -210,7 +214,6 @@ fn extractCodeBlock(allocator: std.mem.Allocator, text: []const u8) ![]u8 {
             return try allocator.dupe(u8, text[code_start..end]);
         }
     }
-    // No fence found, return trimmed text
     const trimmed = std.mem.trim(u8, text, " \n\r\t");
     return try allocator.dupe(u8, trimmed);
 }
@@ -240,6 +243,7 @@ fn toPascalCase(allocator: std.mem.Allocator, name: []const u8) ![]const u8 {
 // ============================================================================
 
 pub fn updateRegistry(allocator: std.mem.Allocator, name: []const u8) !void {
+    _ = name;
     const auto_dir = try std.fs.cwd().openDir("src/skills/auto", .{ .iterate = true });
     defer auto_dir.close();
 
@@ -265,16 +269,15 @@ pub fn updateRegistry(allocator: std.mem.Allocator, name: []const u8) !void {
         \\//! Auto-generated skill registry
         \\//! This file is updated by src/skills/generator.zig when new auto skills are created
         \\
-        \const skills = @import("../root.zig");
+        \\const skills = @import("../root.zig");
         \\
-        \pub fn registerAutoSkills(registry: *skills.SkillRegistry) !void {
-        \    @setEvalBranchQuota(10000);
+        \\pub fn registerAutoSkills(registry: *skills.SkillRegistry) !void {
+        \\    @setEvalBranchQuota(10000);
         \\
     );
 
     for (files.items) |filename| {
-        const import_name = filename[0 .. filename.len - 4]; // strip .zig
-        const line = try std.fmt.allocPrint(allocator, "    try registry.register(@import(\"{s}\").getSkill());\n", .{import_name});
+        const line = try std.fmt.allocPrint(allocator, "    try registry.register(@import(\"{s}\").getSkill());\n", .{filename});
         defer allocator.free(line);
         try reg_buf.appendSlice(allocator, line);
     }

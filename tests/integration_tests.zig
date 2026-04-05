@@ -585,3 +585,39 @@ test "E2E: defineSkill execution and registry" {
     try std.testing.expect(result.success);
     try std.testing.expectEqualStrings("debug ok", result.output);
 }
+
+test "Io.Writer fixed print behavior" {
+    var buf: [256]u8 = undefined;
+    var w: std.Io.Writer = .fixed(&buf);
+    try w.print("Hello, {s}!\n", .{"KimiZ"});
+    try std.testing.expectEqualStrings("Hello, KimiZ!\n", w.buffered());
+}
+
+test "E2E: auto-hello skill execution" {
+    const allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    var registry = skills.SkillRegistry.init(allocator);
+    defer registry.deinit();
+
+    try skills.registerBuiltinSkills(&registry);
+
+    const hello = registry.get("auto-hello");
+    try std.testing.expect(hello != null);
+    try std.testing.expectEqualStrings("auto-hello", hello.?.id);
+
+    var args = std.json.ObjectMap.init(allocator);
+    defer args.deinit();
+    try args.put("name", std.json.Value{ .string = "KimiZ" });
+
+    const ctx = skills.SkillContext{
+        .allocator = allocator,
+        .working_dir = ".",
+        .session_id = "test",
+    };
+
+    const result = try hello.?.execute_fn(ctx, args, arena.allocator());
+    try std.testing.expect(result.success);
+    try std.testing.expect(std.mem.indexOf(u8, result.output, "Hello, KimiZ!") != null);
+}
