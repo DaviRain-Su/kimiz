@@ -4,11 +4,6 @@
 const std = @import("std");
 const tool = @import("../tool.zig");
 
-const cc = @cImport({
-    @cInclude("stdlib.h");
-    @cInclude("stdio.h");
-});
-
 // ============================================================================
 // git_status
 // ============================================================================
@@ -313,36 +308,29 @@ fn runGitCommandArgv(
     argv: []const []const u8,
     formatter: *const fn (std.mem.Allocator, []const u8) anyerror!tool.ToolResult,
 ) !tool.ToolResult {
-    var cmd_buf: std.ArrayList(u8) = .empty;
-    defer cmd_buf.deinit(arena);
+    const utils = @import("../../utils/root.zig");
+    const io = utils.getIo() catch {
+        return tool.errorResult(arena, "IoManager not initialized");
+    };
 
-    for (argv, 0..) |arg, i| {
-        if (i > 0) try cmd_buf.append(arena, ' ');
-        // Simple quoting for spaces
-        const needs_quote = std.mem.indexOfScalar(u8, arg, ' ') != null;
-        if (needs_quote) try cmd_buf.append(arena, '"');
-        try cmd_buf.appendSlice(arena, arg);
-        if (needs_quote) try cmd_buf.append(arena, '"');
-    }
-    try cmd_buf.appendSlice(arena, " 2>&1");
-
-    const c_cmd = try arena.dupeZ(u8, cmd_buf.items);
-    const pipe = cc.popen(c_cmd.ptr, "r") orelse {
+    // Execute git command using Zig 0.16 native API
+    const run_result = std.process.run(arena, io, .{
+        .argv = argv,
+        .stdout_limit = @enumFromInt(100 * 1024),
+        .stderr_limit = @enumFromInt(100 * 1024),
+    }) catch {
         return tool.errorResult(arena, "Failed to execute git command");
     };
-    defer _ = cc.pclose(pipe);
 
-    var output: std.ArrayList(u8) = .empty;
-    defer output.deinit(arena);
-    const max_output: usize = 100 * 1024;
-    var buf: [4096]u8 = undefined;
-    while (output.items.len < max_output) {
-        const n = cc.fread(&buf, 1, buf.len, pipe);
-        if (n == 0) break;
-        try output.appendSlice(arena, buf[0..n]);
+    // Combine stdout and stderr
+    var output_buf: std.ArrayList(u8) = .empty;
+    defer output_buf.deinit(arena);
+    try output_buf.appendSlice(arena, run_result.stdout);
+    if (run_result.stderr.len > 0) {
+        try output_buf.appendSlice(arena, run_result.stderr);
     }
 
-    const result = try arena.dupe(u8, output.items);
+    const result = try arena.dupe(u8, output_buf.items);
 
     // Detect common errors
     if (std.mem.containsAtLeast(u8, result, 1, "not a git repository")) {

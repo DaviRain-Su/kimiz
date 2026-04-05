@@ -301,27 +301,45 @@ fn cmdSkill(ctx: *SlashContext, args: []const u8) !void {
 }
 
 fn cmdSessions(ctx: *SlashContext, _: []const u8) !void {
-    const home_dir = if (std.c.getenv("HOME")) |ptr| std.mem.sliceTo(ptr, 0) else {
+    const utils = @import("../utils/root.zig");
+    const io = utils.getIo() catch {
+        ctx.printLine("❌ IoManager not initialized");
+        return;
+    };
+
+    const home_dir = if (std.c.getenv("HOME")) |ptr| 
+        try ctx.allocator.dupe(u8, std.mem.sliceTo(ptr, 0))
+    else {
         ctx.printLine("❌ Could not determine HOME");
         return;
     };
+    defer ctx.allocator.free(home_dir);
+
     const dir_path = try std.fmt.allocPrint(ctx.allocator, "{s}/.kimiz/sessions", .{home_dir});
     defer ctx.allocator.free(dir_path);
     const cmd = try std.fmt.allocPrint(ctx.allocator, "ls {s}/*.json 2>/dev/null", .{dir_path});
     defer ctx.allocator.free(cmd);
-    const cc = @cImport({ @cInclude("stdio.h"); });
-    const c_cmd = try ctx.allocator.dupeZ(u8, cmd);
-    defer ctx.allocator.free(c_cmd);
-    const pipe = cc.popen(c_cmd.ptr, "r") orelse {
+
+    // Execute using Zig 0.16 native API
+    const result = std.process.run(ctx.allocator, io, .{
+        .argv = &.{ "sh", "-c", cmd },
+        .stdout_limit = @enumFromInt(1024 * 1024),
+        .stderr_limit = @enumFromInt(1024 * 1024),
+    }) catch {
         ctx.printLine("No sessions found.");
         return;
     };
-    defer _ = cc.pclose(pipe);
-    var buf: [4096]u8 = undefined;
+
+    if (result.stdout.len == 0) {
+        ctx.printLine("No sessions found.");
+        return;
+    }
+
     var any = false;
     ctx.printLine("Saved sessions:");
-    while (cc.fgets(&buf, buf.len, pipe)) |line| {
-        const entry = std.mem.trim(u8, std.mem.sliceTo(line, 0), "\n");
+    var lines = std.mem.splitScalar(u8, result.stdout, '\n');
+    while (lines.next()) |line| {
+        const entry = std.mem.trim(u8, line, " \t\r\n");
         if (entry.len == 0) continue;
         const basename = std.fs.path.basename(entry);
         if (basename.len > 5 and std.mem.endsWith(u8, basename, ".json")) {

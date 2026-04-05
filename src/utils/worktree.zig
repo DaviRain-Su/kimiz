@@ -122,24 +122,26 @@ pub const WorktreeManager = struct {
     }
 
     fn execShell(self: *const Self, command: []const u8) ![]const u8 {
-        const cc = @cImport({ @cInclude("stdio.h"); @cInclude("stdlib.h"); });
-        const c_cmd = try self.allocator.dupeZ(u8, command);
-        defer self.allocator.free(c_cmd);
+        const utils = @import("root.zig");
+        const io = utils.getIo() catch return error.CommandFailed;
 
-        const pipe = cc.popen(c_cmd.ptr, "r") orelse return error.CommandFailed;
-        defer _ = cc.pclose(pipe);
+        // Execute using Zig 0.16 native API
+        const result = std.process.run(self.allocator, io, .{
+            .argv = &.{ "sh", "-c", command },
+            .stdout_limit = @enumFromInt(1024 * 1024),
+            .stderr_limit = @enumFromInt(1024 * 1024),
+        }) catch return error.CommandFailed;
 
-        var output: std.ArrayList(u8) = .empty;
-        defer output.deinit(self.allocator);
-
-        var buf: [4096]u8 = undefined;
-        while (true) {
-            const n = cc.fread(&buf, 1, buf.len, pipe);
-            if (n == 0) break;
-            try output.appendSlice(self.allocator, buf[0..n]);
+        // Combine stdout and stderr
+        if (result.stdout.len > 0 and result.stderr.len > 0) {
+            const combined = try std.mem.concat(self.allocator, u8, &.{ result.stdout, result.stderr });
+            return combined;
+        } else if (result.stdout.len > 0) {
+            return try self.allocator.dupe(u8, result.stdout);
+        } else if (result.stderr.len > 0) {
+            return try self.allocator.dupe(u8, result.stderr);
         }
-
-        return output.toOwnedSlice(self.allocator);
+        return try self.allocator.dupe(u8, "");
     }
 };
 

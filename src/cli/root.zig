@@ -439,31 +439,34 @@ fn runSkillCommand(allocator: std.mem.Allocator, args: []const []const u8) !void
 }
 
 fn executeShellCommand(allocator: std.mem.Allocator, command: []const u8) ![]u8 {
-    const cc = @cImport({ @cInclude("stdlib.h"); @cInclude("stdio.h"); });
+    const utils = @import("../utils/root.zig");
+    const io = utils.getIo() catch return error.ShellExecutionFailed;
 
-    // Build command with stderr redirected
-    var cmd_buf: std.ArrayList(u8) = .empty;
-    defer cmd_buf.deinit(allocator);
-    try cmd_buf.appendSlice(allocator, command);
-    try cmd_buf.appendSlice(allocator, " 2>&1");
+    // Execute using Zig 0.16 native API
+    const result = std.process.run(allocator, io, .{
+        .argv = &.{ "sh", "-c", command },
+        .stdout_limit = @enumFromInt(100 * 1024),
+        .stderr_limit = @enumFromInt(100 * 1024),
+    }) catch return error.ShellExecutionFailed;
 
-    const c_cmd = try allocator.dupeZ(u8, cmd_buf.items);
-    defer allocator.free(c_cmd);
-
-    const pipe = cc.popen(c_cmd.ptr, "r") orelse return error.ShellExecutionFailed;
-    defer _ = cc.pclose(pipe);
-
-    var output: std.ArrayList(u8) = .empty;
-    defer output.deinit(allocator);
-    const max_output: usize = 100 * 1024; // 100KB limit
-    var buf: [4096]u8 = undefined;
-    while (output.items.len < max_output) {
-        const n = cc.fread(&buf, 1, buf.len, pipe);
-        if (n == 0) break;
-        try output.appendSlice(allocator, buf[0..n]);
+    // Combine stdout and stderr
+    var combined: []const u8 = "";
+    if (result.stdout.len > 0 and result.stderr.len > 0) {
+        combined = try std.mem.concat(allocator, u8, &.{ result.stdout, result.stderr });
+    } else if (result.stdout.len > 0) {
+        combined = result.stdout;
+    } else if (result.stderr.len > 0) {
+        combined = result.stderr;
     }
 
-    return try allocator.dupe(u8, std.mem.trim(u8, output.items, "\n"));
+    const trimmed = std.mem.trim(u8, combined, "\n");
+    const result_str = try allocator.dupe(u8, trimmed);
+
+    if (result.stdout.len > 0 and result.stderr.len > 0) {
+        allocator.free(combined);
+    }
+
+    return result_str;
 }
 
 fn printHelp() void {

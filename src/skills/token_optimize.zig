@@ -83,46 +83,44 @@ const CompressionStrategy = enum {
 };
 
 // ============================================================================
-// C Interop
-// ============================================================================
-
-const cc = @cImport({
-    @cInclude("stdlib.h");
-    @cInclude("stdio.h");
-});
-
-// ============================================================================
 // RTK Installation Check
 // ============================================================================
 
 /// Check if rtk is installed and accessible
 fn checkRTKInstalled(allocator: std.mem.Allocator) !bool {
-    const cmd = "which rtk > /dev/null 2>&1";
-    const c_cmd = try allocator.dupeZ(u8, cmd);
-    defer allocator.free(c_cmd);
-    
-    const result = cc.system(c_cmd.ptr);
-    return result == 0;
+    const utils = @import("../utils/root.zig");
+    const io = utils.getIo() catch return false;
+
+    const result = std.process.run(allocator, io, .{
+        .argv = &.{ "which", "rtk" },
+        .stdout_limit = @enumFromInt(1024),
+        .stderr_limit = @enumFromInt(1024),
+    }) catch return false;
+
+    return switch (result.term) {
+        .exited => |code| code == 0,
+        else => false,
+    };
 }
 
 /// Get rtk version for debugging
 fn getRTKVersion(allocator: std.mem.Allocator) ![]const u8 {
-    const pipe = cc.popen("rtk --version 2>&1", "r") orelse {
-        return error.RTKVersionFailed;
-    };
-    defer _ = cc.pclose(pipe);
-    
-    var output: std.ArrayList(u8) = .empty;
-    defer output.deinit(allocator);
-    
-    var buf: [256]u8 = undefined;
-    while (true) {
-        const n = cc.fread(&buf, 1, buf.len, pipe);
-        if (n == 0) break;
-        try output.appendSlice(allocator, buf[0..n]);
+    const utils = @import("../utils/root.zig");
+    const io = utils.getIo() catch return error.RTKVersionFailed;
+
+    const result = std.process.run(allocator, io, .{
+        .argv = &.{ "rtk", "--version" },
+        .stdout_limit = @enumFromInt(1024),
+        .stderr_limit = @enumFromInt(1024),
+    }) catch return error.RTKVersionFailed;
+
+    if (result.stdout.len > 0) {
+        return try allocator.dupe(u8, result.stdout);
+    } else if (result.stderr.len > 0) {
+        return try allocator.dupe(u8, result.stderr);
     }
-    
-    return try output.toOwnedSlice(allocator);
+
+    return try allocator.dupe(u8, "");
 }
 
 // ============================================================================
@@ -161,34 +159,29 @@ fn executeRTKCommand(
     // e.g., "git status" + aggressive → "rtk git status -u"
     _ = strategy; // unused for now
     try cmd_buf.appendSlice(allocator, command);
-    try cmd_buf.appendSlice(allocator, " 2>&1");
-    
-    const c_cmd = try allocator.dupeZ(u8, cmd_buf.items);
-    defer allocator.free(c_cmd);
-    
-    // Execute via popen
-    const pipe = cc.popen(c_cmd.ptr, "r") orelse {
+
+    const utils = @import("../utils/root.zig");
+    const io = utils.getIo() catch {
         return error.CommandExecutionFailed;
     };
-    
-    // Read output
-    var output: std.ArrayList(u8) = .empty;
-    defer output.deinit(allocator);
-    
-    const max_output: usize = 100 * 1024; // 100KB limit
-    var buf: [4096]u8 = undefined;
-    while (output.items.len < max_output) {
-        const n = cc.fread(&buf, 1, buf.len, pipe);
-        if (n == 0) break;
-        try output.appendSlice(allocator, buf[0..n]);
-    }
-    
-    const exit_code: i32 = cc.pclose(pipe);
-    const stdout_owned = try output.toOwnedSlice(allocator);
-    
+
+    // Execute using Zig 0.16 native API
+    const result = std.process.run(allocator, io, .{
+        .argv = &.{ "sh", "-c", cmd_buf.items },
+        .stdout_limit = @enumFromInt(100 * 1024),
+        .stderr_limit = @enumFromInt(100 * 1024),
+    }) catch {
+        return error.CommandExecutionFailed;
+    };
+
+    const exit_code: i32 = switch (result.term) {
+        .exited => |code| @intCast(code),
+        else => -1,
+    };
+
     return CommandResult{
-        .stdout = stdout_owned,
-        .stderr = "",
+        .stdout = result.stdout,
+        .stderr = result.stderr,
         .exit_code = exit_code,
     };
 }

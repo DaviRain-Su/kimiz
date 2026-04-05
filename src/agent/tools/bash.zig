@@ -186,47 +186,35 @@ fn executeCommand(
     working_dir: ?[]const u8,
     timeout_ms: u32,
 ) !CommandResult {
-    const cc = @cImport({ @cInclude("stdlib.h"); @cInclude("stdio.h"); });
+    const io = utils.getIo() catch {
+        return CommandResult{ .stdout = "", .stderr = "IoManager not initialized", .exit_code = null };
+    };
 
-    // Build command with optional cd and output truncation
-    var cmd_buf: std.ArrayList(u8) = .empty;
-    defer cmd_buf.deinit(arena);
+    // Build full shell command with optional cd
+    var full_cmd: []const u8 = command;
     if (working_dir) |wd| {
-        try cmd_buf.appendSlice(arena, "cd '");
-        try cmd_buf.appendSlice(arena, wd);
-        try cmd_buf.appendSlice(arena, "' && ");
+        full_cmd = try std.fmt.allocPrint(arena, "cd '{s}' && {s}", .{ wd, command });
     }
-    // Wrap: timeout via perl alarm, truncate output to 100KB
-    const timeout_secs = @max(timeout_ms / 1000, 1);
-    var timeout_str: [16]u8 = undefined;
-    const timeout_slice = std.fmt.bufPrint(&timeout_str, "{d}", .{timeout_secs}) catch &[_]u8{ '3', '0' };
-    try cmd_buf.appendSlice(arena, "perl -e 'alarm ");
-    try cmd_buf.appendSlice(arena, timeout_slice);
-    try cmd_buf.appendSlice(arena, "; exec @ARGV' ");
-    try cmd_buf.appendSlice(arena, command);
-    try cmd_buf.appendSlice(arena, " 2>&1 | head -c 102400");
 
-    const c_cmd = try arena.dupeZ(u8, cmd_buf.items);
-    const pipe = cc.popen(c_cmd.ptr, "r") orelse {
+    // Execute using Zig 0.16 native API
+    const timeout_ns = @as(u64, timeout_ms) * std.time.ns_per_ms;
+    const result = std.process.run(arena, io, .{
+        .argv = &.{ "sh", "-c", full_cmd },
+        .stdout_limit = @enumFromInt(100 * 1024),
+        .stderr_limit = @enumFromInt(100 * 1024),
+        .timeout = timeout_ns,
+    }) catch {
         return CommandResult{ .stdout = "", .stderr = "Failed to execute command", .exit_code = null };
     };
 
-    var output: std.ArrayList(u8) = .empty;
-    defer output.deinit(arena);
-    const max_output: usize = 100 * 1024; // 100KB limit
-    var buf: [4096]u8 = undefined;
-    while (output.items.len < max_output) {
-        const n = cc.fread(&buf, 1, buf.len, pipe);
-        if (n == 0) break;
-        try output.appendSlice(arena, buf[0..n]);
-    }
-
-    const status = cc.pclose(pipe);
-    const exit_code: ?u32 = if (status >= 0) @intCast(@as(u32, @bitCast(status)) >> 8) else null;
+    const exit_code: ?u32 = switch (result.term) {
+        .exited => |code| code,
+        .signal, .stopped, .unknown => null,
+    };
 
     return CommandResult{
-        .stdout = try arena.dupe(u8, output.items),
-        .stderr = "",
+        .stdout = result.stdout,
+        .stderr = result.stderr,
         .exit_code = exit_code,
     };
 }
