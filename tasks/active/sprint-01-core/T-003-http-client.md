@@ -1,5 +1,5 @@
 ### T-003: 实现 HTTP 客户端封装
-**状态**: completed
+**状态**: blocked
 **优先级**: P0
 **创建**: 2026-04-05
 **完成**: 2026-04-05
@@ -26,6 +26,10 @@
 - [x] 错误映射准确
 
 **依赖**: T-001
+
+**阻塞原因**:
+- 编译错误: src/http.zig:91 - ArrayList.writer() API 使用错误
+- 需要修复: URGENT-FIX-compilation-errors
 
 **笔记**:
 使用 std.http.Client.fetch API 实现，支持重试和流式响应。

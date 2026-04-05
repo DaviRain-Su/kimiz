@@ -1,4 +1,4 @@
-### T-006: 实现 Skill-Centric 架构核心
+### T-023: 实现 Skill-Centric 架构核心
 **状态**: in_progress
 **优先级**: P0
 **创建**: 2026-04-05
