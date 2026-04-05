@@ -91,10 +91,12 @@ fn tokenOptimizeHandler(
     output: []const u8,
     error_message: ?[]const u8 = null,
     tokens_used: ?u32 = null,
+    execution_time_ms: i64 = 0,
 } {
     const start_time = @import("../utils/root.zig").milliTimestamp();
 
-    if (!checkRTKInstalled(arena) catch false) {
+    const installed = checkRTKInstalled(arena) catch false;
+    if (!installed) {
         return .{
             .success = false,
             .output = "",
@@ -127,6 +129,7 @@ fn tokenOptimizeHandler(
     }
 
     if (result.exit_code == 0) {
+        const elapsed = @import("../utils/root.zig").milliTimestamp() - start_time;
         const output_tokens = estimateTokens(result.stdout);
         // Duplicate stdout out of our local defer scope so it survives
         const output_copy = arena.dupe(u8, result.stdout) catch return .{ .success = false, .output = "" };
@@ -135,14 +138,17 @@ fn tokenOptimizeHandler(
             .output = output_copy,
             .error_message = null,
             .tokens_used = output_tokens,
+            .execution_time_ms = @intCast(elapsed),
         };
     } else {
+        const elapsed = @import("../utils/root.zig").milliTimestamp() - start_time;
         const msg = std.fmt.allocPrint(arena, "RTK command failed with exit code: {d}", .{result.exit_code}) catch return .{ .success = false, .output = "" };
         return .{
             .success = false,
             .output = result.stdout,
             .error_message = msg,
             .tokens_used = null,
+            .execution_time_ms = @intCast(elapsed),
         };
     }
 }
@@ -160,6 +166,7 @@ pub const TokenOptimizeDslSkill = skills.defineSkill(.{
         output: []const u8,
         error_message: ?[]const u8 = null,
         tokens_used: ?u32 = null,
+        execution_time_ms: i64 = 0,
     },
     .handler = tokenOptimizeHandler,
 });

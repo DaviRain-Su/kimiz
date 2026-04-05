@@ -113,6 +113,18 @@ pub fn defineSkill(comptime config: anytype) type {
                 }
             }
 
+            if (@hasField(@TypeOf(output), "execution_time_ms")) {
+                if (@TypeOf(output.execution_time_ms) == i64) {
+                    result.execution_time_ms = output.execution_time_ms;
+                }
+            }
+
+            if (@hasField(@TypeOf(output), "tokens_used")) {
+                if (@TypeOf(output.tokens_used) == ?u32) {
+                    result.tokens_used = output.tokens_used;
+                }
+            }
+
             return result;
         }
 

@@ -168,6 +168,22 @@ const ReviewSession = struct {
 // Issue Collection & Deduplication
 // ============================================================================
 
+fn parseFocus(raw: []const u8) FocusArea {
+    if (std.mem.eql(u8, raw, "correctness")) return .correctness;
+    if (std.mem.eql(u8, raw, "security")) return .security;
+    if (std.mem.eql(u8, raw, "performance")) return .performance;
+    if (std.mem.eql(u8, raw, "concurrency")) return .concurrency;
+    if (std.mem.eql(u8, raw, "error_handling")) return .error_handling;
+    if (std.mem.eql(u8, raw, "resource_management")) return .resource_management;
+    return .all;
+}
+
+fn parseTone(raw: []const u8) Tone {
+    if (std.mem.eql(u8, raw, "peer_reviewer")) return .peer_reviewer;
+    if (std.mem.eql(u8, raw, "senior_architect")) return .senior_architect;
+    return .junior_dev;
+}
+
 fn isPreviouslyReported(session: *ReviewSession, issue: ReviewIssue) bool {
     var buf: [256]u8 = undefined;
     const key = std.fmt.bufPrint(&buf, "{s}:{?d}:{s}", .{
