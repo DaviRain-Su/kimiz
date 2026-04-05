@@ -168,15 +168,16 @@ pub const Session = struct {
         
         const session = try Self.init(allocator, id);
         
-        const file = std.fs.cwd().openFile(file_path, .{}) catch |err| {
+        const content = utils.readFileAlloc(allocator, file_path, 10 * 1024 * 1024) catch |err| {
             if (err == error.FileNotFound) {
                 return session; // Return empty session
             }
             return err;
         };
-        defer file.close();
+        defer allocator.free(content);
         
         // TODO: Parse JSONL and populate messages
+        _ = content;
         
         return session;
     }

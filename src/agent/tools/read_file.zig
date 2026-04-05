@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const tool = @import("../tool.zig");
+const utils = @import("../../utils/root.zig");
 
 pub const TOOL_NAME = "read_file";
 
@@ -168,15 +169,12 @@ test "read_file basic" {
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
-    // Create a test file
+    // Create a test file (Zig 0.16 compatible)
     const test_content = "Hello, World!";
     const test_path = "/tmp/kimiz_test_read.txt";
     
-    try std.fs.cwd().writeFile(.{
-        .sub_path = test_path,
-        .data = test_content,
-    });
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    try utils.writeFile(test_path, test_content);
+    defer utils.deleteFile(test_path) catch {};
 
     // Execute tool
     var ctx = ReadFileContext{};
@@ -216,15 +214,12 @@ test "read_file with offset and limit" {
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
-    // Create multi-line test file
+    // Create multi-line test file (Zig 0.16 compatible)
     const test_content = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5";
     const test_path = "/tmp/kimiz_test_lines.txt";
     
-    try std.fs.cwd().writeFile(.{
-        .sub_path = test_path,
-        .data = test_content,
-    });
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    try utils.writeFile(test_path, test_content);
+    defer utils.deleteFile(test_path) catch {};
 
     // Test with offset
     var ctx = ReadFileContext{};

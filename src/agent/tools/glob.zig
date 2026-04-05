@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const tool = @import("../tool.zig");
+const utils = @import("../../utils/root.zig");
 
 pub const tool_definition = tool.Tool{
     .name = "glob",
@@ -27,10 +28,15 @@ pub const GlobContext = struct {
         var results = std.ArrayList(u8){ .items = &.{}, .capacity = 0 };
         defer results.deinit();
 
-        var dir = std.fs.cwd().openDir(base_path, .{ .iterate = true }) catch |err| {
+        // Use utils to open directory (Zig 0.16 compatible)
+        const io = utils.getIo() catch |err| {
+            return tool.textContent(arena, try std.fmt.allocPrint(arena, "Failed to get I/O: {s}", .{@errorName(err)}));
+        };
+        
+        var dir = utils.openDir(base_path, .{ .iterate = true }) catch |err| {
             return tool.textContent(arena, try std.fmt.allocPrint(arena, "Error opening directory: {s}", .{@errorName(err)}));
         };
-        defer dir.close();
+        defer dir.close(io);
 
         var walker = try dir.walk(arena);
         defer walker.deinit();

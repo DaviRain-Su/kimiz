@@ -2,6 +2,7 @@
 //! User settings, API keys, preferences
 
 const std = @import("std");
+const utils = @import("root.zig");
 
 pub const Config = struct {
     default_model: []const u8,
@@ -29,7 +30,7 @@ pub const ConfigManager = struct {
         defer allocator.free(config_dir);
         
         // Create config directory if not exists
-        std.fs.cwd().makeDir(config_dir) catch |err| switch (err) {
+        utils.makeDirRecursive(config_dir) catch |err| switch (err) {
             error.PathAlreadyExists => {},
             else => return err,
         };
@@ -49,7 +50,7 @@ pub const ConfigManager = struct {
     /// Load config from JSON file, create default if not exists
     pub fn load(self: *ConfigManager) !Config {
         // Try to read existing config
-        const content = std.fs.cwd().readFileAlloc(
+        const content = utils.readFileAlloc(
             self.allocator,
             self.config_path,
             1024 * 1024, // Max 1MB

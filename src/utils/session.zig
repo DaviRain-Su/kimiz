@@ -421,7 +421,7 @@ pub const SessionStore = struct {
 
     /// Load sessions from storage
     pub fn load(self: *Self, manager: *SessionManager) !void {
-        const file = std.fs.cwd().openFile(self.db_path, .{}) catch |err| switch (err) {
+        const content = utils.readFileAlloc(self.allocator, self.db_path, 10 * 1024 * 1024) catch |err| switch (err) {
             error.FileNotFound => return, // No existing data
             else => return err,
         };

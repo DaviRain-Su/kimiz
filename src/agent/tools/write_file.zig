@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const tool = @import("../tool.zig");
+const utils = @import("../../utils/root.zig");
 
 pub const TOOL_NAME = "write_file";
 
@@ -106,7 +107,7 @@ test "write_file basic" {
     const test_path = "/tmp/kimiz_test_write.txt";
 
     // Clean up if exists
-    std.fs.cwd().deleteFile(test_path) catch {};
+    utils.deleteFile(test_path) catch {};
 
     var ctx = WriteFileContext{};
     const args_json = try std.fmt.allocPrint(allocator, "{{\"path\":\"{s}\",\"content\":\"{s}\"}}", .{ test_path, test_content });
@@ -120,7 +121,7 @@ test "write_file basic" {
     try std.testing.expect(!result.is_error);
 
     // Verify file was written
-    const read_content = try std.fs.cwd().readFileAlloc(allocator, test_path, 1024);
+    const read_content = try utils.readFileAlloc(allocator, test_path, 1024);
     defer allocator.free(read_content);
     try std.testing.expectEqualStrings(test_content, read_content);
 
@@ -154,10 +155,8 @@ test "write_file creates directories" {
     const test_path = "/tmp/kimiz_test_nested/dir1/dir2/file.txt";
 
     // Clean up
-    std.fs.cwd().deleteFile(test_path) catch {};
-    std.fs.cwd().deleteDir("/tmp/kimiz_test_nested/dir1/dir2") catch {};
-    std.fs.cwd().deleteDir("/tmp/kimiz_test_nested/dir1") catch {};
-    std.fs.cwd().deleteDir("/tmp/kimiz_test_nested") catch {};
+    utils.deleteFile(test_path) catch {};
+    utils.deleteTree("/tmp/kimiz_test_nested") catch {};
 
     var ctx = WriteFileContext{};
     const args_json = try std.fmt.allocPrint(allocator, "{{\"path\":\"{s}\",\"content\":\"nested content\"}}", .{test_path});
@@ -170,8 +169,6 @@ test "write_file creates directories" {
     try std.testing.expect(!result.is_error);
 
     // Cleanup
-    std.fs.cwd().deleteFile(test_path) catch {};
-    std.fs.cwd().deleteDir("/tmp/kimiz_test_nested/dir1/dir2") catch {};
-    std.fs.cwd().deleteDir("/tmp/kimiz_test_nested/dir1") catch {};
-    std.fs.cwd().deleteDir("/tmp/kimiz_test_nested") catch {};
+    utils.deleteFile(test_path) catch {};
+    utils.deleteTree("/tmp/kimiz_test_nested") catch {};
 }
