@@ -386,5 +386,55 @@ pub const Agent = struct {
 
 ---
 
+## 修复状态更新 (2026-04-06 下午)
+
+### ✅ 已修复的泄漏点
+
+| 泄漏点 | 严重性 | 提交 | 状态 |
+|--------|--------|------|------|
+| utils/worktree.zig::execShell | 🔴 高 | b4f2d3f | ✅ 已修复 |
+| agent/agent.zig::executeToolInternal | 🔴 高 | b732149 | ✅ 已修复 |
+| cli/root.zig::executeShellCommand | 🔴 高 | b732149 | ✅ 已修复 |
+| skills/token_optimize.zig::checkRTKInstalled | 🟡 中 | b732149 | ✅ 已修复 |
+| skills/token_optimize.zig::getRTKVersion | 🟡 中 | b732149 | ✅ 已修复 |
+
+### ✅ 新增工具
+
+1. **CountingAllocator** (`src/utils/counting_allocator.zig`)
+   - TigerBeetle 模式的内存追踪工具
+   - 提供 `liveSize()` 和 `liveCount()` 监控
+   - 已集成测试验证
+
+2. **Worktree 泄漏测试** (`tests/worktree_leak_test.zig`)
+   - 验证 WorktreeManager 无内存泄漏
+   - 测试 arena 清理机制
+   - 所有测试通过 ✅
+
+### 📊 修复总结
+
+**修复前**:
+- 每次 git worktree 操作泄漏 ~2MB
+- 每次 shell 命令泄漏 ~100KB
+- Tool 执行后结果内存泄漏
+
+**修复后**:
+- ✅ 所有 std.process.run 调用都正确释放
+- ✅ WorktreeManager 使用 Arena 模式
+- ✅ Agent ToolResult 深拷贝 + 显式释放
+- ✅ make test 全部通过 (16/16)
+
+### 🎯 下一步计划
+
+根据原始审查，剩余优化项：
+
+| 优先级 | 任务 | 状态 | 预计时间 |
+|--------|------|------|---------|
+| 🟡 P1 | Agent 添加 loop_arena | 待实施 | 2-3 天 |
+| 🟡 P2 | 实现 MessagePool | 待实施 | 1 周 |
+| 🟡 P2 | 提升断言密度 (≥1.5/函数) | 待实施 | 持续 |
+
+---
+
 **报告完成日期**: 2026-04-06  
-**下次审查**: 2026-04-13 (修复后验证)
+**修复完成日期**: 2026-04-06  
+**下次审查**: 2026-04-13 (验证长期稳定性)
