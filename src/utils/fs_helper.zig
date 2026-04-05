@@ -94,7 +94,7 @@ pub fn makeDirRecursive(path: []const u8) !void {
 pub fn openDir(path: []const u8, opts: std.Io.Dir.OpenOptions) !std.Io.Dir {
     const io = try getIo();
     const dir = cwd();
-    return try dir.openDir(&io.interface, path, opts);
+    return try dir.openDir(io, path, opts);
 }
 
 /// Rename file

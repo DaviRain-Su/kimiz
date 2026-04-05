@@ -29,6 +29,7 @@ pub const makeDirRecursive = fs.makeDirRecursive;
 pub const rename = fs.rename;
 pub const deleteFile = fs.deleteFile;
 pub const realpath = fs.realpath;
+pub const openDir = fs.openDir;
 
 /// Get current timestamp in milliseconds
 pub fn milliTimestamp() i64 {

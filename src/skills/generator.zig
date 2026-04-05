@@ -6,6 +6,7 @@ const skills = @import("./root.zig");
 const ai = @import("../ai/root.zig");
 const core = @import("../core/root.zig");
 const config = @import("../config.zig");
+const utils = @import("../utils/root.zig");
 
 pub const Generator = struct {
     allocator: std.mem.Allocator,
@@ -97,12 +98,15 @@ pub const Generator = struct {
 
         const model = ai.models_registry.getModelById(cfg.default_model) orelse return error.ModelNotFound;
 
-        const system_msg = core.Message{ .role = .system, .content = "You are a Zig code generator." };
-        const user_msg = core.Message{ .role = .user, .content = prompt };
+        // Create messages using new Zig 0.16 Message API
+        const system_content = &[_]core.UserContentBlock{.{ .text = "You are a Zig code generator." }};
+        const user_content = &[_]core.UserContentBlock{.{ .text = prompt }};
+        
+        const system_msg = core.Message{ .user = .{ .content = system_content } };
+        const user_msg = core.Message{ .user = .{ .content = user_content } };
         const messages = &[_]core.Message{ system_msg, user_msg };
 
         const ctx = core.Context{
-            .allocator = self.allocator,
             .model = model,
             .messages = messages,
             .temperature = cfg.default_temperature,
@@ -130,9 +134,8 @@ pub const Generator = struct {
         const path = try std.fmt.allocPrint(std.heap.page_allocator, "src/skills/auto/auto_{s}.zig", .{name});
         defer std.heap.page_allocator.free(path);
 
-        const file = try std.fs.cwd().createFile(path, .{});
-        defer file.close();
-        try file.writeAll(code);
+        // Use utils to write file (Zig 0.16 compatible)
+        try utils.writeFile(path, code);
     }
 
     fn compileTest(_: *Self) !bool {
@@ -151,18 +154,16 @@ pub const Generator = struct {
             return true;
         }
 
-        const err_file = std.fs.cwd().createFile(".zig-build-errors.txt", .{}) catch return false;
-        defer err_file.close();
-        _ = err_file.write(result.stderr) catch {};
+        // Use utils to write error file (Zig 0.16 compatible)
+        utils.writeFile(".zig-build-errors.txt", result.stderr) catch {};
         return false;
     }
 
     fn readLastCompileErrors(_: *Self) ![]u8 {
-        const file = std.fs.cwd().openFile(".zig-build-errors.txt", .{}) catch {
+        const content = utils.readFileAlloc(std.heap.page_allocator, ".zig-build-errors.txt", 256 * 1024) catch {
             return try std.heap.page_allocator.dupe(u8, "Unknown compilation error.");
         };
-        defer file.close();
-        return try file.readToEndAlloc(std.heap.page_allocator, 256 * 1024);
+        return content;
     }
 };
 
@@ -244,8 +245,10 @@ fn toPascalCase(allocator: std.mem.Allocator, name: []const u8) ![]const u8 {
 
 pub fn updateRegistry(allocator: std.mem.Allocator, name: []const u8) !void {
     _ = name;
-    const auto_dir = try std.fs.cwd().openDir("src/skills/auto", .{ .iterate = true });
-    defer auto_dir.close();
+    // Use utils to open directory (Zig 0.16 compatible)
+    const io = try utils.getIo();
+    const auto_dir = try utils.openDir("src/skills/auto", .{ .iterate = true });
+    defer auto_dir.close(io);
 
     var files: std.ArrayList([]const u8) = .empty;
     defer {
@@ -254,7 +257,7 @@ pub fn updateRegistry(allocator: std.mem.Allocator, name: []const u8) !void {
     }
 
     var it = auto_dir.iterate();
-    while (try it.next()) |entry| {
+    while (try it.next(io)) |entry| {
         if (entry.kind != .file) continue;
         if (!std.mem.startsWith(u8, entry.name, "auto_")) continue;
         if (!std.mem.endsWith(u8, entry.name, ".zig")) continue;
@@ -284,7 +287,6 @@ pub fn updateRegistry(allocator: std.mem.Allocator, name: []const u8) !void {
 
     try reg_buf.appendSlice(allocator, "}\n");
 
-    const reg_file = try std.fs.cwd().createFile("src/skills/auto/registry.zig", .{});
-    defer reg_file.close();
-    try reg_file.writeAll(reg_buf.items);
+    // Use utils to write registry file (Zig 0.16 compatible)
+    try utils.writeFile("src/skills/auto/registry.zig", reg_buf.items);
 }
