@@ -4,12 +4,14 @@
 const std = @import("std");
 const agent_mod = @import("agent.zig");
 const tool = @import("tool.zig");
+const worktree_mod = @import("../utils/worktree.zig");
 const Agent = agent_mod.Agent;
 const AgentOptions = agent_mod.AgentOptions;
 const Tool = tool.Tool;
 const AgentTool = tool.AgentTool;
 const ToolResult = tool.ToolResult;
 const UserContentBlock = tool.UserContentBlock;
+const WorktreeManager = worktree_mod.WorktreeManager;
 
 // ============================================================================
 // Error Types
@@ -71,6 +73,8 @@ pub const SubAgentConfig = struct {
     read_only: bool = false,
     inherit_parent_tools: bool = true,
     custom_tools: []const AgentTool = &.{},
+    use_worktree: bool = false,
+    keep_worktree: bool = false,
 };
 
 /// SubAgent for delegated task execution
@@ -86,6 +90,8 @@ pub const SubAgent = struct {
     agent: ?Agent,
     step_count: u32,
     config: SubAgentConfig,
+    worktree_manager: ?WorktreeManager,
+    worktree_path: ?[]const u8,
 
     const Self = @This();
 
@@ -142,6 +148,8 @@ pub const SubAgent = struct {
             .agent = null,
             .step_count = 0,
             .config = config,
+            .worktree_manager = null,
+            .worktree_path = null,
         };
     }
 
@@ -156,10 +164,23 @@ pub const SubAgent = struct {
         if (self.agent) |*agent| {
             agent.deinit();
         }
+
+        // Clean up worktree if created and not configured to keep
+        if (!self.config.keep_worktree) {
+            if (self.worktree_path) |path| {
+                if (self.worktree_manager) |*wtm| {
+                    wtm.removeWorktree(path) catch |err| {
+                        std.log.warn("Failed to remove worktree '{s}': {s}", .{ path, @errorName(err) });
+                    };
+                }
+                self.allocator.free(path);
+                self.worktree_path = null;
+            }
+        }
     }
 
     /// Run the subagent with a specific task
-    /// 
+    ///
     /// Parameters:
     ///   - task: The task description/prompt for the subagent
     ///
@@ -168,6 +189,30 @@ pub const SubAgent = struct {
         // Check step limit
         if (self.step_count >= self.max_steps) {
             return SubAgentError.MaxStepsExceeded;
+        }
+
+        // Set up worktree isolation if enabled and not yet done
+        if (self.config.use_worktree and self.worktree_path == null) {
+            if (self.options.project_path) |repo_path| {
+                var wtm = WorktreeManager.init(self.allocator, repo_path);
+                const wt_name = wtm.generateName("subagent") catch |err| {
+                    std.log.warn("Failed to generate worktree name: {s}", .{@errorName(err)});
+                    return SubAgentError.TaskExecutionFailed;
+                };
+                defer self.allocator.free(wt_name);
+
+                const wt_path = wtm.createWorktree(wt_name) catch |err| {
+                    std.log.warn("Failed to create worktree for repo '{s}': {s}", .{ repo_path, @errorName(err) });
+                    return SubAgentError.TaskExecutionFailed;
+                };
+
+                self.worktree_manager = wtm;
+                self.worktree_path = wt_path;
+                self.options.project_path = wt_path;
+                std.log.info("SubAgent worktree created: {s}", .{wt_path});
+            } else {
+                std.log.warn("use_worktree enabled but no project_path set", .{});
+            }
         }
 
         // Initialize the inner agent if not already done
@@ -185,7 +230,7 @@ pub const SubAgent = struct {
             return SubAgentError.TaskExecutionFailed;
         };
 
-        // Collect results from the agent's messages
+        // Collect results from the agent's conversation
         const result = self.collectResult() catch {
             return SubAgentError.TaskExecutionFailed;
         };
@@ -347,6 +392,8 @@ fn execute(
         .max_steps = parsed_args.max_steps,
         .read_only = parsed_args.read_only,
         .inherit_parent_tools = true,
+        .use_worktree = true,
+        .keep_worktree = false,
     };
 
     // Initialize subagent

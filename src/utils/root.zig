@@ -10,6 +10,7 @@ pub const log = @import("log.zig");
 pub const config = @import("config.zig");
 pub const session = @import("session.zig");
 pub const io_manager = @import("io_manager.zig");
+pub const worktree = @import("worktree.zig");
 
 // Re-export IoManager
 pub const IoManager = io_manager.IoManager;
