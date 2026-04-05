@@ -61,7 +61,7 @@ fn execute(
 ) anyerror!tool.ToolResult {
     _ = ctx_ptr;
 
-    const parsed_args = tool.parseArguments(args, EditArgs) catch {
+    const parsed_args = tool.parseArguments(arena, args, EditArgs) catch {
         return tool.errorResult(arena, "Invalid arguments: expected {\"path\": \"...\", \"old_string\": \"...\", \"new_string\": \"...\"}");
     };
 

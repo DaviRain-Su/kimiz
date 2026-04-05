@@ -1,9 +1,9 @@
-//! HTTP Client - Wrapper around std.http.Client
-//! Provides retry logic, error mapping, and streaming support
+//! HTTP Client - Full implementation using std.http.Client for Zig 0.16
+//! Supports HTTP/HTTPS, JSON POST requests, and SSE streaming
 
 const std = @import("std");
+const utils = @import("utils/root.zig");
 
-// Define constants locally since http.zig is at src/ level
 pub const SSE_LINE_BUF_SIZE = 65536;
 
 pub const AiError = error{
@@ -24,34 +24,93 @@ pub const AiError = error{
     ApiKeyNotFound,
     ProviderNotSupported,
     OutOfMemory,
+    IoManagerNotInitialized,
+    InvalidUrl,
+    DnsResolutionFailed,
+    ConnectionTimeout,
 };
 
+/// HTTP Client wrapper around std.http.Client
+/// Provides retry logic, error mapping, and streaming support
 pub const HttpClient = struct {
     allocator: std.mem.Allocator,
     client: std.http.Client,
+    io_uring: ?std.Io.IoUring,
     retry_count: u3 = 3,
     timeout_ms: u32 = 30000,
+    owns_io: bool,
 
     const Self = @This();
 
+    /// Initialize the HTTP client
+    /// If IoManager is initialized, uses it; otherwise creates own IoUring
     pub fn init(allocator: std.mem.Allocator) Self {
-        return .{
-            .allocator = allocator,
-            .client = .{ .allocator = allocator },
-        };
+        // Try to get Io from global IoManager first
+        const io = utils.getIo() catch null;
+        
+        if (io) |io_instance| {
+            // Use global IoManager's Io instance
+            const client = std.http.Client{
+                .allocator = allocator,
+                .io = io_instance,
+            };
+            return .{
+                .allocator = allocator,
+                .client = client,
+                .io_uring = null,
+                .owns_io = false,
+            };
+        } else {
+            // Create our own IoUring
+            var io_uring: std.Io.IoUring = undefined;
+            io_uring.init(allocator) catch |err| {
+                std.log.err("Failed to initialize IoUring: {s}", .{@errorName(err)});
+                // Return a client that will fail on actual requests
+                // but won't crash the application
+                return .{
+                    .allocator = allocator,
+                    .client = undefined,
+                    .io_uring = null,
+                    .owns_io = false,
+                };
+            };
+            
+            const client = std.http.Client{
+                .allocator = allocator,
+                .io = io_uring.io(),
+            };
+            
+            return .{
+                .allocator = allocator,
+                .client = client,
+                .io_uring = io_uring,
+                .owns_io = true,
+            };
+        }
     }
 
     pub fn deinit(self: *Self) void {
-        self.client.deinit();
+        // Clean up our own IoUring if we created it
+        if (self.owns_io) {
+            if (self.io_uring) |*io_uring| {
+                io_uring.deinit();
+            }
+        }
     }
 
     /// Make a POST request with JSON body
+    /// Implements retry logic with exponential backoff
     pub fn postJson(
         self: *Self,
         url: []const u8,
         headers: []const std.http.Header,
         body: []const u8,
     ) !Response {
+        // Check if client is properly initialized
+        if (self.owns_io and self.io_uring == null) {
+            return AiError.IoManagerNotInitialized;
+        }
+
         var attempts: u3 = 0;
         var last_error: ?anyerror = null;
 
@@ -76,36 +135,53 @@ pub const HttpClient = struct {
         headers: []const std.http.Header,
         body: []const u8,
     ) !Response {
-        const uri = std.Uri.parse(url) catch return AiError.HttpRequestFailed;
+        const uri = std.Uri.parse(url) catch return AiError.InvalidUrl;
 
-        // Buffer to collect response body
-        var body_list: std.ArrayList(u8) = .empty;
-        errdefer body_list.deinit(self.allocator);
+        // Setup request options
+        const server_header_buffer = try self.allocator.alloc(u8, 8192);
+        defer self.allocator.free(server_header_buffer);
 
-        // Use fetch API with response_writer
-        const fetch_result = self.client.fetch(.{
-            .location = .{ .uri = uri },
-            .method = .POST,
-            .extra_headers = headers,
-            .payload = body,
-            .response_writer = body_list.writer(self.allocator),
-        }) catch return AiError.HttpRequestFailed;
+        const options = std.http.Client.RequestOptions{
+            .server_header_buffer = server_header_buffer,
+        };
+
+        // Start the request
+        var req = try self.client.open(.POST, uri, options);
+        defer req.deinit();
+
+        // Add headers
+        try req.appendHeader("Content-Type", "application/json");
+        for (headers) |header| {
+            try req.appendHeader(header.name, header.value);
+        }
+
+        // Send the body
+        try req.send(body);
+        try req.finish();
+
+        // Wait for response
+        try req.wait();
+
+        // Read response body
+        const body_reader = req.reader();
+        const body_content = try body_reader.readAllAlloc(self.allocator, 1024 * 1024); // 1MB max
 
         // Check status
-        const status = fetch_result.status;
+        const status = req.response.status;
         if (status == .ok or status == .created) {
             return Response{
                 .status = status,
-                .body = try body_list.toOwnedSlice(self.allocator),
+                .body = body_content,
                 .allocator = self.allocator,
             };
         } else {
-            body_list.deinit(self.allocator);
+            self.allocator.free(body_content);
             return mapStatusToError(status);
         }
     }
 
-    /// Make a streaming POST request
+    /// Make a streaming POST request for SSE (Server-Sent Events)
+    /// Calls the callback for each line received
     pub fn postStream(
         self: *Self,
         url: []const u8,
@@ -113,37 +189,60 @@ pub const HttpClient = struct {
         body: []const u8,
         callback: *const fn (line: []const u8) void,
     ) !void {
-        const uri = std.Uri.parse(url) catch return AiError.HttpRequestFailed;
+        // Check if client is properly initialized
+        if (self.owns_io and self.io_uring == null) {
+            return AiError.IoManagerNotInitialized;
+        }
 
-        // Buffer to collect response body
-        var body_list: std.ArrayList(u8) = .empty;
-        errdefer body_list.deinit(self.allocator);
+        const uri = std.Uri.parse(url) catch return AiError.InvalidUrl;
 
-        // Use fetch API with response_writer
-        const fetch_result = self.client.fetch(.{
-            .location = .{ .uri = uri },
-            .method = .POST,
-            .extra_headers = headers,
-            .payload = body,
-            .response_writer = body_list.writer(self.allocator),
-        }) catch return AiError.HttpRequestFailed;
+        // Setup request options
+        const server_header_buffer = try self.allocator.alloc(u8, 8192);
+        defer self.allocator.free(server_header_buffer);
+
+        const options = std.http.Client.RequestOptions{
+            .server_header_buffer = server_header_buffer,
+        };
+
+        // Start the request
+        var req = try self.client.open(.POST, uri, options);
+        defer req.deinit();
+
+        // Add headers
+        try req.appendHeader("Content-Type", "application/json");
+        try req.appendHeader("Accept", "text/event-stream");
+        for (headers) |header| {
+            try req.appendHeader(header.name, header.value);
+        }
+
+        // Send the body
+        try req.send(body);
+        try req.finish();
+
+        // Wait for response headers
+        try req.wait();
 
         // Check status
-        const status = fetch_result.status;
+        const status = req.response.status;
         if (status != .ok) {
-            body_list.deinit(self.allocator);
             return mapStatusToError(status);
         }
 
-        // Process body line by line (SSE format)
+        // Read response body line by line (SSE format)
+        const body_reader = req.reader();
         var line_buf: [SSE_LINE_BUF_SIZE]u8 = undefined;
         var line_pos: usize = 0;
 
-        for (body_list.items) |byte| {
+        while (true) {
+            const byte = body_reader.readByte() catch |err| switch (err) {
+                error.EndOfStream => break,
+                else => return AiError.HttpResponseReadFailed,
+            };
+
             if (byte == '\n') {
                 // Line complete
                 if (line_pos > 0) {
-                    // Remove \r if present
+                    // Remove \r if present (CRLF handling)
                     const line_len = if (line_pos > 0 and line_buf[line_pos - 1] == '\r')
                         line_pos - 1
                     else
@@ -167,21 +266,21 @@ pub const HttpClient = struct {
                 line_pos;
             callback(line_buf[0..line_len]);
         }
-
-        body_list.deinit(self.allocator);
     }
 };
 
+/// HTTP Response struct
 pub const Response = struct {
     status: std.http.Status,
     body: []u8,
     allocator: std.mem.Allocator,
 
-    pub fn deinit(self: *Response, allocator: std.mem.Allocator) void {
-        allocator.free(self.body);
+    pub fn deinit(self: *Response) void {
+        self.allocator.free(self.body);
     }
 };
 
+/// Map HTTP status codes to AI errors
 fn mapStatusToError(status: std.http.Status) AiError {
     return switch (status) {
         .unauthorized => AiError.ApiAuthenticationFailed,
@@ -201,4 +300,11 @@ test "HttpClient init/deinit" {
     const allocator = std.testing.allocator;
     var client = HttpClient.init(allocator);
     defer client.deinit();
+}
+
+test "HttpClient parse URL" {
+    const url = "https://api.openai.com/v1/chat/completions";
+    const uri = try std.Uri.parse(url);
+    try std.testing.expectEqualStrings("api.openai.com", uri.host.?.percent_encoded);
+    try std.testing.expectEqualStrings("https", uri.scheme);
 }

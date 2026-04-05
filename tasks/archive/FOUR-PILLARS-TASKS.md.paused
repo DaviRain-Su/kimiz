@@ -1,0 +1,251 @@
+# Kimiz Harness 四大支柱任务汇总
+
+**基于**: Nyk @ Builderz 的 "Harness Four Pillars" 研究  
+**研究文档**: `docs/research/harness-four-pillars-nyk-analysis.md`  
+**创建日期**: 2026-04-05  
+**核心理念**: "The harness is the product. The model is the engine."
+
+---
+
+## 执行摘要
+
+基于 Nyk 的深度研究，模型正在商品化，真正的护城河是 **Harness** 积累的智能（上下文、失败模式、架构决策）。
+
+**关键数据**:
+- LangChain 只改 harness，Terminal Bench 2.0 从 **52.8% → 66.5%**
+- Kimiz 当前符合度: **~60%**
+- 需要补强: Specialist Subagent、File System Memory、Token Budget、Execution State Machine
+
+---
+
+## 四大支柱任务矩阵
+
+### Pillar 1: Context Architecture (上下文架构)
+
+| 任务 ID | 任务名称 | 优先级 | 工时 | 状态 | 核心目标 |
+|---------|----------|--------|------|------|----------|
+| FEAT-022 | Token Budget Monitor | P1 | 4h | pending | 超 40% 报警 |
+| FEAT-023 | Content Expiration | P1 | 6h | pending | 每月清理过期内容 |
+| FEAT-006 | WorkspaceContext | P0 | 4h | pending | 基础框架已有 |
+| FEAT-008 | ContextTruncation | P0 | 3h | pending | 基础框架已有 |
+| FEAT-007 | PromptCaching | P0 | 6h | pending | 基础框架已有 |
+
+**Pillar 1 小计**: 5 个任务, 23 小时
+
+---
+
+### Pillar 2: Agent Specialization (Agent 专业化)
+
+| 任务 ID | 任务名称 | 优先级 | 工时 | 状态 | 核心目标 |
+|---------|----------|--------|------|------|----------|
+| FEAT-024 | Specialist Subagent | P0 | 16h | pending | 重构为专业分工模式 |
+| FEAT-011 | Subagent Delegation | P1 | 8h | pending | 基础委派已有，需重构 |
+| FEAT-002 | Skills Registration | P1 | 6h | pending | Skill 系统集成 |
+
+**Pillar 2 小计**: 3 个任务, 30 小时
+
+**Specialist 类型规划**:
+```
+Explorer    → 代码探索、调用链追踪 (参考 Coda)
+Planner     → 任务规划、需求分解
+Coder       → 代码实现、API 设计
+Reviewer    → 代码审查、安全检查
+Researcher  → 技术调研、最佳实践
+Debugger    → 调试分析、问题定位
+Architect   → 架构设计、决策记录
+```
+
+---
+
+### Pillar 3: Persistent Memory (持久化记忆)
+
+| 任务 ID | 任务名称 | 优先级 | 工时 | 状态 | 核心目标 |
+|---------|----------|--------|------|------|----------|
+| FEAT-025 | Persistent File Memory | P0 | 12h | pending | 文件系统记忆 |
+| FEAT-010 | Session Persistence | P1 | 6h | pending | Session 状态持久化 |
+| INFRA-002 | LMDB LongTerm Memory | P1 | 8h | pending | 高性能持久化 |
+| INFRA-006 | Obsidian Wiki Memory | P1 | 6h | pending | Markdown 记忆 |
+| FEAT-014 | Knowledge Base (AGENTS.md) | P0 | 8h | pending | 结构化知识 |
+
+**Pillar 3 小计**: 5 个任务, 40 小时
+
+**记忆文件结构**:
+```
+.kimiz/memory/
+├── decisions.md           # ADR (架构决策记录)
+├── failure-catalog.md     # 失败模式库
+├── patterns.md            # 代码模式偏好
+├── session-state.md       # Session 状态
+└── learned/
+    ├── tool-effectiveness.md
+    ├── model-performance.md
+    └── user-preferences.md
+```
+
+---
+
+### Pillar 4: Structured Execution (结构化执行)
+
+| 任务 ID | 任务名称 | 优先级 | 工时 | 状态 | 核心目标 |
+|---------|----------|--------|------|------|----------|
+| FEAT-026 | Execution State Machine | P0 | 14h | pending | 强制流程状态机 |
+| FEAT-027 | Guardrail Hierarchy | P1 | 10h | pending | 四层护栏体系 |
+| FEAT-013 | Resource Limits | P1 | 4h | pending | 预算限制已有 |
+| FEAT-015 | Agent Linter | P0 | 6h | pending | 流程检查已有 |
+| FEAT-009 | Tool Approval | P1 | 4h | pending | 工具审批 |
+
+**Pillar 4 小计**: 5 个任务, 38 小时
+
+**强制流程**:
+```
+Idle → Researching → ResearchComplete → Planning → PlanPendingReview
+                                                        ↓
+              ┌───────────────────────────────────────┘
+              ↓
+        PlanApproved → Executing → Verifying → WritingBack → Completed
+```
+
+---
+
+## 总体统计
+
+| 支柱 | 任务数 | 工时 | 优先级分布 |
+|------|--------|------|-----------|
+| Pillar 1: Context | 5 | 23h | 3 P0, 2 P1 |
+| Pillar 2: Specialist | 3 | 30h | 1 P0, 2 P1 |
+| Pillar 3: Memory | 5 | 40h | 1 P0, 4 P1 |
+| Pillar 4: Execution | 5 | 38h | 2 P0, 3 P1 |
+| **总计** | **18** | **131h** | **7 P0, 11 P1** |
+
+---
+
+## 实施路线图
+
+### Phase 0: 基础修复 (本周, 与现有 P0 并行)
+
+继续完成 CRITICAL-FIXES-SUMMARY.md 中的编译错误修复。
+
+### Phase 1: Pillar 3 (Persistent Memory) - 2 周
+
+**理由**: 记忆是 Harness 的核心，其他功能依赖记忆系统
+
+```
+Week 1-2:
+├── FEAT-025: Persistent File Memory (12h)
+├── INFRA-002: LMDB LongTerm Memory (8h)
+└── FEAT-010: Session Persistence (6h)
+```
+
+### Phase 2: Pillar 4 (Structured Execution) - 2 周
+
+**理由**: 执行流程是 Agent 的行为框架
+
+```
+Week 3-4:
+├── FEAT-026: Execution State Machine (14h)
+├── FEAT-027: Guardrail Hierarchy (10h)
+└── FEAT-009: Tool Approval (4h)
+```
+
+### Phase 3: Pillar 2 (Agent Specialization) - 2 周
+
+**理由**: 专业化提升执行质量
+
+```
+Week 5-6:
+├── FEAT-024: Specialist Subagent (16h)
+├── FEAT-011: Subagent Delegation重构 (8h)
+└── FEAT-002: Skills Registration (6h)
+```
+
+### Phase 4: Pillar 1 (Context Architecture) - 1-2 周
+
+**理由**: 上下文优化，提升 token 效率
+
+```
+Week 7-8:
+├── FEAT-022: Token Budget Monitor (4h)
+├── FEAT-023: Content Expiration (6h)
+└── 完善 WorkspaceContext, PromptCache
+```
+
+### Phase 5: 集成测试 - 1 周
+
+```
+Week 9:
+├── 四大支柱集成测试
+├── 性能基准测试
+├── 文档完善
+└── 发布准备
+```
+
+**总计周期**: ~9 周 (2 个月)
+
+---
+
+## 与现有任务的关联
+
+### 不重复的任务 (新增)
+
+| 新任务 | 说明 | 与现有任务区别 |
+|--------|------|----------------|
+| FEAT-022 | Token Budget | 新增概念 |
+| FEAT-023 | Content Expiration | 新增概念 |
+| FEAT-024 | Specialist Subagent | 重构现有 Subagent |
+| FEAT-025 | Persistent File Memory | 新增文件系统层 |
+| FEAT-026 | Execution State Machine | 新增强制流程 |
+| FEAT-027 | Guardrail Hierarchy | 新增护栏体系 |
+
+### 可合并的任务
+
+| 现有任务 | 新任务 | 合并建议 |
+|----------|--------|----------|
+| FEAT-006 WorkspaceContext | FEAT-022, FEAT-023 | 在 Context 基础上添加预算和过期 |
+| FEAT-011 Subagent Delegation | FEAT-024 | 重构为 Specialist |
+| FEAT-010 Session Persistence | FEAT-025 | 文件系统 Session 存储 |
+
+---
+
+## 关键成功指标
+
+### 技术指标
+
+- [ ] Token 使用效率提升 30% (预算监控)
+- [ ] 跨 Session 记忆恢复 <100ms
+- [ ] 工作流强制执行 100% (无跳步)
+- [ ] Specialist 切换延迟 <50ms
+
+### 体验指标
+
+- [ ] 复杂任务成功率提升 (目标: 60% → 75%)
+- [ ] 用户干预次数减少 (自动执行率提升)
+- [ ] 代码质量评分提升 (通过 Reviewer specialist)
+
+---
+
+## 参考文档
+
+- `docs/research/harness-four-pillars-nyk-analysis.md` (本文基础)
+- `docs/research/coda-team-agent-analysis.md` (Specialist 参考)
+- `docs/research/addy-osmani-agent-skills-analysis.md` (流程参考)
+- `docs/research/open-multi-agent-architecture-analysis.md` (编排参考)
+- `docs/research/gstack-skill-infrastructure-analysis.md` (技能分发)
+
+---
+
+## 附录: 任务文件列表
+
+```
+tasks/backlog/feature/
+├── TASK-FEAT-022-token-budget-monitor.md
+├── TASK-FEAT-023-content-expiration.md
+├── TASK-FEAT-024-specialist-subagent.md
+├── TASK-FEAT-025-persistent-file-memory.md
+├── TASK-FEAT-026-execution-state-machine.md
+└── TASK-FEAT-027-guardrail-hierarchy.md
+```
+
+---
+
+*维护者: kimiz-core-team*  
+*更新日期: 2026-04-05*

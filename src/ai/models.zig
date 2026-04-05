@@ -152,6 +152,16 @@ pub fn getModel(provider: KnownProvider, id: []const u8) ?Model {
     return null;
 }
 
+/// Get model by id (searches all providers)
+pub fn getModelById(id: []const u8) ?Model {
+    for (model_table) |model| {
+        if (std.mem.eql(u8, model.id, id)) {
+            return model;
+        }
+    }
+    return null;
+}
+
 /// Get all models for a provider
 pub fn getModelsByProvider(allocator: std.mem.Allocator, provider: KnownProvider) ![]Model {
     var list = std.ArrayList(Model).init(allocator);

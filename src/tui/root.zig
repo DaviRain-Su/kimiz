@@ -2,6 +2,7 @@
 //! Integrates with Agent for interactive AI chat
 
 const std = @import("std");
+const utils = @import("../utils/root.zig");
 const terminal = @import("terminal.zig");
 const core = @import("../core/root.zig");
 const ai = @import("../ai/root.zig");
@@ -61,7 +62,7 @@ pub const TuiState = struct {
         try self.messages.append(.{
             .msg_type = msg_type,
             .content = content,
-            .timestamp = std.time.milliTimestamp(),
+            .timestamp = utils.milliTimestamp(),
         });
         // Auto-scroll to bottom on new message
         self.scroll_offset = 0;
@@ -71,7 +72,7 @@ pub const TuiState = struct {
         try self.messages.append(.{
             .msg_type = msg_type,
             .content = "",
-            .timestamp = std.time.milliTimestamp(),
+            .timestamp = utils.milliTimestamp(),
             .is_streaming = true,
         });
         self.is_streaming = true;

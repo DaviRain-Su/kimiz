@@ -2,6 +2,7 @@
 //! Reference: Pi-Mono's session design
 
 const std = @import("std");
+const utils = @import("../utils/root.zig");
 const core = @import("root.zig");
 
 /// Session - Single layer session with compaction support
@@ -26,7 +27,7 @@ pub const Session = struct {
         return .{
             .allocator = allocator,
             .id = try allocator.dupe(u8, id),
-            .created_at = std.time.milliTimestamp(),
+            .created_at = utils.milliTimestamp(),
             .messages = std.ArrayList(core.Message).init(allocator),
             .metadata = .{
                 .working_dir = try allocator.dupe(u8, "."),

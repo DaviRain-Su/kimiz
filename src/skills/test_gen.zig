@@ -2,7 +2,7 @@
 //! Generates unit tests for code
 
 const std = @import("std");
-const skills = @import("../root.zig");
+const skills = @import("./root.zig");
 const Skill = skills.Skill;
 const SkillContext = skills.SkillContext;
 const SkillResult = skills.SkillResult;
@@ -47,22 +47,20 @@ pub fn execute(
         else => return error.InvalidParamType,
     };
 
-    const function_val = args.get("function") orelse .{ .string = "all" };
-    const function = switch (function_val) {
+    const function_val = args.get("function");
+    const function: []const u8 = if (function_val) |v| switch (v) {
         .string => |s| s,
         else => "all",
-    };
+    } else "all";
 
-    const framework_val = args.get("framework") orelse .{ .string = "builtin" };
-    const framework = switch (framework_val) {
+    const framework_val = args.get("framework");
+    const framework: []const u8 = if (framework_val) |v| switch (v) {
         .string => |s| s,
         else => "builtin",
-    };
+    } else "builtin";
 
     var output_buf: [4096]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&output_buf);
-    var writer = fbs.writer();
-    const w: *std.Io.Writer = &writer.interface;
+    var w: std.Io.Writer = .fixed(&output_buf);
 
     try w.print("Test Generation: {s}\n", .{filepath});
     try w.print("Target: {s}\n", .{function});
@@ -83,9 +81,8 @@ pub fn execute(
 
     try w.print("✅ Test template generated.\n", .{});
     try w.print("   Add to: {s}\n", .{filepath});
-    try w.flush();
 
-    const output = try arena.dupe(u8, fbs.getWritten());
+    const output = try arena.dupe(u8, w.buffered());
 
     return SkillResult{
         .success = true,

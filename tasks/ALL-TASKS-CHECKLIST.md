@@ -5,15 +5,34 @@
 
 ---
 
-## 🚨 P0 - 阻塞级别（3个）
+## 🚨 P0 - 阻塞级别（6个）
 
 ### 编译和基础功能
 
-- [ ] **URGENT-FIX**: 修复编译错误
-  - 📁 `tasks/backlog/bugfix/URGENT-FIX-compilation-errors.md`
+- [ ] **TASK-INFRA-007**: 编译修复批量任务 (协调任务)
+  - 📁 `tasks/backlog/infra/TASK-INFRA-007-create-compilation-fix-batch.md`
   - ⏱️ 30分钟
-  - 🎯 修复 config.zig 和 http.zig 的编译错误
+  - 🎯 协调并执行所有编译错误修复
   - 🚫 **阻塞**: 所有开发工作
+
+- [ ] **TASK-BUG-026**: 修复 Zig 0.16 argsAlloc API 变更
+  - 📁 `tasks/backlog/bugfix/TASK-BUG-026-fix-zig-016-argsAlloc.md`
+  - 📄 `src/cli/root.zig:86`
+  - ⏱️ 15分钟
+  - 🎯 使用 `std.process.ArgIterator` 替换 `argsAlloc`
+  - 🚫 **阻塞**: 所有开发工作
+
+- [ ] **TASK-BUG-027**: 修复未使用的 task_type 参数
+  - 📁 `tasks/backlog/bugfix/TASK-BUG-027-fix-unused-task_type-param.md`
+  - 📄 `src/learning/root.zig:160`
+  - ⏱️ 5分钟
+  - 🎯 添加 `_ = task_type;` 消除编译错误
+  - 🚫 **阻塞**: 所有开发工作
+
+- [ ] ~~**URGENT-FIX**: 修复编译错误~~
+  - 📁 ~~`tasks/backlog/bugfix/URGENT-FIX-compilation-errors.md`~~
+  - ⏱️ ~~30分钟~~
+  - 📝 **状态**: 被 TASK-BUG-026 和 TASK-BUG-027 覆盖，待删除
 
 - [ ] **TASK-BUG-013**: 修复 page_allocator 滥用
   - 📁 `tasks/backlog/bugfix/TASK-BUG-013-fix-page-allocator-abuse.md`
@@ -28,6 +47,22 @@
   - ⏱️ 6小时
   - 🎯 实现完整的 CLI 参数解析和命令路由
   - 🚫 **阻塞**: 项目可用性
+
+### TODO 任务 (代码扫描新增)
+
+- [ ] **TASK-TODO-001**: 实现 AI Provider JSON 序列化
+  - 📁 `tasks/backlog/bugfix/TASK-TODO-001-implement-ai-provider-json-serialization.md`
+  - 📄 `src/ai/providers/google.zig`, `kimi.zig`, `anthropic.zig`
+  - ⏱️ 6小时
+  - 🎯 实现完整的请求/响应 JSON 序列化
+  - 🚫 **阻塞**: AI API 调用
+
+- [ ] **TASK-TODO-002**: 实现完整 HTTP 客户端
+  - 📁 `tasks/backlog/infra/TASK-TODO-002-implement-full-http-client.md`
+  - 📄 `src/http.zig`
+  - ⏱️ 8小时
+  - 🎯 实现完整的 HTTP/HTTPS 客户端
+  - 🚫 **阻塞**: 所有外部 API 调用
 
 ---
 
@@ -90,6 +125,20 @@
   - 📁 `tasks/active/sprint-01-core/T-009-e2e-tests.md`
   - ⏱️ 4小时
   - 🎯 补充测试覆盖率
+
+### TODO 任务 (代码扫描新增)
+
+- [ ] **TASK-TODO-003**: 恢复 Workspace Git 上下文
+  - 📁 `tasks/backlog/feature/TASK-TODO-003-restore-workspace-git-context.md`
+  - 📄 `src/workspace/context.zig`
+  - ⏱️ 4小时
+  - 🎯 实现完整的 Git 仓库检测和信息收集
+
+- [ ] **TASK-TODO-004**: 实现 Extension 系统核心功能
+  - 📁 `tasks/backlog/feature/TASK-TODO-004-implement-extension-core.md`
+  - 📄 `src/extension/root.zig`
+  - ⏱️ 8小时
+  - 🎯 实现 Extension 安装/卸载/加载
 
 ---
 
@@ -194,14 +243,31 @@
   - 📄 `src/cli/root.zig:98`
   - ⏱️ 15分钟
 
+### TODO 任务 (代码扫描新增)
+
+- [ ] **TASK-TODO-005**: 实现 Learning 系统高级功能
+  - 📁 `tasks/backlog/feature/TASK-TODO-005-implement-learning-advanced.md`
+  - 📄 `src/learning/root.zig`
+  - ⏱️ 6小时
+  - 🎯 实现代码变更学习和模型推荐
+
+- [ ] **TASK-TODO-006**: 实现 Harness 高级功能
+  - 📁 `tasks/backlog/feature/TASK-TODO-006-implement-harness-advanced.md`
+  - 📄 `src/harness/context_truncation.zig`, `reasoning_trace.zig`
+  - ⏱️ 8小时
+  - 🎯 实现 AI 摘要和 Trace 完整序列化
+
 ---
 
 ## 新增任务汇总
 
-### 本次审查新增（13个）
+### 本次审查新增（16个）
 
 | 任务 | 优先级 | 类型 | 预计 | 描述 |
 |------|--------|------|------|------|
+| TASK-INFRA-007 | P0 | Infra | 30m | 编译修复批量任务 |
+| TASK-BUG-026 | P0 | Bugfix | 15m | Zig 0.16 argsAlloc API |
+| TASK-BUG-027 | P0 | Bugfix | 5m | 未使用参数修复 |
 | TASK-BUG-013 | P0 | Bugfix | 4h | page_allocator 滥用 |
 | TASK-BUG-014 | P0 | Bugfix | 6h | CLI 未实现 |
 | TASK-BUG-015 | P1 | Bugfix | 3h | 静默错误处理 |
@@ -215,10 +281,11 @@
 | TASK-REF-002 | P2 | Refactor | 4h | 请求序列化重构 |
 | TASK-DOCS-004 | P2 | Docs | 4h | API 文档完善 |
 
-### 被覆盖的原有任务（7个）
+### 被覆盖的原有任务（8个）
 
 | 原任务 | 被新任务 | 原因 |
 |--------|----------|------|
+| URGENT-FIX | TASK-BUG-026, TASK-BUG-027 | 更精确的编译错误修复 |
 | TASK-BUG-001 | TASK-BUG-019 | 更全面的解决方案 |
 | TASK-BUG-002 | TASK-BUG-013 | 统一内存管理修复 |
 | TASK-BUG-004 | TASK-BUG-015 | 更全面的错误处理 |
@@ -232,36 +299,51 @@
 ## 统计汇总
 
 **任务数量**:
-- 总计: 30个 (17原有 + 13新增)
-- P0: 3个
-- P1: 9个
-- P2: 8个
+- 总计: 39个 (17原有 + 16新增 + 6个TODO任务)
+- P0: 8个 (新增3个编译修复任务 + 2个TODO任务)
+- P1: 11个 (新增2个TODO任务)
+- P2: 10个 (新增2个TODO任务)
 - P3: 6个
 
 **按类型**:
-- Bugfix: 20个 (12原有 + 8新增)
-- Feature: 2个 (新增)
+- Bugfix: 23个 (12原有 + 10新增 + 1个TODO)
+- Feature: 6个 (2原有 + 4个TODO)
 - Refactor: 2个 (1原有 + 1新增)
 - Docs: 4个 (3原有 + 1新增)
+- Infra: 2个 (1原有 + 1个TODO)
 - Test: 1个 (原有)
 
 **预计总耗时**:
-- P0: 10.5小时
-- P1: 39小时
-- P2: 12小时
+- P0: 24.83小时 (新增14小时 TODO任务)
+- P1: 43小时 (新增4小时 TODO任务)
+- P2: 26小时 (新增14小时 TODO任务)
 - P3: 5.25小时
-- **总计**: ~67小时 (原15.5小时 + 新增51.5小时)
+- **总计**: ~99小时
+
+**TODO 任务汇总**:
+- 扫描发现 24 个 TODO 注释
+- 已创建 6 个跟踪任务
+- 关键路径: TASK-TODO-002 (HTTP) → TASK-TODO-001 (JSON) → API 正常工作
 
 ---
 
 ## 推荐执行顺序
 
 ### 阶段 1: 紧急修复（立即执行）
-1. ✅ URGENT-FIX - 编译错误 (30分钟)
-2. ✅ TASK-BUG-014 - CLI 实现 (6小时)
-3. ✅ TASK-BUG-013 - page_allocator (4小时)
+1. ✅ TASK-INFRA-007 - 编译修复协调 (30分钟)
+2. ✅ TASK-BUG-027 - 修复未使用参数 (5分钟)
+3. ✅ TASK-BUG-026 - 修复 argsAlloc API (15分钟)
+4. ✅ TASK-BUG-014 - CLI 实现 (6小时)
+5. ✅ TASK-BUG-013 - page_allocator (4小时)
 
 **目标**: 项目可编译、可运行
+
+**关键路径**:
+```
+TASK-BUG-027 (5分钟) ─┐
+                      ├──→ 验证编译 → 继续后续任务
+TASK-BUG-026 (15分钟)─┘
+```
 
 ### 阶段 2: 核心稳定（本周）
 4. ✅ TASK-BUG-019 - getApiKey (2小时)
@@ -291,7 +373,9 @@
 ## 关键路径
 
 ```
-URGENT-FIX (编译)
+TASK-BUG-027 ─┐
+              ├→ 编译成功
+TASK-BUG-026 ─┘
     ↓
 TASK-BUG-014 (CLI)
     ↓
@@ -327,10 +411,53 @@ TASK-FEAT-001 (TUI)
 - [关键修复汇总](./CRITICAL-FIXES-SUMMARY.md)
 - [Sprint 1 更新报告](./active/sprint-01-core/SPRINT-UPDATE-2026-04-05.md)
 - [代码审查报告](../review-report.md)
+- [TODO 任务汇总](./TODO-SUMMARY.md) ⭐ 新增
 
 ---
 
 **下一步**: 立即执行 URGENT-FIX，然后按优先级顺序执行修复
+
+---
+
+## 新增: Zig 0.16 迁移后任务 (2026-04-05)
+
+Zig 0.16 迁移已完成，但有一些功能被简化或禁用，需要后续实现。
+
+### 高优先级 - 核心功能恢复
+
+| 任务 | 优先级 | 预计 | 目标 | 状态 |
+|------|--------|------|------|------|
+| TASK-INFRA-008 | P0 | 8h | 实现完整 HTTP Client | 阻塞 API 调用 |
+| TASK-INFRA-009 | P1 | 2h | 实现环境变量访问 | 阻塞 API Key |
+| TASK-INFRA-010 | P2 | 4h | 恢复 Workspace 上下文 | 阻塞 Workspace 功能 |
+
+**说明**:
+- **TASK-INFRA-008**: 当前使用简化版 HTTP Client，需要实现完整的 `std.http.Client` 集成
+- **TASK-INFRA-009**: 环境变量访问被禁用，需要通过 `Init.environ_map` 实现
+- **TASK-INFRA-010**: Workspace 上下文收集被禁用，需要使用 `std.Io` 恢复
+
+### 实施建议
+
+1. **立即开始** TASK-INFRA-008 (HTTP Client)
+   - 这是最关键的任务，阻塞所有外部 API 调用
+   - 需要研究 `std.Io.IoUring` 的使用
+
+2. **然后执行** TASK-INFRA-009 (环境变量)
+   - 相对简单，修改 `main` 函数接收 `Init` 参数
+   - 传递 `environ_map` 到需要的地方
+
+3. **最后执行** TASK-INFRA-010 (Workspace)
+   - 依赖 TASK-INFRA-008 的 IoManager
+   - 修改文件系统操作使用 `std.Io`
+
+### HTTP Client 方案研究
+
+**调研结果**:
+- `http.zig` (karlseguin/http.zig) 是 **HTTP Server** 库，不适合
+- 需要使用 Zig 0.16 标准库的 `std.http.Client`
+- `std.http.Client` 需要 `std.Io` 实例
+
+**推荐方案**: 使用 `std.http.Client` + `std.Io.IoUring`
 
 ---
 

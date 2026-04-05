@@ -59,7 +59,7 @@ fn execute(
 ) anyerror!tool.ToolResult {
     const ctx: *WriteFileContext = @ptrCast(@alignCast(ctx_ptr));
 
-    const parsed_args = tool.parseArguments(args, WriteFileArgs) catch {
+    const parsed_args = tool.parseArguments(arena, args, WriteFileArgs) catch {
         return tool.errorResult(arena, "Invalid arguments: expected {\"path\": \"...\", \"content\": \"...\"}");
     };
 

@@ -61,7 +61,7 @@ fn execute(
 ) anyerror!tool.ToolResult {
     _ = ctx;
 
-    const parsed_args = tool.parseArguments(args, ReadFileArgs) catch {
+    const parsed_args = tool.parseArguments(arena, args, ReadFileArgs) catch {
         return tool.errorResult(arena, "Invalid arguments: expected {\"path\": \"/path/to/file\"}");
     };
 

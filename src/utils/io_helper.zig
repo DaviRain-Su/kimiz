@@ -51,7 +51,7 @@ pub const IoManager = struct {
 pub const BufferedStdout = struct {
     file: std.Io.File,
     buffer: [4096]u8,
-    writer: std.Io.File.Writer,
+    file_writer: std.Io.File.Writer,
 
     const Self = @This();
 
@@ -59,27 +59,27 @@ pub const BufferedStdout = struct {
     pub fn init(io_instance: std.Io) Self {
         const file = std.Io.File.stdout();
         var buf: [4096]u8 = undefined;
-        const writer = file.writer(io_instance, &buf);
+        const fw = file.writer(io_instance, &buf);
         return .{
             .file = file,
             .buffer = buf,
-            .writer = writer,
+            .file_writer = fw,
         };
     }
 
     /// Get the writer interface for printing
     pub fn writer(self: *Self) *std.Io.Writer {
-        return &self.writer.interface;
+        return &self.file_writer.interface;
     }
 
     /// Print formatted text
     pub fn print(self: *Self, comptime fmt: []const u8, args: anytype) !void {
-        try self.writer.interface.print(fmt, args);
+        try self.file_writer.interface.print(fmt, args);
     }
 
     /// Flush the buffer
     pub fn flush(self: *Self) !void {
-        try self.writer.flush();
+        try self.file_writer.flush();
     }
 };
 
@@ -87,7 +87,7 @@ pub const BufferedStdout = struct {
 pub const BufferedStdin = struct {
     file: std.Io.File,
     buffer: [4096]u8,
-    reader: std.Io.File.Reader,
+    file_reader: std.Io.File.Reader,
 
     const Self = @This();
 
@@ -95,17 +95,17 @@ pub const BufferedStdin = struct {
     pub fn init(io_instance: std.Io) Self {
         const file = std.Io.File.stdin();
         var buf: [4096]u8 = undefined;
-        const reader = file.reader(io_instance, &buf);
+        const fr = file.reader(io_instance, &buf);
         return .{
             .file = file,
             .buffer = buf,
-            .reader = reader,
+            .file_reader = fr,
         };
     }
 
     /// Get the reader interface
     pub fn reader(self: *Self) *std.Io.Reader {
-        return &self.reader.interface;
+        return &self.file_reader.interface;
     }
 
     /// Read a line (until newline)
@@ -114,7 +114,7 @@ pub const BufferedStdin = struct {
         errdefer result.deinit();
 
         while (true) {
-            const byte = self.reader.interface.readByte() catch |err| switch (err) {
+            const byte = self.file_reader.interface.readByte() catch |err| switch (err) {
                 error.EndOfStream => break,
                 else => return err,
             };

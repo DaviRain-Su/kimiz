@@ -324,7 +324,7 @@ fn execute(
     const delegate_ctx = @as(*DelegateContext, @ptrCast(@alignCast(ctx)));
 
     // Parse arguments
-    const parsed_args = tool.parseArguments(args, DelegateArgs) catch {
+    const parsed_args = tool.parseArguments(arena, args, DelegateArgs) catch {
         return tool.errorResult(arena, "Invalid arguments: expected {\"task\": \"...\", \"read_only\": true/false, \"max_steps\": N, \"max_depth\": N}");
     };
 

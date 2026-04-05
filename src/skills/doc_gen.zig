@@ -2,7 +2,7 @@
 //! Generates documentation for code
 
 const std = @import("std");
-const skills = @import("../root.zig");
+const skills = @import("./root.zig");
 const Skill = skills.Skill;
 const SkillContext = skills.SkillContext;
 const SkillResult = skills.SkillResult;
@@ -40,62 +40,60 @@ pub fn execute(
         else => return error.InvalidParamType,
     };
 
-    const format_val = args.get("format") orelse .{ .string = "zigdoc" };
+    const format_val = args.get("format") orelse return error.MissingRequiredParam;
     const format = switch (format_val) {
         .string => |s| s,
         else => "zigdoc",
     };
 
-    var output_buf: [4096]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&output_buf);
-    const writer = fbs.writer();
+    var output: std.ArrayList(u8) = .empty;
+    defer output.deinit(arena);
 
-    try writer.print("Documentation Generation: {s}\n", .{filepath});
-    try writer.print("Format: {s}\n\n", .{format});
-
-    try writer.print("📝 Generated Documentation:\n\n", .{});
+    try output.appendSlice(arena, try std.fmt.allocPrint(arena, "Documentation Generation: {s}\n", .{filepath}));
+    try output.appendSlice(arena, try std.fmt.allocPrint(arena, "Format: {s}\n\n", .{format}));
+    try output.appendSlice(arena, "📝 Generated Documentation:\n\n");
 
     if (std.mem.eql(u8, format, "zigdoc")) {
-        try writer.print("```zig\n", .{});
-        try writer.print("/// Brief description of the function.\n", .{});
-        try writer.print("///\n", .{});
-        try writer.print("/// Detailed description explaining what\n", .{});
-        try writer.print("/// the function does and its behavior.\n", .{});
-        try writer.print("///\n", .{});
-        try writer.print("/// Parameters:\n", .{});
-        try writer.print("///   - param1: Description of param1\n", .{});
-        try writer.print("///   - param2: Description of param2\n", .{});
-        try writer.print("///\n", .{});
-        try writer.print("/// Returns:\n", .{});
-        try writer.print("///   Description of return value\n", .{});
-        try writer.print("///\n", .{});
-        try writer.print("/// Errors:\n", .{});
-        try writer.print("///   - Error1: When this error occurs\n", .{});
-        try writer.print("///   - Error2: When this error occurs\n", .{});
-        try writer.print("```\n", .{});
+        try output.appendSlice(arena, "```zig\n");
+        try output.appendSlice(arena, "/// Brief description of the function.\n");
+        try output.appendSlice(arena, "///\n");
+        try output.appendSlice(arena, "/// Detailed description explaining what\n");
+        try output.appendSlice(arena, "/// the function does and its behavior.\n");
+        try output.appendSlice(arena, "///\n");
+        try output.appendSlice(arena, "/// Parameters:\n");
+        try output.appendSlice(arena, "///   - param1: Description of param1\n");
+        try output.appendSlice(arena, "///   - param2: Description of param2\n");
+        try output.appendSlice(arena, "///\n");
+        try output.appendSlice(arena, "/// Returns:\n");
+        try output.appendSlice(arena, "///   Description of return value\n");
+        try output.appendSlice(arena, "///\n");
+        try output.appendSlice(arena, "/// Errors:\n");
+        try output.appendSlice(arena, "///   - Error1: When this error occurs\n");
+        try output.appendSlice(arena, "///   - Error2: When this error occurs\n");
+        try output.appendSlice(arena, "```\n");
     } else {
-        try writer.print("```markdown\n", .{});
-        try writer.print("## Function Name\n\n", .{});
-        try writer.print("Brief description.\n\n", .{});
-        try writer.print("### Parameters\n\n", .{});
-        try writer.print("- `param1`: Description\n", .{});
-        try writer.print("- `param2`: Description\n\n", .{});
-        try writer.print("### Returns\n\n", .{});
-        try writer.print("Description of return value.\n\n", .{});
-        try writer.print("### Example\n\n", .{});
-        try writer.print("```zig\n", .{});
-        try writer.print("const result = function_name(args);\n", .{});
-        try writer.print("```\n", .{});
-        try writer.print("```\n", .{});
+        try output.appendSlice(arena, "```markdown\n");
+        try output.appendSlice(arena, "## Function Name\n\n");
+        try output.appendSlice(arena, "Brief description.\n\n");
+        try output.appendSlice(arena, "### Parameters\n\n");
+        try output.appendSlice(arena, "- `param1`: Description\n");
+        try output.appendSlice(arena, "- `param2`: Description\n\n");
+        try output.appendSlice(arena, "### Returns\n\n");
+        try output.appendSlice(arena, "Description of return value.\n\n");
+        try output.appendSlice(arena, "### Example\n\n");
+        try output.appendSlice(arena, "```zig\n");
+        try output.appendSlice(arena, "const result = function_name(args);\n");
+        try output.appendSlice(arena, "```\n");
+        try output.appendSlice(arena, "```\n");
     }
 
-    try writer.print("\n✅ Documentation template generated.\n", .{});
+    try output.appendSlice(arena, "\n✅ Documentation template generated.\n");
 
-    const output = try arena.dupe(u8, fbs.getWritten());
+    const output_final = try output.toOwnedSlice(arena);
 
     return SkillResult{
         .success = true,
-        .output = output,
+        .output = output_final,
         .execution_time_ms = 0,
     };
 }

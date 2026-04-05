@@ -2,6 +2,7 @@
 //! Provides SQLite-based storage for chat sessions
 
 const std = @import("std");
+const utils = @import("root.zig");
 const core = @import("../core/root.zig");
 
 // ============================================================================
@@ -86,7 +87,7 @@ pub const SessionManager = struct {
     /// Create a new session
     pub fn createSession(self: *Self, name: []const u8, model_id: []const u8) !SessionId {
         const id = try generateSessionId(self.allocator);
-        const now = std.time.milliTimestamp();
+        const now = utils.milliTimestamp();
 
         const session = Session{
             .id = try self.allocator.dupe(u8, id),
@@ -164,7 +165,7 @@ pub const SessionManager = struct {
 
         self.allocator.free(session.name);
         session.name = try self.allocator.dupe(u8, new_name);
-        session.updated_at = std.time.milliTimestamp();
+        session.updated_at = utils.milliTimestamp();
     }
 
     /// Fork a session (create copy)
@@ -214,7 +215,7 @@ pub const SessionManager = struct {
             .session_id = try self.allocator.dupe(u8, session_id),
             .role = try self.allocator.dupe(u8, role),
             .content = try self.allocator.dupe(u8, content),
-            .timestamp = std.time.milliTimestamp(),
+            .timestamp = utils.milliTimestamp(),
             .metadata = if (metadata) |m| try self.allocator.dupe(u8, m) else null,
         };
 
@@ -272,7 +273,7 @@ pub const SessionManager = struct {
         // Update session
         if (self.sessions.getPtr(session_id)) |session| {
             session.message_count = 0;
-            session.updated_at = std.time.milliTimestamp();
+            session.updated_at = utils.milliTimestamp();
         }
     }
 
@@ -342,7 +343,7 @@ pub const SessionManager = struct {
 // ============================================================================
 
 fn generateSessionId(allocator: std.mem.Allocator) ![]const u8 {
-    const timestamp = std.time.milliTimestamp();
+    const timestamp = utils.milliTimestamp();
     const random = std.crypto.random.int(u32);
     return try std.fmt.allocPrint(allocator, "sess-{x}-{x}", .{ timestamp, random });
 }

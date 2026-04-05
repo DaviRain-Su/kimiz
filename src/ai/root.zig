@@ -138,4 +138,6 @@ test "Ai init/deinit" {
     const allocator = std.testing.allocator;
     var ai = Ai.init(allocator);
     defer ai.deinit();
+    
+    try std.testing.expectEqual(allocator, ai.allocator);
 }

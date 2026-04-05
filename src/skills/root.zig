@@ -93,12 +93,17 @@ pub const SkillRegistry = struct {
     }
 
     pub fn deinit(self: *Self) void {
-        var cat_iter = self.categories.values();
-        while (cat_iter.next()) |list| {
+        // Iterate over all categories manually
+        const categories = [_]Skill.SkillCategory{
+            .code, .review, .refactor, .testing, .doc, .debug, .analyze, .misc,
+        };
+        for (categories) |cat| {
+            const list = self.categories.get(cat);
             for (list.items) |id| {
                 self.allocator.free(id);
             }
-            list.deinit(self.allocator);
+            var mutable_list = self.categories.getPtr(cat);
+            mutable_list.deinit(self.allocator);
         }
         self.skills.deinit();
     }
@@ -209,11 +214,12 @@ pub const SkillEngine = struct {
             }
         }
 
-        const start_time = std.time.milliTimestamp();
+        var timer = try std.time.Timer.start();
         var arena = std.heap.ArenaAllocator.init(self.allocator);
         defer arena.deinit();
 
         const result = skill.execute_fn(ctx, args, arena.allocator()) catch |err| {
+            const elapsed_ms = timer.read() / std.time.ns_per_ms;
             return SkillResult{
                 .success = false,
                 .output = "",
@@ -222,7 +228,7 @@ pub const SkillEngine = struct {
                     "Execution failed: {s}",
                     .{@errorName(err)},
                 ),
-                .execution_time_ms = std.time.milliTimestamp() - start_time,
+                .execution_time_ms = @intCast(elapsed_ms),
             };
         };
 

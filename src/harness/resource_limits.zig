@@ -2,6 +2,7 @@
 //! Track and enforce resource usage limits for agent execution
 
 const std = @import("std");
+const utils = @import("../utils/root.zig");
 
 /// Resource limits configuration
 pub const ResourceLimits = struct {
@@ -64,13 +65,13 @@ pub const ResourceUsage = struct {
 
     pub fn init() Self {
         return .{
-            .start_time_ms = @intCast(std.time.milliTimestamp()),
+            .start_time_ms = @intCast(utils.milliTimestamp()),
         };
     }
 
     /// Update elapsed time based on current time
     pub fn updateElapsed(self: *Self) void {
-        const now: u64 = @intCast(std.time.milliTimestamp());
+        const now: u64 = @intCast(utils.milliTimestamp());
         self.elapsed_ms = now - self.start_time_ms;
     }
 

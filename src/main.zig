@@ -1,11 +1,12 @@
 const std = @import("std");
 const cli = @import("cli/root.zig");
 
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
-    try cli.run(allocator);
+pub fn main(init: std.process.Init) !void {
+    // Use the GPA from Init
+    const allocator = init.gpa;
+    
+    // Pass environ_map to cli for environment variable access
+    try cli.run(allocator, init.environ_map, init.minimal.args);
 }
 
 test "simple test" {

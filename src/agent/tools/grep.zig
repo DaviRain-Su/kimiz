@@ -61,7 +61,7 @@ fn execute(
 ) anyerror!tool.ToolResult {
     _ = ctx;
 
-    const parsed_args = tool.parseArguments(args, GrepArgs) catch {
+    const parsed_args = tool.parseArguments(arena, args, GrepArgs) catch {
         return tool.errorResult(arena, "Invalid arguments: expected {\"pattern\": \"...\"}");
     };
 

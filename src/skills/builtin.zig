@@ -2,7 +2,7 @@
 //! Registers all built-in skills with the skill registry
 
 const std = @import("std");
-const skills = @import("root.zig");
+const skills = @import("./root.zig");
 const SkillRegistry = skills.SkillRegistry;
 
 // Import all built-in skills

@@ -2,6 +2,7 @@
 //! Handles conversation flow, tool calling, and event management
 
 const std = @import("std");
+const utils = @import("../utils/root.zig");
 const tool_mod = @import("tool.zig");
 const Tool = tool_mod.Tool;
 const AgentTool = tool_mod.AgentTool;
@@ -9,6 +10,8 @@ const ToolResult = tool_mod.ToolResult;
 const core = @import("../core/root.zig");
 const ai = @import("../ai/root.zig");
 const skills = @import("../skills/root.zig");
+const memory = @import("../memory/root.zig");
+const learning = @import("../learning/root.zig");
 const Message = core.Message;
 const Context = core.Context;
 const AssistantMessage = core.AssistantMessage;
@@ -68,6 +71,8 @@ pub const AgentOptions = struct {
     yolo_mode: bool = false,
     plan_mode: bool = false,
     max_iterations: u32 = 50,
+    project_path: ?[]const u8 = null,
+    memory_db_path: ?[]const u8 = null,
 };
 
 // ============================================================================
@@ -84,6 +89,8 @@ pub const Agent = struct {
     ai_client: ai.Ai,
     skill_registry: skills.SkillRegistry,
     skill_engine: skills.SkillEngine,
+    memory_manager: ?memory.MemoryManager,
+    learning_engine: ?learning.LearningEngine,
 
     const Self = @This();
 
@@ -94,6 +101,20 @@ pub const Agent = struct {
         skills.registerBuiltinSkills(&skill_registry) catch |err| {
             std.log.warn("Failed to register some built-in skills: {s}", .{@errorName(err)});
         };
+
+        // Initialize memory manager if db path provided
+        var memory_manager: ?memory.MemoryManager = null;
+        if (options.memory_db_path) |db_path| {
+            memory_manager = try memory.MemoryManager.init(
+                allocator,
+                options.project_path,
+                db_path,
+            );
+        }
+
+        // Initialize learning engine
+        var learning_engine: ?learning.LearningEngine = null;
+        learning_engine = learning.LearningEngine.init(allocator);
         
         return .{
             .allocator = allocator,
@@ -104,6 +125,8 @@ pub const Agent = struct {
             .ai_client = ai.Ai.init(allocator),
             .skill_registry = skill_registry,
             .skill_engine = skills.SkillEngine.init(allocator, &skill_registry),
+            .memory_manager = memory_manager,
+            .learning_engine = learning_engine,
         };
     }
 
@@ -111,6 +134,12 @@ pub const Agent = struct {
         self.messages.deinit(self.allocator);
         self.ai_client.deinit();
         self.skill_registry.deinit();
+        if (self.memory_manager) |*mm| {
+            mm.deinit();
+        }
+        if (self.learning_engine) |*le| {
+            le.deinit();
+        }
     }
 
     /// Set event callback for receiving agent events
@@ -145,7 +174,7 @@ pub const Agent = struct {
         tool_call_id: []const u8,
         tool_name: []const u8,
         result: ToolResult,
-    ) !void {
+    ) anyerror!void {
         // Deep copy content blocks
         const content = try self.allocator.alloc(core.UserContentBlock, result.content.len);
         errdefer self.allocator.free(content);
@@ -153,11 +182,14 @@ pub const Agent = struct {
         for (result.content, 0..) |block, i| {
             content[i] = switch (block) {
                 .text => |text| .{ .text = try self.allocator.dupe(u8, text) },
-                .image => |img| .{ .image = try self.allocator.dupe(u8, img.data) },
+                .image => |img| .{ .image = .{
+                    .data = try self.allocator.dupe(u8, img),
+                    .mime_type = "image/png", // Default mime type
+                }},
                 .image_url => |img_url| .{ .image_url = .{
                     .url = try self.allocator.dupe(u8, img_url.url),
-                    .detail = img_url.detail,
-                } },
+                    .detail = .auto,
+                }},
             };
         }
 
@@ -304,7 +336,7 @@ pub const Agent = struct {
     fn executeTool(self: *Self, tool_call: core.ToolCall) !ToolResult {
         self.state = .executing_tool;
 
-        const start_time = std.time.milliTimestamp();
+        const start_time = utils.milliTimestamp();
 
         // Find the tool
         for (self.options.tools) |agent_tool| {
@@ -324,17 +356,54 @@ pub const Agent = struct {
                 defer parsed.deinit();
 
                 // Execute the tool
-                const arena = std.heap.ArenaAllocator.init(self.allocator);
+                var arena = std.heap.ArenaAllocator.init(self.allocator);
                 defer arena.deinit();
 
-                const result = agent_tool.execute(arena.allocator(), parsed.value) catch |err| {
+                var arena_mut = arena;
+                const result = agent_tool.execute(arena_mut.allocator(), parsed.value) catch |err| {
+                    const end_time = utils.milliTimestamp();
+                    const execution_time = @as(i64, end_time - start_time);
+
+                    // Record tool execution to memory
+                    if (self.memory_manager) |*mm| {
+                        const mem_content = try std.fmt.allocPrint(
+                            self.allocator,
+                            "Tool: {s}, Success: false, Error: {s}",
+                            .{ tool_call.name, @errorName(err) },
+                        );
+                        defer self.allocator.free(mem_content);
+                        mm.remember(.tool_usage, mem_content, 60) catch {};
+                    }
+
+                    // Track tool usage in learning engine
+                    if (self.learning_engine) |*le| {
+                        le.recordToolUsage(tool_call.name, false, execution_time) catch {};
+                    }
+
                     return ToolResult{
                         .content = &[_]tool_mod.UserContentBlock{.{ .text = @errorName(err) }},
                         .is_error = true,
                     };
                 };
 
-                const end_time = std.time.milliTimestamp();
+                const end_time = utils.milliTimestamp();
+                const execution_time = @as(i64, end_time - start_time);
+
+                // Record successful tool execution to memory
+                if (self.memory_manager) |*mm| {
+                    const mem_content = try std.fmt.allocPrint(
+                        self.allocator,
+                        "Tool: {s}, Success: true",
+                        .{tool_call.name},
+                    );
+                    defer self.allocator.free(mem_content);
+                    mm.remember(.tool_usage, mem_content, 50) catch {};
+                }
+
+                // Track tool usage in learning engine
+                if (self.learning_engine) |*le| {
+                    le.recordToolUsage(tool_call.name, true, execution_time) catch {};
+                }
 
                 self.emit(.{ .tool_result = .{
                     .tool_call_id = tool_call.id,
@@ -348,6 +417,55 @@ pub const Agent = struct {
         }
 
         return error.ToolNotFound;
+    }
+
+    /// Execute a skill with given arguments
+    pub fn executeSkill(
+        self: *Self,
+        skill_id: []const u8,
+        args: std.json.ObjectMap,
+    ) !skills.SkillResult {
+        const ctx = skills.SkillContext{
+            .allocator = self.allocator,
+            .working_dir = self.options.project_path orelse ".",
+            .session_id = "session-1", // TODO: Generate proper session ID
+        };
+
+        return self.skill_engine.execute(skill_id, args, ctx);
+    }
+
+    /// Track model performance for a request
+    pub fn trackModelPerformance(
+        self: *Self,
+        success: bool,
+        latency_ms: i64,
+        token_cost: f64,
+        task_type: []const u8,
+    ) !void {
+        if (self.learning_engine) |*le| {
+            const model_id = self.options.model.id;
+            try le.recordModelPerformance(model_id, success, latency_ms, token_cost, task_type);
+        }
+    }
+
+    /// Record a memory entry
+    pub fn recordMemory(
+        self: *Self,
+        mem_type: memory.MemoryType,
+        content: []const u8,
+        importance: u8,
+    ) !void {
+        if (self.memory_manager) |*mm| {
+            try mm.remember(mem_type, content, importance);
+        }
+    }
+
+    /// Recall relevant memories
+    pub fn recallMemories(self: *Self, query: []const u8, limit: usize) ![]memory.MemoryEntry {
+        if (self.memory_manager) |*mm| {
+            return mm.recall(query, limit);
+        }
+        return &[_]memory.MemoryEntry{};
     }
 
     /// Get conversation history

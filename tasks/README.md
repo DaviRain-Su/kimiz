@@ -1,237 +1,140 @@
-# Task Management System
+# Kimiz 任务管理
 
-## 设计原则
-
-1. **原子化**: 每个任务独立、可执行、可验证
-2. **状态驱动**: 明确的状态流转（pending → in_progress → review → done）
-3. **动态扩展**: 随时添加新任务，不影响已完成任务
-4. **可追溯**: 每个任务有创建时间、完成时间、耗时统计
-
-## 任务状态
-
-```
-┌─────────┐    ┌──────────┐    ┌────────┐    ┌──────┐
-│ pending │ → │ in_progress│ → │ review │ → │ done │
-└─────────┘    └──────────┘    └────────┘    └──────┘
-     ↑              ↓              ↓
-     └──────── blocked ←──────────┘
-```
-
-- **pending**: 等待开始
-- **in_progress**: 进行中（同一时间只能有一个）
-- **blocked**: 被阻塞（等待依赖）
-- **review**: 完成待审查
-- **done**: 已完成
-
-## 任务模板
-
-```markdown
-### Task-{ID}: {标题}
-**状态**: {status}
-**优先级**: P0/P1/P2/P3
-**创建**: YYYY-MM-DD
-**开始**: YYYY-MM-DD
-**完成**: YYYY-MM-DD
-**耗时**: Xh Ym
-
-**描述**:
-{任务描述}
-
-**验收标准**:
-- [ ] {标准1}
-- [ ] {标准2}
-
-**依赖**:
-- Task-{ID}
-- 外部: {描述}
-
-**阻塞记录**:
-- YYYY-MM-DD: {阻塞原因} → {解决方式}
-
-**笔记**:
-{执行过程中的关键决策、问题、解决方案}
-```
-
-## 目录结构
-
-```
-tasks/
-├── README.md              # 本文件
-├── active/                # 当前 Sprint 的任务
-│   ├── sprint-01-core/    # Sprint 1: 核心基础设施
-│   ├── sprint-02-agent/   # Sprint 2: Agent 能力
-│   └── sprint-03-ui/      # Sprint 3: UI 界面
-├── backlog/               # 待办任务池
-│   ├── feature/           # 功能任务
-│   ├── bugfix/            # 修复任务
-│   ├── refactor/          # 重构任务
-│   └── docs/              # 文档任务
-├── completed/             # 已完成任务（按 Sprint 归档）
-│   ├── sprint-01-core/
-│   ├── sprint-02-agent/
-│   └── ...
-└── templates/             # 任务模板
-    ├── feature.md
-    ├── bugfix.md
-    └── refactor.md
-```
-
-## 工作流程
-
-### 1. 创建任务
-
-```bash
-# 从模板创建新任务
-make task-create TYPE=feature TITLE="实现 Skill 注册表"
-# 生成: tasks/backlog/feature/T-001-implement-skill-registry.md
-```
-
-### 2. 开始任务
-
-```bash
-# 将任务从 backlog 移到 active
-make task-start T-001 SPRINT=sprint-01-core
-# 状态变为 in_progress
-```
-
-### 3. 完成任务
-
-```bash
-# 标记完成，移到 review
-make task-complete T-001
-# 状态变为 review
-```
-
-### 4. 审查通过
-
-```bash
-# 审查通过，移到 completed
-make task-approve T-001
-# 状态变为 done，归档到 completed/
-```
-
-### 5. 添加新任务
-
-```bash
-# 随时添加新任务到 backlog
-make task-create TYPE=feature TITLE="添加 PDF 支持"
-# 动态扩展，不影响已有任务
-```
-
-## 紧急任务
-
-### 🔴 Zig 0.16 迁移
-
-Zig 0.16 引入了重大破坏性变更，特别是 I/O 系统的全面重构。详见：
-- [迁移任务清单](./zig-0.16-migration.md)
-- [迁移示例代码](../docs/migration-examples.md)
-- [I/O Helper 模块](../src/utils/io_helper.zig)
-
-**关键变更**:
-- `std.fs.File` → `std.Io.File`
-- I/O 操作需要 `std.Io` 实例
-- `writer.print()` → `writer.interface.print()`
-- ArrayList API 调整
-
-**状态**: 🔴 阻塞中 - 必须先完成才能继续其他开发
+**当前策略**: MVP 优先，从 18k 行代码到稳定产品
 
 ---
 
-## Sprint 规划
+## 🎯 当前重点: MVP 路线图
 
-### Sprint 0: Zig 0.16 迁移 (当前)
-- 目标: 适配 Zig 0.16 的破坏性变更
-- 任务数: 15+ 个原子任务
-- 产出: 可在 Zig 0.16 上编译运行的代码
-- **阻塞**: 所有其他开发任务
+我们正在执行 **MVP 路线图**，目标是从功能分散的实验性项目转变为稳定可用的产品。
 
-### Sprint 1: Core Infrastructure (Week 1-2)
-- 目标: 项目初始化 + 核心类型 + OpenAI Provider
-- 任务数: 8-10 个原子任务
-- 产出: 可运行的基础 CLI
-- **依赖**: Sprint 0 完成
+**核心原则**:
+1. 先做好一件事（REPL + 文件编辑）
+2. 专注 Kimi (kimi-k2.5) 模型
+3. 逐步迭代，一次只加一个功能
 
-### Sprint 2: Agent Runtime (Week 3-4)
-- 目标: Agent Loop + Tools + Memory
-- 任务数: 10-12 个原子任务
-- 产出: 可执行任务的 Agent
+### 路线图文档
 
-### Sprint 3: UI & Polish (Week 5-6)
-- 目标: TUI + 优化 + 文档
-- 任务数: 8-10 个原子任务
-- 产出: 可用的产品
+| 阶段 | 文档 | 状态 | 目标 |
+|------|------|------|------|
+| **MVP 总览** | [MVP-ROADMAP.md](./MVP-ROADMAP.md) | ✅ 已创建 | 整体规划 |
+| **阶段 A** | [mvp/phase-a-core-stability.md](./mvp/phase-a-core-stability.md) | 🟡 进行中 | 稳定核心 |
+| **阶段 B** | [mvp/phase-b-quality.md](./mvp/phase-b-quality.md) | ⏸️ 待开始 | 质量提升 |
+| **阶段 C** | [mvp/phase-c-enhancement.md](./mvp/phase-c-enhancement.md) | ⏸️ 待开始 | 选择性增强 |
 
-## 动态扩展示例
+---
 
-### 场景 1: 发现新需求
+## 📋 当前活跃任务
+
+### P0 (立即执行)
+
+| 任务 | 说明 | 状态 | 工时 |
+|------|------|------|------|
+| MVP-A1 | 修复 Agent 循环稳定性 | 🟡 进行中 | 8h |
+| MVP-A2 | 简化 Memory 系统 | ⏸️ 待开始 | 6h |
+| MVP-A3 | 默认使用 Kimi（保留其他 Provider） | ⏸️ 待开始 | 2h |
+| MVP-A4 | 工具可靠性 | ⏸️ 待开始 | 6h |
+
+### Bug 修复 (同时进行)
+
+| 任务 | 说明 | 状态 |
+|------|------|------|
+| TASK-BUG-021 | 创建缺失工具 | 🟡 进行中 |
+| TASK-BUG-023 | OpenAI tool_calls 解析 | ⏸️ 待开始 |
+
+---
+
+## ⏸️ 已暂停的任务
+
+以下任务已暂停，待 MVP 稳定后考虑：
+
+| 任务 | 原因 | 重启条件 |
+|------|------|---------|
+| FOUR-PILLARS-TASKS.md | 过于宏大（131h） | MVP v0.5.0 后 |
+| 三层记忆架构 | 过度设计 | 用户证明需要 |
+| Learning 系统 | 价值不清晰 | 用户证明需要 |
+| 复杂 Harness | 过度设计 | 用户证明需要 |
+| Web 搜索工具 | 非核心 | 阶段 C 考虑 |
+| MCP 整合 | **PRD 明确不做** | 不做 |
+| TUI 完整版 | 非核心 | 阶段 C 考虑 |
+| OpenAI/Anthropic Provider | MVP 专注 Kimi | 阶段 C 考虑 |
+
+---
+
+## 📁 目录结构
 
 ```
-Sprint 2 进行中，发现需要 "代码语法高亮"
-
-操作:
-1. make task-create TYPE=feature TITLE="实现代码语法高亮"
-2. 评估: 放入当前 Sprint 还是 Backlog？
-3. 决定: 放入 Sprint 2（优先级高）
-4. 调整: 将低优先级任务移出到 Backlog
+tasks/
+├── README.md                    # 本文件
+├── MVP-ROADMAP.md              # MVP 总览
+├── CRITICAL-FIXES-SUMMARY.md   # 关键修复汇总
+├── TOOLS-EVALUATION-SUMMARY.md # 工具评估
+├── mvp/                        # MVP 任务
+│   ├── phase-a-core-stability.md
+│   ├── phase-b-quality.md
+│   └── phase-c-enhancement.md
+├── backlog/                    # 待办任务
+│   ├── bug/
+│   └── feature/
+├── archive/                    # 已暂停任务
+│   └── FOUR-PILLARS-TASKS.md.paused
+└── docs/research/              # 研究文档
+    └── *.md
 ```
 
-### 场景 2: 任务拆分
+---
 
-```
-Task-005 "实现 Agent Loop" 太大，需要拆分
+## 🚀 下一步行动
 
-操作:
-1. 原任务标记为 superseded
-2. 创建子任务:
-   - Task-005a: 实现事件系统
-   - Task-005b: 实现状态机
-   - Task-005c: 实现循环控制
-3. 更新依赖关系
-```
+### 今天
 
-### 场景 3: 阻塞处理
+1. ✅ 创建 MVP 路线图
+2. 🟡 开始 MVP-A1 (Agent 循环稳定性)
+3. ⏸️ 暂停四大支柱任务
 
-```
-Task-010 "实现 TUI" 被阻塞，因为 libvaxis 有 bug
+### 本周
 
-操作:
-1. 标记状态为 blocked
-2. 记录阻塞原因和预计解决时间
-3. 并行执行其他任务
-4. 阻塞解除后自动恢复
-```
+1. 完成 MVP-A3 (精简 Provider，仅保留 Kimi)
+2. 完成 MVP-A1 (Agent 循环稳定性)
+3. 开始 MVP-A2 (简化 Memory)
 
-## 工具命令
+### 6 周后
 
-```makefile
-# 任务管理
-task-create TYPE={feature|bugfix|refactor|docs} TITLE="..."
-task-start ID SPRINT={sprint-name}
-task-block ID REASON="..."
-task-unblock ID
-task-complete ID
-task-approve ID
+1. 发布 kimiz v0.5.0 (MVP+)
+2. 收集用户反馈
+3. 决定下一阶段
 
-# 查询
-task-list [STATUS] [SPRINT]
-task-show ID
-task-stats
+---
 
-# Sprint 管理
-sprint-create NAME START=YYYY-MM-DD END=YYYY-MM-DD
-sprint-close NAME
-sprint-list
-```
+## 📊 关键指标
 
-## 报告生成
+| 指标 | 当前 | MVP 目标 |
+|------|------|---------|
+| 代码行数 | 18,772 | 8,000-10,000 |
+| AI Provider | 5 个 | 1 个 (Kimi) |
+| 核心功能 | 50+ | 5 个 |
+| 稳定性 | 低 | 高 |
+| 维护成本 | 高 | 低 |
 
-```bash
-# 生成 Sprint 报告
-make sprint-report SPRINT=sprint-01-core
+---
 
-# 生成项目进度报告
-make project-report
+## 💡 决策记录
 
-# 生成个人贡献报告
-make contributor-report AUTHOR=davirain
-```
+### 2026-04-05: 转向 MVP 策略
+
+**背景**: 项目有 18k 行代码，功能分散，没有一件事做得好
+
+**决策**:
+1. 暂停四大支柱任务（过于宏大）
+2. 定义 MVP：REPL + 文件编辑 + Kimi
+3. 6 周迭代，逐步稳定
+
+**理由**:
+- 参考 Pi (30k 行，专注核心)
+- 避免"永远 beta"状态
+- 先稳定，再扩展
+
+---
+
+**最后更新**: 2026-04-05  
+**维护者**: kimiz-core-team

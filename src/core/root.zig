@@ -282,8 +282,6 @@ pub const Memory = struct {
 // ============================================================================
 
 /// Get API key for a provider.
-/// Note: This function allocates memory which must be freed by the caller.
-/// Get API key for a provider.
 /// Caller owns the returned memory and must free it with the provided allocator.
 pub fn getApiKey(allocator: std.mem.Allocator, provider: KnownProvider) ?[]const u8 {
     const env_var = switch (provider) {
@@ -295,7 +293,9 @@ pub fn getApiKey(allocator: std.mem.Allocator, provider: KnownProvider) ?[]const
         .openrouter => "OPENROUTER_API_KEY",
     };
 
-    return std.process.getEnvVarOwned(allocator, env_var) catch null;
+    // Use CLI's getEnvVar function
+    const cli = @import("../cli/root.zig");
+    return cli.getEnvVar(allocator, env_var) catch null;
 }
 
 // ============================================================================

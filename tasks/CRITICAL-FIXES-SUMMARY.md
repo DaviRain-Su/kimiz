@@ -494,6 +494,16 @@ memories/
 | TASK-FEAT-016 | AI Slop 垃圾回收 | P2 | 6h | FEAT-014 |
 | TASK-FEAT-017 | Agent Self-Review | P2 | 8h | FEAT-014, FEAT-015 |
 
+### Meta-Harness 自我进化 (基于 Harrison Chase 观点)
+
+基于 Harrison Chase (LangChain) "Harness 层学习" 观点 + Meta-Harness 论文。
+
+**核心**: Agent 能根据 traces/evals 自动迭代优化 harness 自身配置。
+
+| 任务 ID | 功能 | 优先级 | 预计 | 依赖 |
+|---------|------|--------|------|------|
+| TASK-FEAT-021 | Meta-Harness 自我进化 | P1 | 16h | FEAT-012, FEAT-020 |
+
 ---
 
 ## 总工作量估算
@@ -501,16 +511,59 @@ memories/
 | 优先级 | 任务数 | 预计工时 |
 |--------|--------|----------|
 | P0 | 12 | 44.5h |
-| P1 | 23 | 122h |
+| P1 | 24 | 138h |
 | P2 | 12 | 38h |
 | P3 | 1 | 6h |
 | P4 | 1 | 2h |
-| **总计** | **49** | **212.5h** |
+| **总计** | **50** | **228.5h** |
 
-按每天 6 小时有效工作时间计算：约 **35 个工作日** (7 周)
+## 新增: Harness 四大支柱任务 (2026-04-05)
 
-**详细分解**: 见 `docs/07-kimiz-vision-b.md`
+基于 Nyk 深度研究 (docs/research/harness-four-pillars-nyk-analysis.md)，新增 18 个任务完善 Harness 系统：
 
+### Pillar 1: Context Architecture
+- **FEAT-022**: Token Budget Monitor (超 40% 报警)
+- **FEAT-023**: Content Expiration (每月清理)
+
+### Pillar 2: Agent Specialization  
+- **FEAT-024**: Specialist Subagent (重构为专业分工)
+
+### Pillar 3: Persistent Memory
+- **FEAT-025**: Persistent File Memory (文件系统记忆)
+
+### Pillar 4: Structured Execution
+- **FEAT-026**: Execution State Machine (强制流程)
+- **FEAT-027**: Guardrail Hierarchy (四层护栏)
+
+**详细规划**: 见 `tasks/FOUR-PILLARS-TASKS.md`
+
+---
+
+## 参考文档
+
+- `docs/07-kimiz-vision-b.md`
+- `docs/06-agent-harness-upgrade.md`
+- `docs/research/harness-four-pillars-nyk-analysis.md` (四大支柱研究)
+- `docs/research/fff-search-integration-analysis.md` (fff 搜索工具研究)
+- `docs/research/autoagent-meta-harness-analysis.md` (AutoAgent Meta-Harness)
+- `docs/research/lightpanda-browser-analysis.md` (Lightpanda 浏览器分析)
+- `docs/research/zpdf-pdf-processing-analysis.md` (zpdf PDF 处理分析)
+- `docs/research/odiff-image-diff-analysis.md` (odiff 图像差异分析)
+- `docs/research/zmx-zig-matrix-analysis.md` (zmx Matrix 聊天分析)
+- `docs/research/zlob-storage-analysis.md` (zlob 存储工具分析)
+- `docs/research/zbench-benchmark-testing-analysis.md` (zBench 基准测试分析)
+- `docs/research/yazap-cli-parser-analysis.md` (yazap CLI 解析分析)
+- `docs/research/mcp-zig-client-analysis.md` (mcp.zig MCP 客户端分析)
+- `docs/research/raze-tui-analysis.md` (raze-tui TUI 分析)
+- `docs/research/kiesel-js-engine-analysis.md` (Kiesel JS 引擎分析)
+- `docs/research/kiesel-runtime-analysis.md` (Kiesel Runtime 分析)
+- `docs/research/celer-analysis.md` (Celer 项目分析)
+- `docs/research/zg-zig-tool-analysis.md` (zg 项目分析)
+- `docs/research/ghostty-terminal-analysis.md` (Ghostty 终端分析)
+- `docs/research/river-wayland-analysis.md` (River Wayland 分析)
+- `docs/research/ly-display-manager-analysis.md` (Ly 登录管理器分析)
+- `tasks/FOUR-PILLARS-TASKS.md` (四大支柱任务汇总)
+- `tasks/WEB-SEARCH-TOOLS-ROADMAP.md` (Web 搜索工具路线图)
 ---
 
 ## 关键路径
@@ -540,16 +593,29 @@ TASK-INFRA-003 (SessionStore LMDB)
 TASK-INFRA-004 (性能测试)
 ```
 
-**FFF 路径 (可并行)**:
+**MCP 路径 (高优先级)**:
 ```
-TASK-TOOL-001 (集成 fff MCP Server)
+TASK-INFRA-008 (集成 mcp.zig 客户端)               [P1]
     ↓
-TASK-TOOL-002 (可选: C FFI 高性能)
+更新 TASK-TOOL-001/003/005 (使用统一 MCP 管理)
+    ↓
+支持所有 MCP Servers (fff, browser, mcx, ...)
 ```
 
-**MCX 路径 (可并行)**:
+**工具路径 (可并行)**:
 ```
-TASK-TOOL-003 (集成 MCX MCP Server)
+搜索/浏览工具:
+├── TASK-TOOL-004 (实现 web_search - DuckDuckGo)     [P1]
+├── TASK-TOOL-005 (集成 Lightpanda Browser)          [P2]
+├── TASK-TOOL-001 (集成 fff MCP Server)              [P0]
+└── TASK-TOOL-002 (可选: fff C FFI 高性能)           [P2]
+
+文档处理工具 (Phase 2):
+├── TASK-TOOL-006 (集成 zpdf PDF 处理)               [P2]
+└── (考虑: image, office 等)
+
+MCX 沙箱:
+└── TASK-TOOL-003 (集成 MCX MCP Server)              [P1]
     ↓
 验证 Bun 运行时依赖
 ```

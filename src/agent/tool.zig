@@ -12,6 +12,10 @@ pub const Tool = core.Tool;
 pub const UserContentBlock = union(enum) {
     text: []const u8,
     image: []const u8, // base64 encoded
+    image_url: struct {
+        url: []const u8,
+        detail: ?[]const u8 = null,
+    },
 };
 
 /// Tool execution result
@@ -57,15 +61,17 @@ pub const ToolError = error{
 
 /// Parse tool arguments from JSON Value
 pub fn parseArguments(
+    allocator: std.mem.Allocator,
     args: std.json.Value,
     comptime T: type,
 ) !T {
     const parsed = try std.json.parseFromValue(
         T,
-        std.heap.page_allocator,
+        allocator,
         args,
         .{ .ignore_unknown_fields = true },
     );
+    defer parsed.deinit();
     return parsed.value;
 }
 

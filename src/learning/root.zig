@@ -3,6 +3,7 @@
 //! Core differentiating feature from PRD
 
 const std = @import("std");
+const utils = @import("../utils/root.zig");
 
 // ============================================================================
 // User Preferences
@@ -107,7 +108,7 @@ pub const ToolUsagePattern = struct {
         const total_time = self.average_execution_time_ms * @as(i64, @intCast(self.total_invocations - 1)) + execution_time_ms;
         self.average_execution_time_ms = @divFloor(total_time, @as(i64, @intCast(self.total_invocations)));
 
-        self.last_used = std.time.milliTimestamp();
+        self.last_used = utils.milliTimestamp();
     }
 };
 
@@ -175,7 +176,8 @@ pub const ModelMetrics = struct {
         self.average_token_cost = total_cost / @as(f64, @floatFromInt(self.total_requests));
 
         // Update task-specific metrics
-        // ... implementation
+        _ = task_type;
+        // TODO: Implement task-specific tracking
     }
 };
 

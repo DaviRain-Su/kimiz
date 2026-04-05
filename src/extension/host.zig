@@ -2,6 +2,7 @@
 //! Provides host capabilities to WASM extensions
 
 const std = @import("std");
+const utils = @import("../utils/root.zig");
 
 /// Host function context
 pub const HostContext = struct {
@@ -236,7 +237,7 @@ pub const StandardHostFunctions = struct {
     pub fn getTimeMs(ctx: *HostContext, args: []const u64) !u64 {
         _ = ctx;
         _ = args;
-        return @intCast(std.time.milliTimestamp());
+        return @intCast(utils.milliTimestamp());
     }
 };
 

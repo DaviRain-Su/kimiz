@@ -134,7 +134,7 @@ pub fn complete(http_client: *HttpClient, ctx: core.Context) !core.AssistantMess
 
     // Make request
     var response = try http_client.postJson(url, headers.items, request_body);
-    defer response.deinit(http_client.allocator);
+    defer response.deinit();
 
     // Parse response
     return try parseResponse(http_client.allocator, response.body);
@@ -286,8 +286,16 @@ fn serializeRequest(allocator: std.mem.Allocator, ctx: core.Context) ![]u8 {
                 for (user_msg.content) |block| {
                     switch (block) {
                         .text => |text| try content.appendSlice(allocator, text),
-                        .image => |img| try std.fmt.format(content.writer(allocator), "[Image: {s}]", .{img.mime_type}),
-                        .image_url => |img_url| try std.fmt.format(content.writer(allocator), "[Image: {s}]", .{img_url.url}),
+                        .image => |img| {
+                            const img_str = try std.fmt.allocPrint(allocator, "[Image: {s}]", .{img.mime_type});
+                            defer allocator.free(img_str);
+                            try content.appendSlice(allocator, img_str);
+                        },
+                        .image_url => |img_url| {
+                            const img_str = try std.fmt.allocPrint(allocator, "[Image: {s}]", .{img_url.url});
+                            defer allocator.free(img_str);
+                            try content.appendSlice(allocator, img_str);
+                        },
                     }
                 }
                 break :blk OpenAIMessage{
@@ -335,7 +343,11 @@ fn serializeRequest(allocator: std.mem.Allocator, ctx: core.Context) ![]u8 {
                 for (tool_result.content) |block| {
                     switch (block) {
                         .text => |text| try content.appendSlice(allocator, text),
-                        .image => |img| try std.fmt.format(content.writer(allocator), "[Image: {s}]", .{img.mime_type}),
+                        .image => |img| {
+                            const img_str = try std.fmt.allocPrint(allocator, "[Image: {s}]", .{img.mime_type});
+                            defer allocator.free(img_str);
+                            try content.appendSlice(allocator, img_str);
+                        },
                         .image_url => {},
                     }
                 }
@@ -467,7 +479,7 @@ fn serializeRequest(allocator: std.mem.Allocator, ctx: core.Context) ![]u8 {
 
 fn parseResponse(allocator: std.mem.Allocator, body: []const u8) !core.AssistantMessage {
     const parsed = try std.json.parseFromSlice(OpenAIResponse, allocator, body, .{});
-    defer parsed.deinit(allocator);
+    defer parsed.deinit();
 
     const response = parsed.value;
     if (response.choices.len == 0) return error.ApiUnexpectedResponse;
@@ -510,7 +522,7 @@ fn parseResponse(allocator: std.mem.Allocator, body: []const u8) !core.Assistant
     }
 
     return core.AssistantMessage{
-        .content = try content.toOwnedSlice(),
+        .content = try content.toOwnedSlice(allocator),
         .stop_reason = mapFinishReason(choice.finish_reason orelse "stop"),
         .usage = usage,
     };

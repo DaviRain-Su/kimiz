@@ -2,6 +2,7 @@
 //! Manages approval requirements for different tool risk levels
 
 const std = @import("std");
+const utils = @import("../utils/root.zig");
 const core = @import("../core/root.zig");
 
 /// Tool risk levels
@@ -114,7 +115,7 @@ pub const ApprovalManager = struct {
             .tool_name = tool_name,
             .tool_risk = risk,
             .description = description,
-            .timestamp_ms = std.time.milliTimestamp(),
+            .timestamp_ms = utils.milliTimestamp(),
         };
 
         if (self.approval_callback) |callback| {

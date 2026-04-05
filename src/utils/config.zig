@@ -110,7 +110,7 @@ pub const ConfigManager = struct {
 
     fn createDefault(self: *ConfigManager) !Config {
         return .{
-            .default_model = try self.allocator.dupe(u8, "gpt-4o"),
+            .default_model = try self.allocator.dupe(u8, "kimi-k2.5"),
             .api_keys = std.StringHashMap([]const u8).init(self.allocator),
             .theme = .system,
             .auto_approve_tools = false,
@@ -219,7 +219,7 @@ test "Config save and load" {
     defer configDeinit(&config, allocator);
 
     allocator.free(config.default_model);
-    config.default_model = try allocator.dupe(u8, "claude-sonnet-4");
+    config.default_model = try allocator.dupe(u8, "kimi-k2.5");
     config.theme = .dark;
     config.yolo_mode = true;
 
@@ -230,7 +230,7 @@ test "Config save and load" {
     var config2 = try manager.load();
     defer configDeinit(&config2, allocator);
 
-    try std.testing.expectEqualStrings("claude-sonnet-4", config2.default_model);
+    try std.testing.expectEqualStrings("kimi-k2.5", config2.default_model);
     try std.testing.expectEqual(.dark, config2.theme);
     try std.testing.expectEqual(true, config2.yolo_mode);
 }

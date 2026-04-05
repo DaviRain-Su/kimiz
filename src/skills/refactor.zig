@@ -2,7 +2,7 @@
 //! Helps refactor code for better structure, naming, and patterns
 
 const std = @import("std");
-const skills = @import("../root.zig");
+const skills = @import("./root.zig");
 const Skill = skills.Skill;
 const SkillContext = skills.SkillContext;
 const SkillResult = skills.SkillResult;
@@ -63,30 +63,27 @@ pub fn execute(
         else => return error.InvalidParamType,
     };
 
-    var output_buf: [4096]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&output_buf);
-    var writer = fbs.writer();
-    const w: *std.Io.Writer = &writer.interface;
+    var output: std.ArrayList(u8) = .empty;
+    defer output.deinit(arena);
 
-    try w.print("Refactoring: {s}\n", .{filepath});
-    try w.print("Operation: {s}\n", .{operation});
-    try w.print("Target: {s}\n\n", .{target});
+    try output.appendSlice(arena, try std.fmt.allocPrint(arena, "Refactoring: {s}\n", .{filepath}));
+    try output.appendSlice(arena, try std.fmt.allocPrint(arena, "Operation: {s}\n", .{operation}));
+    try output.appendSlice(arena, try std.fmt.allocPrint(arena, "Target: {s}\n\n", .{target}));
 
     // In real implementation, this would use AI to generate refactoring
-    try w.print("📝 Refactoring plan:\n", .{});
-    try w.print("  1. Analyze current code structure\n", .{});
-    try w.print("  2. Identify {s} locations\n", .{target});
-    try w.print("  3. Apply {s} refactoring\n", .{operation});
-    try w.print("  4. Verify changes\n\n", .{});
+    try output.appendSlice(arena, "📝 Refactoring plan:\n");
+    try output.appendSlice(arena, "  1. Analyze current code structure\n");
+    try output.appendSlice(arena, try std.fmt.allocPrint(arena, "  2. Identify {s} locations\n", .{target}));
+    try output.appendSlice(arena, try std.fmt.allocPrint(arena, "  3. Apply {s} refactoring\n", .{operation}));
+    try output.appendSlice(arena, "  4. Verify changes\n\n");
 
-    try w.print("⚠️  Note: This is a preview. Use --apply to execute changes.\n", .{});
-    try w.flush();
+    try output.appendSlice(arena, "⚠️  Note: This is a preview. Use --apply to execute changes.\n");
 
-    const output = try arena.dupe(u8, fbs.getWritten());
+    const output_final = try output.toOwnedSlice(arena);
 
     return SkillResult{
         .success = true,
-        .output = output,
+        .output = output_final,
         .execution_time_ms = 0,
     };
 }

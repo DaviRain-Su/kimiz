@@ -1,14 +1,24 @@
 ### TASK-TOOL-002: 集成 fff C FFI 作为原生 Zig 模块
-**状态**: pending
-**优先级**: P2
-**创建**: 2026-04-05
-**预计耗时**: 8h
+|**状态**: pending
+|**优先级**: P2
+|**创建**: 2026-04-05
+|**更新**: 2026-04-05 (添加 Dmitriy Kovalenko SDK 详情)
+|**预计耗时**: 8h
 
-**描述**:
-将 fff 的 C FFI 库 (`libfff-c`) 编译为共享库，从 Zig 直接调用，实现零 subprocess 开销的极速搜索。
+|**描述**:
+将 fff 的 C FFI 库 (`libfff-c`) 编译为共享库，从 Zig 直接调用，实现**零 subprocess 开销**的极速搜索，作为 MCP 方案的高性能替代。
 
-**背景**:
+|**背景**:
 MCP Server 方案有 ~50-100ms 的进程间通信开销。对于需要极低延迟的场景，可以直接链接 C 库。
+
+**Dmitriy Kovalenko 发布详情** (2026-04-05):
+- **作者**: @neogoose_btw (Dmitriy Kovalenko)
+- **技术栈**: Rust + Zig + SIMD + 内存映射缓存 + 预过滤 + 内联汇编
+- **SDK 支持**: Rust / C / Node.js / Bun (**Python 即将推出**)
+- **在线演示**: https://fff.dmtrkovalenko.dev
+- **规模测试**: Linux kernel (10万文件), Chromium (50万文件), Claude Code 源码
+
+**参考实现**: Pi + fff 原生集成 https://github.com/SamuelLHuber/pi-fff
 
 **架构**:
 ```

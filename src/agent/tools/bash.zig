@@ -1,6 +1,7 @@
 //! Bash Tool - Execute shell commands
 
 const std = @import("std");
+const utils = @import("../../utils/root.zig");
 const tool = @import("../tool.zig");
 
 pub const TOOL_NAME = "bash";
@@ -66,7 +67,7 @@ fn execute(
 ) anyerror!tool.ToolResult {
     const ctx: *BashContext = @ptrCast(@alignCast(ctx_ptr));
 
-    const parsed_args = tool.parseArguments(args, BashArgs) catch {
+    const parsed_args = tool.parseArguments(arena, args, BashArgs) catch {
         return tool.errorResult(arena, "Invalid arguments: expected {\"command\": \"...\"}");
     };
 
@@ -139,10 +140,10 @@ fn executeCommand(
     const stderr_reader = child.stderr.?.reader();
 
     var buf: [4096]u8 = undefined;
-    const start_time = std.time.milliTimestamp();
+    const start_time = utils.milliTimestamp();
 
     while (true) {
-        const elapsed = std.time.milliTimestamp() - start_time;
+        const elapsed = utils.milliTimestamp() - start_time;
         if (elapsed > timeout_ms) {
             _ = child.kill() catch {};
             break;
