@@ -14,10 +14,14 @@ pub const tool_definition = tool.Tool{
 pub const GlobContext = struct {
     pub fn execute(self: *GlobContext, arena: std.mem.Allocator, args: std.json.Value) !tool.ToolResult {
         _ = self;
+        std.debug.assert(args == .object); // Args must be object
+        
         const pattern = args.object.get("pattern") orelse return error.MissingArgument;
         const pattern_str = pattern.string;
+        std.debug.assert(pattern_str.len > 0); // Pattern must be non-empty
 
         const base_path = if (args.object.get("path")) |p| p.string else ".";
+        std.debug.assert(base_path.len > 0); // Path must be non-empty
 
         // Simple glob implementation - collect matching files
         var results = std.ArrayList(u8){ .items = &.{}, .capacity = 0 };
@@ -32,6 +36,7 @@ pub const GlobContext = struct {
         defer walker.deinit();
 
         var count: usize = 0;
+        const max_results: usize = 100;
         while (try walker.next()) |entry| {
             if (entry.kind != .file) continue;
 
@@ -41,15 +46,20 @@ pub const GlobContext = struct {
             {
                 if (count > 0) try results.appendSlice("\n");
                 try results.appendSlice(entry.path);
+                const prev_count = count;
                 count += 1;
+                std.debug.assert(count == prev_count + 1); // Count incremented correctly
+                std.debug.assert(count <= max_results); // Within limit
 
                 // Limit results
-                if (count >= 100) {
+                if (count >= max_results) {
                     try results.appendSlice("\n... (truncated to 100 results)");
                     break;
                 }
             }
         }
+        
+        std.debug.assert(count <= max_results); // Final count within limit
 
         if (results.items.len == 0) {
             return tool.textContent(arena, "No files found matching pattern");
