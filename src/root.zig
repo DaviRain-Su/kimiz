@@ -40,6 +40,9 @@ pub const config = @import("config.zig");
 // HTTP module - HTTP client
 pub const http = @import("http.zig");
 
+// Observability module - metrics collection and monitoring
+pub const observability = @import("observability/root.zig");
+
 pub fn bufferedPrint() !void {
     // Stdout is for the actual output of your application
     var stdout_buffer: [1024]u8 = undefined;
@@ -59,4 +62,8 @@ pub fn add(a: i32, b: i32) i32 {
 
 test "basic add functionality" {
     try std.testing.expect(add(3, 7) == 10);
+}
+
+test {
+    _ = observability;
 }
