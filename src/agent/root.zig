@@ -11,6 +11,7 @@ pub const write_file = @import("tools/write_file.zig");
 pub const edit = @import("tools/edit.zig");
 pub const grep = @import("tools/grep.zig");
 pub const bash = @import("tools/bash.zig");
+pub const fff = @import("tools/fff.zig");
 
 // Re-export common types
 pub const Tool = tool.Tool;

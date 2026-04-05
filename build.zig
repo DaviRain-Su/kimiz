@@ -97,6 +97,11 @@ pub fn build(b: *std.Build) void {
     // install prefix when running `zig build` (i.e. when executing the default
     // step). By default the install prefix is `zig-out/` but can be overridden
     // by passing `--prefix` or `-p`.
+    // Link fff C FFI library
+    exe.root_module.addIncludePath(b.path("ffi"));
+    exe.root_module.addLibraryPath(b.path("ffi"));
+    exe.root_module.linkSystemLibrary("fff_c", .{});
+
     b.installArtifact(exe);
 
     // This creates a top level step. Top level steps have a name and can be
