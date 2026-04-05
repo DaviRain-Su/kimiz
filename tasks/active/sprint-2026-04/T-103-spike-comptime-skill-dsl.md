@@ -92,9 +92,37 @@ pub const MySkill = defineSkill(.{
 
 ## 验收标准
 
-- [ ] `defineSkill` 能在 comptime 成功验证合法的 skill 定义
-- [ ] `defineSkill` 对非法定义（如 handler 签名不匹配）能给出清晰的 `@compileError`
-- [ ] 至少有 1 个现有 builtin skill 被成功迁移为 DSL 形式
-- [ ] 迁移后的 skill 能通过 `zig build test`
-- [ ] 输出 **Spike Report**：记录设计优缺点、编译错误示例、LLM 可读性评估、对 T-100/T-101 的影响
-- [ ] 基于报告，团队决定 go（继续推进 T-100/T-101）或 no-go（调整架构方向）
+- [x] `defineSkill` 能在 comptime 成功验证合法的 skill 定义
+- [x] `defineSkill` 对非法定义（如 handler 签名不匹配）能给出清晰的 `@compileError`
+- [x] 至少有 1 个现有 builtin skill 被成功迁移为 DSL 形式
+- [x] 迁移后的 skill 能通过 `zig build test`
+- [x] 输出 **Spike Report**：记录设计优缺点、编译错误示例、LLM 可读性评估、对 T-100/T-101 的影响
+- [x] 基于报告，团队决定 go（继续推进 T-100/T-101）或 no-go（调整架构方向）
+
+---
+
+## Log
+
+### 2026-04-06
+- **Implemented** `src/skills/dsl.zig` with `defineSkill(comptime config: anytype) type`.
+- **Validation rules** at comptime: input/output must be structs, output must contain `success: bool`, handler signature must match structurally.
+- **Fixed Zig 0.16 regressions**: `.Struct` → `.@"struct"`, `.Fn` → `.@"fn"`, `.Optional` → `.optional`.
+- **Solved anonymous-struct type-identity mismatch** by replacing strict type comparison with `assertStructMatch`, a comptime field-by-field structural equivalence check.
+- **Solved `params` comptime-var escape** by using `const final = params_array; break :blk &final;` pattern.
+- **Migrated** `debug` and `doc-gen` skills to DSL form (`debug_dsl.zig`, `doc_gen_dsl.zig`) and registered them via `builtin.zig`.
+- **Added E2E tests** in `tests/integration_tests.zig` for DSL validation, execution, and registry integration.
+- **Created Spike Report** at `docs/reports/T-103-spike-comptime-skill-dsl-report.md` with go/no-go recommendation.
+- **Decision**: **GO** for T-100 / T-101.
+
+## Lessons Learned
+
+1. **Anonymous struct types are not identical** in Zig even with identical fields. Always use structural equivalence for comptime validation when users may declare structs inline.
+2. **Zig 0.16 `comptime` scope restrictions are stricter** than 0.15. Redundant `comptime` keywords and comptime-var address escapes are common pitfalls.
+3. **`pub const params = blk: { ... }`** is the correct pattern for generating comptime arrays that are referenced by runtime code.
+4. **Compile-error readability is good for simple violations** (`success: bool` missing, handler arity wrong) but requires prompt engineering for Zig-specific syntax quirks (e.g., `.@"struct"`).
+5. **E2E coverage must live in `tests/integration_tests.zig`** because `zig build test` only compiles test blocks from the test root and a few explicit entry points.
+
+## Status
+
+**done**
+

@@ -21,10 +21,10 @@
 | # | 任务文件 | 标题 | 状态 | Spec |
 |---|----------|------|------|------|
 | 1 | `FIX-ZIG-015-compatibility.md` | ~~修复 Zig 0.15.2 编译兼容性~~ | `cancelled` | `docs/specs/FIX-ZIG-015-compatibility.md` |
-| 2 | `T-092-verify-delegate-tool.md` | 验证 delegate subagent 注册 | `todo` | `docs/specs/T-092-verify-delegate-tool.md` |
-| 3 | `T-119-verify-worktree.md` | 验证 git worktree 隔离 | `todo` | `docs/specs/T-119-verify-worktree.md` |
-| 4 | `T-009-e2e-tests.md` | 补充 E2E 测试 | `todo` | `docs/specs/T-009-e2e-tests.md` |
-| 5 | **`T-103-spike-comptime-skill-dsl.md`** | **comptime Skill DSL 原型验证（Scale 战略关键）** | `todo` | `docs/specs/T-103-spike-comptime-skill-dsl.md` |
+| 2 | `T-092-verify-delegate-tool.md` | 验证 delegate subagent 注册 | `done` | `docs/specs/T-092-verify-delegate-tool.md` |
+| 3 | `T-119-verify-worktree.md` | 验证 git worktree 隔离 | `done` | `docs/specs/T-119-verify-worktree.md` |
+| 4 | `T-009-e2e-tests.md` | 补充 E2E 测试 | `done` | `docs/specs/T-009-e2e-tests.md` |
+| 5 | **`T-103-spike-comptime-skill-dsl.md`** | **comptime Skill DSL 原型验证（Scale 战略关键）** | `done` | `docs/specs/T-103-spike-comptime-skill-dsl.md` |
 | 6 | `T-100-establish-auto-skill-generation-pipeline.md` | 建立 auto skill 自动生成流水线 | `todo` | `docs/specs/T-100-establish-auto-skill-generation-pipeline.md` |
 | 7 | `T-101-design-autoregistry-dynamic-loading.md` | 设计 AutoRegistry 动态加载 | `todo` | `docs/specs/T-101-design-autoregistry-dynamic-loading.md` |
 | 8 | `T-120-design-document-driven-loop.md` | 设计文档驱动的 Agent 工作流 | `todo` | `docs/specs/T-120-design-document-driven-loop.md` |

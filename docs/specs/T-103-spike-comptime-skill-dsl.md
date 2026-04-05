@@ -92,9 +92,19 @@ pub const MySkill = defineSkill(.{
 
 ## 验收标准
 
-- [ ] `defineSkill` 能在 comptime 成功验证合法的 skill 定义
-- [ ] `defineSkill` 对非法定义（如 handler 签名不匹配）能给出清晰的 `@compileError`
-- [ ] 至少有 1 个现有 builtin skill 被成功迁移为 DSL 形式
-- [ ] 迁移后的 skill 能通过 `zig build test`
-- [ ] 输出 **Spike Report**：记录设计优缺点、编译错误示例、LLM 可读性评估、对 T-100/T-101 的影响
-- [ ] 基于报告，团队决定 go（继续推进 T-100/T-101）或 no-go（调整架构方向）
+- [x] `defineSkill` 能在 comptime 成功验证合法的 skill 定义
+- [x] `defineSkill` 对非法定义（如 handler 签名不匹配）能给出清晰的 `@compileError`
+- [x] 至少有 1 个现有 builtin skill 被成功迁移为 DSL 形式
+- [x] 迁移后的 skill 能通过 `zig build test`
+- [x] 输出 **Spike Report**：记录设计优缺点、编译错误示例、LLM 可读性评估、对 T-100/T-101 的影响
+- [x] 基于报告，团队决定 go（继续推进 T-100/T-101）或 no-go（调整架构方向）
+
+## Spike Report
+
+- **Report**: [`docs/reports/T-103-spike-comptime-skill-dsl-report.md`](../../reports/T-103-spike-comptime-skill-dsl-report.md)
+- **Decision**: **GO** — proceed with T-100 and T-101.
+- **Key artifacts**:
+  - `src/skills/dsl.zig` — `defineSkill` core implementation
+  - `src/skills/debug_dsl.zig` — migrated `debug` skill
+  - `src/skills/doc_gen_dsl.zig` — migrated `doc-gen` skill
+  - `tests/integration_tests.zig` — E2E tests for DSL validation, execution, and registry integration
