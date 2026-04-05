@@ -10,6 +10,7 @@ pub const read_file = @import("tools/read_file.zig");
 pub const write_file = @import("tools/write_file.zig");
 pub const edit = @import("tools/edit.zig");
 pub const bash = @import("tools/bash.zig");
+pub const git = @import("tools/git.zig");
 pub const fff = @import("tools/fff.zig");
 
 // Re-export common types
@@ -60,6 +61,21 @@ pub fn createBashTool() bash.BashContext {
     return bash.BashContext{};
 }
 
+/// Create a GitStatus tool instance
+pub fn createGitStatusTool() git.GitStatusContext {
+    return git.GitStatusContext{};
+}
+
+/// Create a GitDiff tool instance
+pub fn createGitDiffTool() git.GitDiffContext {
+    return git.GitDiffContext{};
+}
+
+/// Create a GitLog tool instance
+pub fn createGitLogTool() git.GitLogContext {
+    return git.GitLogContext{};
+}
+
 /// Get all built-in tool definitions (core tools)
 pub fn getBuiltinToolDefinitions() []const Tool {
     return &[_]Tool{
@@ -69,5 +85,8 @@ pub fn getBuiltinToolDefinitions() []const Tool {
         fff.tool_definition,
         fff.file_search_definition,
         bash.tool_definition,
+        git.git_status_definition,
+        git.git_diff_definition,
+        git.git_log_definition,
     };
 }

@@ -236,6 +236,9 @@ fn runInteractive(allocator: std.mem.Allocator) !void {
     var edit_ctx = agent.createEditTool();
     var fff_ctx = agent.fff.FFFGrepContext{ .project_path = cwd };
     var bash_ctx = agent.bash.BashContext{ .auto_approve = cfg.yolo_mode };
+    var git_status_ctx = agent.git.GitStatusContext{};
+    var git_diff_ctx = agent.git.GitDiffContext{};
+    var git_log_ctx = agent.git.GitLogContext{};
 
     const tools = [_]agent.AgentTool{
         agent.read_file.createAgentTool(&read_file_ctx),
@@ -244,6 +247,9 @@ fn runInteractive(allocator: std.mem.Allocator) !void {
         agent.fff.createAgentTool(&fff_ctx),
         agent.fff.createFileSearchTool(&fff_ctx),
         agent.bash.createAgentTool(&bash_ctx),
+        agent.git.createGitStatusTool(&git_status_ctx),
+        agent.git.createGitDiffTool(&git_diff_ctx),
+        agent.git.createGitLogTool(&git_log_ctx),
     };
 
     // Initialize Agent

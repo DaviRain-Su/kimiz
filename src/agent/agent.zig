@@ -174,16 +174,21 @@ pub const Agent = struct {
                 self.options.project_path orelse ".",
                 user_content,
             });
+            const content = try self.allocator.alloc(core.UserContentBlock, 1);
+            content[0] = .{ .text = system_text };
             const user_msg = Message{
                 .user = .{
-                    .content = &[_]core.UserContentBlock{.{ .text = system_text }},
+                    .content = content,
                 },
             };
             try self.messages.append(self.allocator, user_msg);
         } else {
+            const text = try self.allocator.dupe(u8, user_content);
+            const content = try self.allocator.alloc(core.UserContentBlock, 1);
+            content[0] = .{ .text = text };
             const user_msg = Message{
                 .user = .{
-                    .content = &[_]core.UserContentBlock{.{ .text = user_content }},
+                    .content = content,
                 },
             };
             try self.messages.append(self.allocator, user_msg);
