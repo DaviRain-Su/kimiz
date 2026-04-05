@@ -389,7 +389,7 @@ fn analyzeContent(
 // Output Formatting
 // ============================================================================
 
-// TODO(Zig 0.16): Replace with std.ArrayListManaged(u8).writer() when upgraded
+// TODO(Zig 0.16): std.ArrayList has no writer() method; this shim provides print/writeAll
 const ListWriter = struct {
     list: *std.ArrayList(u8),
     allocator: std.mem.Allocator,

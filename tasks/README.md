@@ -1,140 +1,76 @@
-# Kimiz 任务管理
+# KimiZ 任务系统
 
-**当前策略**: MVP 优先，从 18k 行代码到稳定产品
-
----
-
-## 🎯 当前重点: MVP 路线图
-
-我们正在执行 **MVP 路线图**，目标是从功能分散的实验性项目转变为稳定可用的产品。
-
-**核心原则**:
-1. 先做好一件事（REPL + 文件编辑）
-2. 专注 Kimi (kimi-k2.5) 模型
-3. 逐步迭代，一次只加一个功能
-
-### 路线图文档
-
-| 阶段 | 文档 | 状态 | 目标 |
-|------|------|------|------|
-| **MVP 总览** | [MVP-ROADMAP.md](./MVP-ROADMAP.md) | ✅ 已创建 | 整体规划 |
-| **阶段 A** | [mvp/phase-a-core-stability.md](./mvp/phase-a-core-stability.md) | 🟡 进行中 | 稳定核心 |
-| **阶段 B** | [mvp/phase-b-quality.md](./mvp/phase-b-quality.md) | ⏸️ 待开始 | 质量提升 |
-| **阶段 C** | [mvp/phase-c-enhancement.md](./mvp/phase-c-enhancement.md) | ⏸️ 待开始 | 选择性增强 |
+> **统一任务管理：按阶段分组，按 Sprint 执行。**  
+> 最后更新: 2026-04-06
 
 ---
 
-## 📋 当前活跃任务
-
-### P0 (立即执行)
-
-| 任务 | 说明 | 状态 | 工时 |
-|------|------|------|------|
-| MVP-A1 | 修复 Agent 循环稳定性 | 🟡 进行中 | 8h |
-| MVP-A2 | 简化 Memory 系统 | ⏸️ 待开始 | 6h |
-| MVP-A3 | 默认使用 Kimi（保留其他 Provider） | ⏸️ 待开始 | 2h |
-| MVP-A4 | 工具可靠性 | ⏸️ 待开始 | 6h |
-
-### Bug 修复 (同时进行)
-
-| 任务 | 说明 | 状态 |
-|------|------|------|
-| TASK-BUG-021 | 创建缺失工具 | 🟡 进行中 |
-| TASK-BUG-023 | OpenAI tool_calls 解析 | ⏸️ 待开始 |
-
----
-
-## ⏸️ 已暂停的任务
-
-以下任务已暂停，待 MVP 稳定后考虑：
-
-| 任务 | 原因 | 重启条件 |
-|------|------|---------|
-| FOUR-PILLARS-TASKS.md | 过于宏大（131h） | MVP v0.5.0 后 |
-| 三层记忆架构 | 过度设计 | 用户证明需要 |
-| Learning 系统 | 价值不清晰 | 用户证明需要 |
-| 复杂 Harness | 过度设计 | 用户证明需要 |
-| Web 搜索工具 | 非核心 | 阶段 C 考虑 |
-| MCP 整合 | **PRD 明确不做** | 不做 |
-| TUI 完整版 | 非核心 | 阶段 C 考虑 |
-| OpenAI/Anthropic Provider | MVP 专注 Kimi | 阶段 C 考虑 |
-
----
-
-## 📁 目录结构
+## 目录结构
 
 ```
 tasks/
-├── README.md                    # 本文件
-├── MVP-ROADMAP.md              # MVP 总览
-├── CRITICAL-FIXES-SUMMARY.md   # 关键修复汇总
-├── TOOLS-EVALUATION-SUMMARY.md # 工具评估
-├── mvp/                        # MVP 任务
-│   ├── phase-a-core-stability.md
-│   ├── phase-b-quality.md
-│   └── phase-c-enhancement.md
-├── backlog/                    # 待办任务
-│   ├── bug/
-│   └── feature/
-├── archive/                    # 已暂停任务
-│   └── FOUR-PILLARS-TASKS.md.paused
-└── docs/research/              # 研究文档
-    └── *.md
+├── README.md                 # 本文件
+├── active/                   # 当前 Sprint 的正在执行任务
+│   └── sprint-2026-04/
+├── backlog/                  # 未来任务，按 Phase 0-10 分组
+│   ├── phase-3-subagent/
+│   ├── phase-4-harness/
+│   ├── phase-5-observability/
+│   ├── phase-6-integration/
+│   ├── phase-7-automation/
+│   ├── phase-8-platform/
+│   └── misc/                 # UX 增强、infra、远期研究
+├── completed/                # 已完成的任务，按阶段分组
+│   ├── phase-0-foundation/
+│   ├── phase-1-core-agent/
+│   ├── phase-2-ux/
+│   └── phase-3-subagent-partial/
+└── archive/                  # 历史归档（不再追踪）
+    ├── sprint-01-core/       # 旧 Sprint 任务
+    └── old-backlog/          # 废弃/过时的 backlog 任务
 ```
 
 ---
 
-## 🚀 下一步行动
+## 如何使用
 
-### 今天
+### 对于 Coding Agent
 
-1. ✅ 创建 MVP 路线图
-2. 🟡 开始 MVP-A1 (Agent 循环稳定性)
-3. ⏸️ 暂停四大支柱任务
+1. **先看入口**: `AGENT-ENTRYPOINT.md`（项目根目录）
+2. **当前 Sprint**: `tasks/active/sprint-2026-04/`
+3. **未来任务**: 只在当前 Sprint 完成后再去 `backlog/` 取任务
+4. **不要读 archive/**: 那是历史垃圾堆
 
-### 本周
+### 对于产品经理/规划者
 
-1. 完成 MVP-A3 (精简 Provider，仅保留 Kimi)
-2. 完成 MVP-A1 (Agent 循环稳定性)
-3. 开始 MVP-A2 (简化 Memory)
-
-### 6 周后
-
-1. 发布 kimiz v0.5.0 (MVP+)
-2. 收集用户反馈
-3. 决定下一阶段
+1. **看路线图**: `docs/ROADMAP-v2.md`
+2. **看已实现特性**: `docs/FEATURES.md`
+3. **排期新任务**: 把新任务放到对应的 `backlog/phase-N/` 目录
 
 ---
 
-## 📊 关键指标
+## 任务命名规则
 
-| 指标 | 当前 | MVP 目标 |
-|------|------|---------|
-| 代码行数 | 18,772 | 8,000-10,000 |
-| AI Provider | 5 个 | 1 个 (Kimi) |
-| 核心功能 | 50+ | 5 个 |
-| 稳定性 | 低 | 高 |
-| 维护成本 | 高 | 低 |
+- **Bugfix**: `FIX-XXX-short-description.md`
+- **Feature**: `TASK-XXX-short-description.md`
+- **Backlog 任务**: 保留原有编号（T-XXX, TASK-FEAT-YYY）
 
 ---
 
-## 💡 决策记录
+## 状态迁移规则
 
-### 2026-04-05: 转向 MVP 策略
-
-**背景**: 项目有 18k 行代码，功能分散，没有一件事做得好
-
-**决策**:
-1. 暂停四大支柱任务（过于宏大）
-2. 定义 MVP：REPL + 文件编辑 + Kimi
-3. 6 周迭代，逐步稳定
-
-**理由**:
-- 参考 Pi (30k 行，专注核心)
-- 避免"永远 beta"状态
-- 先稳定，再扩展
+```
+backlog/phase-N/     →  active/sprint-YYYY-MM/   (Sprint 开始)
+active/sprint/       →  completed/phase-N/       (Sprint 完成)
+completed/phase-N/   →  archive/                 (过时/废弃)
+backlog/             →  archive/                 (不再计划)
+```
 
 ---
 
-**最后更新**: 2026-04-05  
-**维护者**: kimiz-core-team
+## 当前状态
+
+- **Active**: 3 个任务（编译修复、delegate 验证、E2E 测试）
+- **Backlog**: ~80 个任务，已按 8 个 phase + misc 分类
+- **Completed**: ~45 个任务，已按 phase 归档
+- **Archive**: 旧 sprint-01-core（22 个文件）+ 废弃 refactor/docs

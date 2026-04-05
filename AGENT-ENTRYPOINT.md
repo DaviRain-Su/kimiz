@@ -18,29 +18,31 @@ zig version  # 必须是 0.15.2
 
 ---
 
-## 1. 当前 Sprint（本周内必须完成）
+## 1. 文档地图（按优先级阅读）
 
-**Sprint 名称**: Phase 0 - 恢复编译 + 验证最近功能  
-**截止日期**: 立即  
-**成功标准**:
-1. `zig build` 编译成功
-2. `zig build test` 全部通过
-3. REPL 可以启动并基本对话
-4. `delegate` subagent 工具被验证可用
+| 顺序 | 文档 | 作用 |
+|------|------|------|
+| 1 | **`AGENT-ENTRYPOINT.md`** | 本文件，当前执行入口 |
+| 2 | **`tasks/active/sprint-2026-04/README.md`** | 当前 Sprint 看板 |
+| 3 | **`docs/specs/FIX-ZIG-015-compatibility.md`** | 第一个任务的 Technical Spec |
+| 4 | **`docs/ROADMAP-v2.md`** | 0-10 阶段统一路线图（需要上下文时读） |
+| 5 | **`docs/FEATURES.md`** | 已实现特性清单（需要上下文时读） |
 
 ---
 
-## 2. 执行任务队列（严格按顺序，不要跳过）
+## 2. 当前 Sprint（本周内必须完成）
+
+**Sprint 名称**: Sprint 2026-04 - 恢复编译 + 验证 Phase 2 成果  
+**详细看板**: `tasks/active/sprint-2026-04/README.md`
+
+### 执行任务队列（严格按顺序，不要跳过）
 
 | # | 优先级 | 任务ID | 标题 | 状态 | Spec 文档 | 预计 |
 |---|--------|--------|------|------|-----------|------|
 | 1 | P0 | **FIX-ZIG-015** | 修复 Zig 0.15.2 编译兼容性 | `todo` | [`docs/specs/FIX-ZIG-015-compatibility.md`](docs/specs/FIX-ZIG-015-compatibility.md) | 1.5h |
 | 2 | P0 | **T-092-VERIFY** | 验证 delegate subagent 注册（代码已提交，待验证） | `todo` | [`docs/specs/T-092-verify-delegate-tool.md`](docs/specs/T-092-verify-delegate-tool.md) | 30min |
-| 3 | P1 | **T-009-E2E** | 补充 E2E 测试（核心工具 + Agent Loop） | `todo` | [`docs/specs/T-009-e2e-tests.md`](docs/specs/T-009-e2e-tests.md) | 4h |
-| 4 | P1 | **T-086** | Session Persistence（代码已实现，更新任务状态） | `done` | - | - |
-| 5 | P1 | **T-087** | Shell Mode（代码已实现，更新任务状态） | `done` | - | - |
-| 6 | P1 | **T-088** | Plan Mode（代码已实现，更新任务状态） | `done` | - | - |
-| 7 | P1 | **T-095** | YOLO Tool Approval（代码已实现，更新任务状态） | `done` | - | - |
+| 3 | P0 | **T-119-VERIFY** | 验证 git worktree 隔离（代码已提交，待验证） | `todo` | [`docs/specs/T-119-verify-worktree.md`](docs/specs/T-119-verify-worktree.md) | 1h |
+| 4 | P1 | **T-009-E2E** | 补充 E2E 测试（核心工具 + Agent Loop） | `todo` | [`docs/specs/T-009-e2e-tests.md`](docs/specs/T-009-e2e-tests.md) | 4h |
 
 > **规则**: 只有上一行标记为 `done` 后，才能开始下一行的 `todo` 任务。
 
@@ -53,7 +55,8 @@ zig version  # 必须是 0.15.2
 3. **实现代码**
 4. **运行 `zig build test`**（必须全绿）
 5. **更新本文件中的状态**（把 `todo` 改成 `done`）
-6. **提交 commit**，消息格式：
+6. **更新 `tasks/active/sprint-2026-04/README.md` 中的状态**
+7. **提交 commit**，消息格式：
    ```
    fix: 简短描述 (任务ID)
 
@@ -70,8 +73,8 @@ zig version  # 必须是 0.15.2
 - ❌ `docs/08-project-audit-report.md`
 - ❌ `docs/09-task-status-audit.md`
 - ❌ `docs/10-handoff-to-coding-agent.md`
-- ❌ `tasks/active/sprint-01-core/T-00*.md`（旧 Sprint，状态混乱）
-- ❌ `tasks/archive/*`（历史归档）
+- ❌ `tasks/archive/sprint-01-core/T-00*.md`（旧 Sprint，状态混乱）
+- ❌ `tasks/archive/old-backlog/*`（历史归档）
 
 ---
 
@@ -85,6 +88,7 @@ zig version  # 必须是 0.15.2
 - HTTP: `src/http.zig`
 - 工具: `src/agent/tools/*.zig`
 - Skills: `src/skills/*.zig`
+- Worktree: `src/utils/worktree.zig`
 
 ### 当前已知编译错误
 1. `src/main.zig:5:30`: `root source file struct 'process' has no member named 'Init'`
@@ -93,6 +97,19 @@ zig version  # 必须是 0.15.2
    - 原因: 使用了 Zig 0.16 的 `std.Io`
 
 解决方案详见 **FIX-ZIG-015** 的 Spec。
+
+---
+
+## 6. 任务系统说明
+
+我们已经重新整理了任务系统：
+
+- **`tasks/active/sprint-2026-04/`** — 当前 Sprint 任务
+- **`tasks/backlog/phase-N/`** — 未来任务（按 Phase 3-8 分组）
+- **`tasks/completed/phase-N/`** — 已完成任务
+- **`tasks/archive/`** — 历史归档（不要再碰）
+
+如果你需要了解整体路线图，读 `docs/ROADMAP-v2.md`。
 
 ---
 
