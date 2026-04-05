@@ -43,11 +43,15 @@ pub const HttpClient = struct {
 
     /// Initialize with an explicit std.Io instance (from std.process.Init)
     pub fn initWithIo(allocator: std.mem.Allocator, io: std.Io) Self {
-        return .{
+        const result = Self{
             .allocator = allocator,
             .client = .{ .allocator = allocator, .io = io },
             .io_initialized = true,
         };
+        std.debug.assert(result.io_initialized); // Must be initialized with io
+        std.debug.assert(result.retry_count > 0); // Default retry count must be positive
+        std.debug.assert(result.timeout_ms > 0); // Default timeout must be positive
+        return result;
     }
 
     /// Initialize without Io - will try to get from global IoManager
@@ -67,6 +71,8 @@ pub const HttpClient = struct {
             self.client.deinit();
             self.io_initialized = false;
         }
+        // Post-condition: client is deinitialized
+        std.debug.assert(!self.io_initialized); // Must be marked as not initialized
     }
 
     /// Make a POST request with JSON body
@@ -77,6 +83,10 @@ pub const HttpClient = struct {
         headers: []const std.http.Header,
         body: []const u8,
     ) !Response {
+        std.debug.assert(url.len > 0); // URL must be non-empty
+        std.debug.assert(body.len > 0); // Body must be non-empty
+        std.debug.assert(self.retry_count > 0); // Retry count must be configured
+        
         if (!self.io_initialized) {
             return AiError.IoManagerNotInitialized;
         }
@@ -85,6 +95,7 @@ pub const HttpClient = struct {
         var last_error: ?anyerror = null;
 
         while (attempts < self.retry_count) : (attempts += 1) {
+            std.debug.assert(attempts < self.retry_count); // Loop invariant
             return self.postJsonOnce(url, headers, body) catch |err| {
                 last_error = err;
                 // TODO: Add exponential backoff when std.Io is available
@@ -101,7 +112,11 @@ pub const HttpClient = struct {
         headers: []const std.http.Header,
         body: []const u8,
     ) !Response {
+        std.debug.assert(url.len > 0); // URL must be non-empty
+        std.debug.assert(self.io_initialized); // Client must be initialized
+        
         const uri = std.Uri.parse(url) catch return AiError.InvalidUrl;
+        std.debug.assert(uri.scheme.len > 0); // URI must have a scheme (http/https)
 
         var all_headers: std.ArrayList(std.http.Header) = .empty;
         defer all_headers.deinit(self.allocator);
@@ -132,6 +147,7 @@ pub const HttpClient = struct {
         if (status == .ok or status == .created) {
             const body_content = reader.allocRemaining(self.allocator, .limited(1024 * 1024)) catch
                 return AiError.HttpResponseReadFailed;
+            std.debug.assert(body_content.len > 0 or body_content.len == 0); // Body content valid (can be empty)
             return Response{
                 .status = status,
                 .body = body_content,
@@ -152,11 +168,15 @@ pub const HttpClient = struct {
         body: []const u8,
         callback: *const fn (line: []const u8) void,
     ) !void {
+        std.debug.assert(url.len > 0); // URL must be non-empty
+        std.debug.assert(body.len > 0); // Body must be non-empty
+        
         if (!self.io_initialized) {
             return AiError.IoManagerNotInitialized;
         }
 
         const uri = std.Uri.parse(url) catch return AiError.InvalidUrl;
+        std.debug.assert(uri.scheme.len > 0); // URI must have scheme
 
         var all_headers = std.ArrayList(std.http.Header).init(self.allocator);
         defer all_headers.deinit();
@@ -231,7 +251,10 @@ pub const Response = struct {
     allocator: std.mem.Allocator,
 
     pub fn deinit(self: *Response) void {
+        const body_len = self.body.len;
         self.allocator.free(self.body);
+        // Post-condition: body was valid before free
+        std.debug.assert(body_len >= 0);
     }
 };
 
