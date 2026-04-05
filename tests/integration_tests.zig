@@ -482,3 +482,24 @@ test "Memory allocation patterns" {
     // This is a pattern test - real memory testing would require instrumentation
     try std.testing.expectEqual(.idle, ai_agent.state);
 }
+
+test "E2E: read_file tool definition" {
+    const tool_def = agent.read_file.tool_definition;
+    try std.testing.expectEqualStrings("read_file", tool_def.name);
+    try std.testing.expect(tool_def.description.len > 0);
+    try std.testing.expect(std.mem.indexOf(u8, tool_def.parameters_json, "path") != null);
+}
+
+test "E2E: bash tool definition" {
+    const tool_def = agent.bash.tool_definition;
+    try std.testing.expectEqualStrings("bash", tool_def.name);
+    try std.testing.expect(tool_def.description.len > 0);
+    try std.testing.expect(std.mem.indexOf(u8, tool_def.parameters_json, "command") != null);
+}
+
+test "E2E: HttpClient basic lifecycle" {
+    const allocator = std.testing.allocator;
+    var client = kimiz.http.HttpClient.init(allocator);
+    defer client.deinit();
+    try std.testing.expect(@intFromPtr(&client) != 0);
+}
