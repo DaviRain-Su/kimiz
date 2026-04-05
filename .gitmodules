@@ -1,0 +1,3 @@
+[submodule "docs/methodology/dev-lifecycle"]
+	path = docs/methodology/dev-lifecycle
+	url = https://codeberg.org/davirain/dev-lifecycle.git

@@ -81,7 +81,10 @@ Every task follows the **Document-Driven Workflow** defined in `docs/DOCUMENT-DR
 | `AGENTS.md` | This file | **First** |
 | `AGENT-ENTRYPOINT.md` | Human-maintained execution status | Every session |
 | `tasks/active/sprint-2026-04/README.md` | Current sprint board | Every session |
+| `docs/methodology/dev-lifecycle/README.md` | Zhe Shan Yu 7-phase development methodology | When starting any new module |
+| `docs/methodology/dev-lifecycle/PRINCIPLES.md` | Compound Engineering, Boil the Lake, Three-Layer Knowledge | Before making architecture decisions |
 | `docs/DESIGN-REFERENCES.md` | Links analysis docs to implementation phases | Before writing code |
+| `docs/DOCUMENT-DRIVEN-WORKFLOW.md` | Task lifecycle and agent long-term memory rules | Every task |
 | `docs/ROADMAP-v2.md` | 0-10 phase roadmap | When you need context |
 | `docs/FEATURES.md` | What is already built vs planned | When you need context |
 | `docs/specs/*.md` | Executable technical specs | Per-task |

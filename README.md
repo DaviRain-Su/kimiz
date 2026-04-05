@@ -133,6 +133,23 @@ zig test src/ai/providers/openai.zig
 
 ---
 
+## Development Methodology
+
+This project strictly follows the **[Zhe Shan Yu Dev Lifecycle](https://codeberg.org/davirain/dev-lifecycle)** structured development methodology.
+
+Core principles:
+- **7 phases, non-skippable**: PRD → Architecture → Technical Spec → Task Breakdown → Test Spec → Implementation → Review
+- **Boil the Lake**: the marginal cost of complete implementation approaches zero; do it 100% the first time
+- **Document-Driven**: agents rely on task documents and specification docs for long-term memory, not the context window
+- **Search Before Building**: always check Layer 1–3 knowledge before writing code
+
+Methodology docs (git submodule):
+- `docs/methodology/dev-lifecycle/README.md` — full methodology overview
+- `docs/methodology/dev-lifecycle/PRINCIPLES.md` — Compound Engineering, Boil the Lake, Three-Layer Knowledge
+- `docs/methodology/dev-lifecycle/templates/` — phase templates (01-prd ~ 07-review-deploy)
+
+---
+
 ## Development
 
 ```bash

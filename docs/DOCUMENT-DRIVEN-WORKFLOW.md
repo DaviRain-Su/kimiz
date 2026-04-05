@@ -2,7 +2,7 @@
 
 > **本规范定义 KimiZ 项目中任务（Task）的完整生命周期。**  
 > 任何进入任务系统的工作项，都必须遵循此规范。  
-> 基于 yage.ai《从上下文失忆到文档驱动开发》的方法论设计。
+> 基于 yage.ai《从上下文失忆到文档驱动开发》的方法论设计，是 **[遮山鱼 Dev Lifecycle](https://codeberg.org/davirain/dev-lifecycle)** 方法论的运营层实现。
 
 ---
 
