@@ -277,6 +277,11 @@ fn runInteractive(allocator: std.mem.Allocator) !void {
     defer ai_agent.deinit();
 
     ai_agent.setEventCallback(handleAgentEvent);
+    ai_agent.registerSubAgentTool() catch |err| {
+        print("⚠️  Failed to register subagent tool: ");
+        print(@errorName(err));
+        print("\n");
+    };
     g_agent = &ai_agent;
 
     print("✅ Agent ready!\n\n");

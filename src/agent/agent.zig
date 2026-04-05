@@ -15,6 +15,7 @@ const memory = @import("../memory/root.zig");
 const learning = @import("../learning/root.zig");
 const harness_tool_approval = @import("../harness/tool_approval.zig");
 const session_mgmt = @import("../utils/session.zig");
+const subagent = @import("subagent.zig");
 const Message = core.Message;
 const Context = core.Context;
 const AssistantMessage = core.AssistantMessage;
@@ -116,6 +117,8 @@ pub const Agent = struct {
     session_manager: session_mgmt.SessionManager,
     session_store_dir: ?[]const u8,
     session_id: ?[]const u8,
+    subagent_delegate_ctx: ?*subagent.DelegateContext,
+    subagent_tools_owned: bool,
 
     const Self = @This();
 
@@ -170,6 +173,8 @@ pub const Agent = struct {
             .session_manager = session_manager,
             .session_store_dir = session_store_dir,
             .session_id = null,
+            .subagent_delegate_ctx = null,
+            .subagent_tools_owned = false,
         };
     }
 
@@ -186,11 +191,39 @@ pub const Agent = struct {
         self.session_manager.deinit();
         if (self.session_store_dir) |dir| self.allocator.free(dir);
         if (self.session_id) |id| self.allocator.free(id);
+        if (self.subagent_tools_owned and self.options.tools.len > 0) {
+            self.allocator.free(self.options.tools);
+        }
+        if (self.subagent_delegate_ctx) |ctx| {
+            self.allocator.destroy(ctx);
+        }
     }
 
     /// Set event callback for receiving agent events
     pub fn setEventCallback(self: *Self, callback: *const fn (event: AgentEvent) void) void {
         self.event_callback = callback;
+    }
+
+    /// Register the subagent delegate tool to this agent
+    pub fn registerSubAgentTool(self: *Self) !void {
+        if (self.subagent_delegate_ctx != null) return;
+
+        const ctx = try self.allocator.create(subagent.DelegateContext);
+        errdefer self.allocator.destroy(ctx);
+        ctx.* = .{
+            .allocator = self.allocator,
+            .parent_agent = self,
+            .base_options = self.options,
+        };
+
+        const new_tools = try self.allocator.alloc(AgentTool, self.options.tools.len + 1);
+        @memcpy(new_tools[0..self.options.tools.len], self.options.tools);
+        new_tools[self.options.tools.len] = subagent.createAgentTool(ctx);
+
+        self.options.tools = new_tools;
+        self.subagent_tools_owned = true;
+        self.subagent_delegate_ctx = ctx;
+        self.clearToolDefsCache();
     }
 
     pub fn saveSession(self: *Self) !void {
@@ -781,4 +814,28 @@ test "Agent init/deinit" {
     defer agent.deinit();
 
     try std.testing.expectEqual(.idle, agent.state);
+}
+
+test "Agent registerSubAgentTool" {
+    const allocator = std.testing.allocator;
+    const model = core.Model{
+        .id = "gpt-4o",
+        .provider = .{ .known = .openai },
+        .api = .{ .known = .@"openai-completions" },
+        .context_window = 128000,
+        .max_tokens = 4096,
+        .cost = .{
+            .input_token_cost = 2.50,
+            .output_token_cost = 10.00,
+        },
+    };
+
+    var a = try Agent.init(allocator, .{ .model = model });
+    defer a.deinit();
+
+    try std.testing.expectEqual(@as(usize, 0), a.options.tools.len);
+
+    try a.registerSubAgentTool();
+    try std.testing.expectEqual(@as(usize, 1), a.options.tools.len);
+    try std.testing.expectEqualStrings("delegate", a.options.tools[0].tool.name);
 }

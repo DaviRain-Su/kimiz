@@ -48,16 +48,16 @@ fn isSafeTool(tool_name: []const u8) bool {
 
 /// Filter tools for read-only mode
 fn filterReadOnlyTools(allocator: std.mem.Allocator, tools: []const AgentTool) ![]AgentTool {
-    var filtered = std.ArrayList(AgentTool).init(allocator);
-    errdefer filtered.deinit();
+    var filtered: std.ArrayList(AgentTool) = .empty;
+    errdefer filtered.deinit(allocator);
 
     for (tools) |t| {
         if (isSafeTool(t.tool.name)) {
-            try filtered.append(t);
+            try filtered.append(allocator, t);
         }
     }
 
-    return filtered.toOwnedSlice();
+    return filtered.toOwnedSlice(allocator);
 }
 
 // ============================================================================
@@ -209,19 +209,19 @@ pub const SubAgent = struct {
             switch (msg) {
                 .assistant => |assistant| {
                     // Extract text content from assistant message
-                    var result_text = std.ArrayList(u8).init(self.allocator);
-                    defer result_text.deinit();
+                    var result_text: std.ArrayList(u8) = .empty;
+                    defer result_text.deinit(self.allocator);
 
                     for (assistant.content) |block| {
                         switch (block) {
                             .text => |text| {
-                                try result_text.appendSlice(text.text);
+                                try result_text.appendSlice(self.allocator, text.text);
                             },
                             else => {},
                         }
                     }
 
-                    return result_text.toOwnedSlice();
+                    return result_text.toOwnedSlice(self.allocator);
                 },
                 else => {},
             }
