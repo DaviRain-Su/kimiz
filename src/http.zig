@@ -1,8 +1,7 @@
-//! HTTP Client - Full implementation using std.http.Client for Zig 0.16
+//! HTTP Client - Full implementation using std.http.Client for Zig 0.15
 //! Supports HTTP/HTTPS, JSON POST requests, and SSE streaming
 
 const std = @import("std");
-const utils = @import("utils/root.zig");
 
 pub const SSE_LINE_BUF_SIZE = 65536;
 
@@ -24,7 +23,6 @@ pub const AiError = error{
     ApiKeyNotFound,
     ProviderNotSupported,
     OutOfMemory,
-    IoManagerNotInitialized,
     InvalidUrl,
     DnsResolutionFailed,
     ConnectionTimeout,
@@ -37,36 +35,18 @@ pub const HttpClient = struct {
     client: std.http.Client,
     retry_count: u3 = 3,
     timeout_ms: u32 = 30000,
-    io_initialized: bool,
 
     const Self = @This();
 
-    /// Initialize with an explicit std.Io instance (from std.process.Init)
-    pub fn initWithIo(allocator: std.mem.Allocator, io: std.Io) Self {
+    pub fn init(allocator: std.mem.Allocator) Self {
         return .{
             .allocator = allocator,
-            .client = .{ .allocator = allocator, .io = io },
-            .io_initialized = true,
+            .client = .{ .allocator = allocator },
         };
-    }
-
-    /// Initialize without Io - will try to get from global IoManager
-    pub fn init(allocator: std.mem.Allocator) Self {
-        const io = utils.getIo() catch {
-            return .{
-                .allocator = allocator,
-                .client = undefined,
-                .io_initialized = false,
-            };
-        };
-        return initWithIo(allocator, io);
     }
 
     pub fn deinit(self: *Self) void {
-        if (self.io_initialized) {
-            self.client.deinit();
-            self.io_initialized = false;
-        }
+        self.client.deinit();
     }
 
     /// Make a POST request with JSON body
@@ -77,10 +57,6 @@ pub const HttpClient = struct {
         headers: []const std.http.Header,
         body: []const u8,
     ) !Response {
-        if (!self.io_initialized) {
-            return AiError.IoManagerNotInitialized;
-        }
-
         var attempts: u3 = 0;
         var last_error: ?anyerror = null;
 
@@ -152,10 +128,6 @@ pub const HttpClient = struct {
         body: []const u8,
         callback: *const fn (line: []const u8) void,
     ) !void {
-        if (!self.io_initialized) {
-            return AiError.IoManagerNotInitialized;
-        }
-
         const uri = std.Uri.parse(url) catch return AiError.InvalidUrl;
 
         var all_headers = std.ArrayList(std.http.Header).init(self.allocator);

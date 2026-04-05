@@ -110,10 +110,10 @@ fn handleAgentEvent(evt: agent.AgentEvent) void {
 }
 
 // Global environment map storage
-var g_environ_map: ?*std.process.Environ.Map = null;
+var g_environ_map: ?*std.process.EnvMap = null;
 
 /// Initialize environment variable access
-pub fn initEnvVars(environ_map: *std.process.Environ.Map) void {
+pub fn initEnvVars(environ_map: *std.process.EnvMap) void {
     g_environ_map = environ_map;
 }
 
@@ -126,23 +126,14 @@ pub fn getEnvVar(allocator: std.mem.Allocator, name: []const u8) error{NotFound,
 
 pub fn run(
     allocator: std.mem.Allocator,
-    environ_map: *std.process.Environ.Map,
-    args: std.process.Args,
+    environ_map: *std.process.EnvMap,
+    args: []const []const u8,
 ) !void {
     // Initialize environment variables
     initEnvVars(environ_map);
-    // Parse simple args using iterator
-    var it = args.iterate();
     
-    // Collect args into a list for easier handling
-    var args_list: std.ArrayList([]const u8) = .empty;
-    defer args_list.deinit(allocator);
-    
-    while (it.next()) |arg| {
-        try args_list.append(allocator, arg);
-    }
-    
-    const args_slice = args_list.items;
+    // args already is a slice of strings from std.process.argsAlloc
+    const args_slice = args;
 
     // Check for help
     if (args_slice.len > 1 and (std.mem.eql(u8, args_slice[1], "--help") or std.mem.eql(u8, args_slice[1], "-h") or std.mem.eql(u8, args_slice[1], "help"))) {
@@ -202,10 +193,7 @@ fn runInteractive(allocator: std.mem.Allocator) !void {
 
     // Get working directory
     var cwd_buf: [std.fs.max_path_bytes]u8 = undefined;
-    const cwd = if (std.c.getcwd(&cwd_buf, cwd_buf.len)) |ptr|
-        std.mem.sliceTo(ptr, 0)
-    else
-        ".";
+    const cwd = std.posix.getcwd(&cwd_buf) catch ".";
 
     // Collect workspace context
     print("📁 Collecting workspace context...\n");

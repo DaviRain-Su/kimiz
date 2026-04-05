@@ -20,7 +20,7 @@
 ### P0 - 阻塞级
 
 #### FIX-ZIG-015: 修复 Zig 0.15.2 编译兼容性
-- **状态**: `todo`
+- **状态**: `done`
 - **Spec**: `docs/specs/FIX-ZIG-015-compatibility.md`
 - **问题**: 代码使用了 Zig 0.16 API（`std.process.Init`, `std.Io`），但环境是 0.15.2
 - **影响文件**: `src/main.zig`, `src/http.zig`, `src/utils/io_manager.zig` 等
