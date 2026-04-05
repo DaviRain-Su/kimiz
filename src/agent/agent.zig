@@ -388,6 +388,11 @@ pub const Agent = struct {
         self.iteration_count = 0;
 
         while (self.iteration_count < self.options.max_iterations) {
+            // Create arena for this iteration's temporary allocations
+            var loop_arena = std.heap.ArenaAllocator.init(self.allocator);
+            defer loop_arena.deinit();
+            const loop_alloc = loop_arena.allocator();
+            
             self.iteration_count += 1;
 
             self.state = .thinking;
@@ -406,9 +411,9 @@ pub const Agent = struct {
             // Call AI using the reused client with error recovery
             const response = self.ai_client.complete(ctx) catch |err| {
                 self.state = .err;
-                const err_msg = error_handler.formatError(self.allocator, err) catch
-                    try std.fmt.allocPrint(self.allocator, "AI call failed: {s}", .{@errorName(err)});
-                defer self.allocator.free(err_msg);
+                const err_msg = error_handler.formatError(loop_alloc, err) catch
+                    try std.fmt.allocPrint(loop_alloc, "AI call failed: {s}", .{@errorName(err)});
+                // No defer needed - arena will clean up
                 self.emit(.{ .err = err_msg });
 
                 // Abort immediately - do not auto-retry LLM calls
@@ -454,7 +459,7 @@ pub const Agent = struct {
                         // Create error result that allows conversation to continue
                         const err_result = ToolResult{
                             .content = &[_]tool_mod.UserContentBlock{.{
-                                .text = try self.allocator.dupe(u8, @errorName(err)),
+                                .text = try loop_alloc.dupe(u8, @errorName(err)),
                             }},
                             .is_error = true,
                         };
@@ -524,6 +529,7 @@ pub const Agent = struct {
             // For now, in non-interactive mode, deny if not auto-approved
             // TODO: emit approval request event for interactive UI
             const denied_msg = try std.fmt.allocPrint(self.allocator, "Tool '{s}' requires approval. Enable YOLO mode to auto-approve.", .{tool_call.name});
+            // Keep using self.allocator since this is returned and needs to outlive the function
             return ToolResult{
                 .content = &[_]tool_mod.UserContentBlock{.{ .text = denied_msg }},
                 .is_error = true,
