@@ -474,7 +474,77 @@ pub fn runLoop(self: *Self) !void {
 **目标达成情况**:
 - ✅ counting_allocator.zig: 2.38/fn (159% of target)
 - ✅ worktree.zig: 3.00/fn (200% of target)
-- 📊 整体平均: 2.69/fn (179% of target)
+- 📊 整体平均（第一批）: 2.69/fn (179% of target)
+
+---
+
+### Phase 3: 核心模块扩展 ✅（2026-04-06 下午）
+
+#### 模块 3: agent.zig ✅
+
+**优化前**: 31 函数, 0 断言 (0/fn)  
+**优化后**: 31 函数, 17 断言 (0.55/fn)  
+**提升**: 向 1.5/fn 目标推进 37%  
+**提交**: 8a040dc
+
+**断言分布**（核心函数重点优化）:
+- init(): 3 asserts（参数验证）
+- deinit(): 2 asserts（状态 + 清理）
+- prompt(): 3 asserts（输入 + 状态 + 计数）
+- runLoop(): 3 asserts（前置 + 循环不变量）
+- addToolResultToMessages(): 4 asserts（参数 + 分配 + 计数）
+- clearHistory(): 2 asserts（清理验证）
+
+**关键模式**:
+- ✅ 状态机约束（deinit 时必须终态）
+- ✅ 计数器单调性（iteration 正确递增）
+- ✅ 消息完整性（append 后计数正确）
+- ✅ 参数有效性（非空验证）
+- ✅ 循环边界（不超过 max_iterations）
+
+**注**: agent.zig 是最复杂的模块（979 行），本批次优化了核心流程函数
+
+#### 模块 4: http.zig ✅
+
+**优化前**: 9 函数, 0 断言 (0/fn)  
+**优化后**: 9 函数, 16 断言 (1.77/fn)  
+**提升**: +1,770% 🚀  
+**目标达成**: 118% ✅  
+**提交**: [current]
+
+**断言分布**:
+- initWithIo(): 3 asserts（完整初始化验证）
+- deinit(): 1 assert（清理后置条件）
+- postJson(): 4 asserts（参数 + 循环不变量）
+- postJsonOnce(): 3 asserts（URL + 初始化 + URI）
+- postStream(): 3 asserts（参数 + URI）
+- Response.deinit(): 1 assert（清理验证）
+
+**关键模式**:
+- ✅ 初始化完整性（io_initialized, retry/timeout > 0）
+- ✅ 请求参数验证（URL/body 非空）
+- ✅ 循环不变量（attempts bounds）
+- ✅ URI 结构验证（scheme 存在）
+- ✅ 清理后置条件
+
+---
+
+### 最终成果总结（Phase 1-3）
+
+| 指标 | 初始 | 第一批 | 第二批 | 总计 |
+|------|------|--------|--------|------|
+| **已优化模块数** | 0 | 2 | +2 | 4 |
+| **已添加断言数** | 1 | 43 | +33 | 76 |
+| **覆盖函数数** | 16 | 16 | +40 | 56 |
+| **平均密度（已优化）** | 0.07/fn | 2.69/fn | - | 1.36/fn |
+
+**各模块达成情况**:
+1. ✅ counting_allocator.zig: 2.38/fn (159% ⭐)
+2. ✅ worktree.zig: 3.00/fn (200% ⭐⭐)
+3. 🔄 agent.zig: 0.55/fn (37% - 核心函数优化，后续继续)
+4. ✅ http.zig: 1.77/fn (118% ⭐)
+
+**整体平均**（4 个模块）: 1.36/fn (91% of target)
 
 ---
 
