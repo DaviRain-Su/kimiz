@@ -217,22 +217,8 @@ pub const Agent = struct {
                     try std.fmt.allocPrint(self.allocator, "AI call failed: {s}", .{@errorName(err)});
                 defer self.allocator.free(err_msg);
                 self.emit(.{ .err = err_msg });
-                
-                // Add error message to history so the conversation can continue
-                const error_assistant_msg = Message{
-                    .assistant = .{
-                        .content = &[_]core.AssistantContentBlock{.{
-                            .text = .{ .text = "I encountered an error. Let me try again." },
-                        }},
-                        .stop_reason = .stop,
-                    },
-                };
-                try self.messages.append(self.allocator, error_assistant_msg);
-                
-                // Continue loop instead of returning - allow retry
-                if (self.iteration_count < self.options.max_iterations) {
-                    continue;
-                }
+
+                // Abort immediately - do not auto-retry LLM calls
                 return err;
             };
 

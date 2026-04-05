@@ -97,7 +97,7 @@ const AnthropicResponseContent = union(enum) {
     thinking: struct {
         type: []const u8 = "thinking",
         thinking: []const u8,
-        signature: ?[]const u8,
+        signature: ?[]const u8 = null,
     },
     tool_use: struct {
         type: []const u8 = "tool_use",
@@ -112,6 +112,13 @@ const AnthropicUsage = struct {
     output_tokens: u32,
     cache_creation_input_tokens: ?u32 = null,
     cache_read_input_tokens: ?u32 = null,
+    // Extra fields returned by kimi anthropic endpoint
+    prompt_tokens: ?u32 = null,
+    cached_tokens: ?u32 = null,
+    completion_tokens: ?u32 = null,
+    total_tokens: ?u32 = null,
+    service_tier: ?[]const u8 = null,
+    inference_geo: ?[]const u8 = null,
 };
 
 // ============================================================================
@@ -176,8 +183,7 @@ const AnthropicDelta = union(enum) {
 // ============================================================================
 
 pub fn complete(http_client: *HttpClient, ctx: core.Context) !core.AssistantMessage {
-    const provider_key = ctx.model.provider.known;
-    const api_key = core.getApiKey(http_client.allocator, provider_key) orelse return core.AiError.ApiKeyNotFound;
+    const api_key = getApiKeyForContext(http_client.allocator, ctx) orelse return core.AiError.ApiKeyNotFound;
     defer http_client.allocator.free(api_key);
 
     const request_body = try serializeRequest(http_client.allocator, ctx);
@@ -217,8 +223,7 @@ pub fn stream(
     ctx: core.Context,
     callback: *const fn (event: ai.SseEvent) void,
 ) !void {
-    const provider_key = ctx.model.provider.known;
-    const api_key = core.getApiKey(http_client.allocator, provider_key) orelse return core.AiError.ApiKeyNotFound;
+    const api_key = getApiKeyForContext(http_client.allocator, ctx) orelse return core.AiError.ApiKeyNotFound;
     defer http_client.allocator.free(api_key);
 
     var streaming_ctx = ctx;
@@ -522,48 +527,61 @@ fn appendJsonString(buf: *std.ArrayList(u8), allocator: std.mem.Allocator, s: []
 // ============================================================================
 
 fn parseResponse(allocator: std.mem.Allocator, body: []const u8) !core.AssistantMessage {
-    const parsed = try std.json.parseFromSlice(AnthropicResponse, allocator, body, .{});
-    defer parsed.deinit();
+    const root = try std.json.parseFromSlice(std.json.Value, allocator, body, .{});
+    defer root.deinit();
 
-    const response = parsed.value;
+    const obj = root.value.object;
 
-    // Convert content blocks
+    // Parse content blocks manually (duplicate strings because root is deinited)
     var content: std.ArrayList(core.AssistantContentBlock) = .empty;
     defer content.deinit(allocator);
 
-    for (response.content) |block| {
-        switch (block) {
-            .text => |t| {
-                try content.append(allocator, .{ .text = .{ .text = t.text } });
-            },
-            .thinking => |t| {
+    if (obj.get("content")) |content_arr| {
+        for (content_arr.array.items) |block| {
+            const block_type = block.object.get("type").?.string;
+            if (std.mem.eql(u8, block_type, "text")) {
+                const text = try allocator.dupe(u8, block.object.get("text").?.string);
+                try content.append(allocator, .{ .text = .{ .text = text } });
+            } else if (std.mem.eql(u8, block_type, "thinking")) {
+                const thinking = if (block.object.get("thinking")) |v| try allocator.dupe(u8, v.string) else try allocator.dupe(u8, "");
+                const signature = if (block.object.get("signature")) |v| try allocator.dupe(u8, v.string) else null;
                 try content.append(allocator, .{ .thinking = .{
-                    .thinking = t.thinking,
-                    .thinking_signature = t.signature,
+                    .thinking = thinking,
+                    .thinking_signature = signature,
                 } });
-            },
-            .tool_use => |t| {
-                const args = try std.json.Stringify.valueAlloc(allocator, t.input, .{});
+            } else if (std.mem.eql(u8, block_type, "tool_use")) {
+                const input = block.object.get("input").?;
+                const args = try std.json.Stringify.valueAlloc(allocator, input, .{});
+                const id = try allocator.dupe(u8, block.object.get("id").?.string);
+                const name = try allocator.dupe(u8, block.object.get("name").?.string);
                 try content.append(allocator, .{ .tool_call = .{
                     .tool_call = .{
-                        .id = t.id,
-                        .name = t.name,
+                        .id = id,
+                        .name = name,
                         .arguments = args,
                     },
                 } });
-            },
+            }
         }
     }
 
+    // Parse usage
+    var usage: core.TokenUsage = .{ .input_tokens = 0, .output_tokens = 0 };
+    if (obj.get("usage")) |usage_obj| {
+        const u = usage_obj.object;
+        if (u.get("input_tokens")) |v| usage.input_tokens = @intCast(v.integer);
+        if (u.get("output_tokens")) |v| usage.output_tokens = @intCast(v.integer);
+        if (u.get("cache_creation_input_tokens")) |v| usage.cache_creation_input_tokens = @intCast(v.integer);
+        if (u.get("cache_read_input_tokens")) |v| usage.cache_read_input_tokens = @intCast(v.integer);
+    }
+
+    // Parse stop_reason
+    const stop_reason = if (obj.get("stop_reason")) |sr| mapStopReason(sr.string) else .stop;
+
     return core.AssistantMessage{
         .content = try content.toOwnedSlice(allocator),
-        .stop_reason = mapStopReason(response.stop_reason),
-        .usage = .{
-            .input_tokens = response.usage.input_tokens,
-            .output_tokens = response.usage.output_tokens,
-            .cache_creation_input_tokens = response.usage.cache_creation_input_tokens,
-            .cache_read_input_tokens = response.usage.cache_read_input_tokens,
-        },
+        .stop_reason = stop_reason,
+        .usage = usage,
     };
 }
 
@@ -576,6 +594,20 @@ fn getBaseUrl(ctx: core.Context) []const u8 {
         .custom => {},
     }
     return core.ANTHROPIC_BASE_URL;
+}
+
+fn getApiKeyForContext(allocator: std.mem.Allocator, ctx: core.Context) ?[]const u8 {
+    switch (ctx.model.api) {
+        .known => |api| switch (api) {
+            .@"kimi-code-anthropic" => {
+                const cli = @import("../../cli/root.zig");
+                return cli.getEnvVar(allocator, "ANTHROPIC_API_KEY") catch null;
+            },
+            else => {},
+        },
+        .custom => {},
+    }
+    return core.getApiKey(allocator, ctx.model.provider.known);
 }
 
 fn mapStopReason(reason: ?[]const u8) core.StopReason {

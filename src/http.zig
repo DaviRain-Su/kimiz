@@ -107,7 +107,10 @@ pub const HttpClient = struct {
         }
 
         var req = self.client.request(.POST, uri, .{
-            .headers = .{ .content_type = .{ .override = "application/json" } },
+            .headers = .{
+                .content_type = .{ .override = "application/json" },
+                .accept_encoding = .{ .override = "identity" },
+            },
             .extra_headers = all_headers.items,
         }) catch return AiError.HttpRequestFailed;
         defer req.deinit();

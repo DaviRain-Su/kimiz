@@ -135,6 +135,18 @@ pub const model_table = &[_]Model{
         },
         .supports_thinking = true,
     },
+    .{
+        .id = "k2p5",
+        .provider = .{ .known = .anthropic },
+        .api = .{ .known = .@"kimi-code-anthropic" },
+        .context_window = 262144,
+        .max_tokens = 32768,
+        .cost = .{
+            .input_token_cost = 2.00,
+            .output_token_cost = 8.00,
+        },
+        .supports_thinking = true,
+    },
     // Fireworks AI
     .{
         .id = "kimi-k2p5-turbo",

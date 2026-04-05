@@ -393,7 +393,7 @@ fn serializeRequest(allocator: std.mem.Allocator, ctx: core.Context) ![]u8 {
 // ============================================================================
 
 fn parseResponse(allocator: std.mem.Allocator, body: []const u8) !core.AssistantMessage {
-    const parsed = try std.json.parseFromSlice(OpenAIResponse, allocator, body, .{});
+    const parsed = try std.json.parseFromSlice(OpenAIResponse, allocator, body, .{ .ignore_unknown_fields = true });
     defer parsed.deinit();
 
     const response = parsed.value;

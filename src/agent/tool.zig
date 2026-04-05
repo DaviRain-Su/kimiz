@@ -65,14 +65,12 @@ pub fn parseArguments(
     args: std.json.Value,
     comptime T: type,
 ) !T {
-    const parsed = try std.json.parseFromValue(
+    return std.json.parseFromValueLeaky(
         T,
         allocator,
         args,
         .{ .ignore_unknown_fields = true },
     );
-    defer parsed.deinit();
-    return parsed.value;
 }
 
 /// Create text content block

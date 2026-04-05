@@ -2,7 +2,7 @@ const std = @import("std");
 const cli = @import("cli/root.zig");
 const utils = @import("utils/root.zig");
 
-pub fn main(init: std.process.Init) !void {
+pub fn main(init: std.process.Init) !u8 {
     const allocator = init.gpa;
 
     // Initialize global IoManager with the Io from process Init
@@ -10,6 +10,7 @@ pub fn main(init: std.process.Init) !void {
     defer utils.deinitIoManager();
 
     try cli.run(allocator, init.environ_map, init.minimal.args);
+    return 0;
 }
 
 test "simple test" {

@@ -97,6 +97,7 @@ pub fn getUserFriendlyMessage(err_name: []const u8) ?ErrorMessage {
         .{ .name = "HttpTlsFailed", .msg = .{ .code = "NET002", .title = "TLS/SSL connection failed", .message = "Cannot establish secure connection.", .suggestion = "Check system time and SSL certificates." } },
         .{ .name = "HttpRequestFailed", .msg = .{ .code = "NET003", .title = "HTTP request failed", .message = "Error sending request.", .suggestion = "Please retry later." } },
         .{ .name = "ApiAuthenticationFailed", .msg = .{ .code = "AUTH001", .title = "API authentication failed", .message = "API Key is invalid or expired.", .suggestion = "Check your KIMI_API_KEY environment variable." } },
+        .{ .name = "ApiPermissionDenied", .msg = .{ .code = "AUTH002", .title = "Permission denied", .message = "Your API key does not have permission for this request.", .suggestion = "Check your API key permissions or model availability." } },
         .{ .name = "ApiRateLimitExceeded", .msg = .{ .code = "RATE001", .title = "Rate limit exceeded", .message = "Too many requests.", .suggestion = "Wait a few seconds and retry." } },
         .{ .name = "ApiServerError", .msg = .{ .code = "SERVER001", .title = "AI service temporarily unavailable", .message = "Server error.", .suggestion = "Retry in 30 seconds." } },
         .{ .name = "ApiKeyNotFound", .msg = .{ .code = "CONFIG001", .title = "API Key not configured", .message = "No API Key found.", .suggestion = "Set KIMI_API_KEY: export KIMI_API_KEY=your_key" } },

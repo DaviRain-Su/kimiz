@@ -101,7 +101,7 @@ fn handleAgentEvent(evt: agent.AgentEvent) void {
             print("\n✨ Done!\n\n");
         },
         .err => |e| {
-            print("\n❌ Error: ");
+            print("\n❌ ");
             print(e);
             print("\n");
         },
@@ -185,9 +185,9 @@ fn runInteractive(allocator: std.mem.Allocator) !void {
     const model = ai.models_registry.getModelById(model_id) orelse {
         print("❌ Unknown model: ");
         print(model_id);
-        print("\nUsing default: kimi-for-coding\n");
-        _ = ai.models_registry.getModelById("kimi-for-coding") orelse {
-            print("❌ Default model kimi-for-coding not found\n");
+        print("\nUsing default: k2p5\n");
+        _ = ai.models_registry.getModelById("k2p5") orelse {
+            print("❌ Default model k2p5 not found\n");
             return error.ModelNotFound;
         };
         return error.ModelNotFound;
@@ -330,8 +330,8 @@ fn runSkillCommand(allocator: std.mem.Allocator, args: []const []const u8) !void
     }
 
     // Initialize Agent
-    const model = ai.models_registry.getModelById("kimi-for-coding") orelse {
-        printLine("❌ Failed to get default model kimi-for-coding");
+    const model = ai.models_registry.getModelById("k2p5") orelse {
+        printLine("❌ Failed to get default model k2p5");
         return;
     };
 
@@ -389,7 +389,7 @@ fn printHelp() void {
         \\  kimiz skill <id>   Execute a skill
         \\
         \\Environment:
-        \\  KIMIZ_MODEL        Default model (default: kimi-for-coding)
+        \\  KIMIZ_MODEL        Default model (default: k2p5)
         \\  KIMI_API_KEY       Kimi API key (recommended)
         \\  OPENAI_API_KEY     OpenAI API key
         \\  ANTHROPIC_API_KEY  Anthropic API key

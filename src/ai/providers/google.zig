@@ -423,7 +423,7 @@ fn appendJsonStr(buf: *std.ArrayList(u8), allocator: std.mem.Allocator, s: []con
 // ============================================================================
 
 fn parseResponse(allocator: std.mem.Allocator, body: []const u8) !core.AssistantMessage {
-    const parsed = try std.json.parseFromSlice(GoogleResponse, allocator, body, .{});
+    const parsed = try std.json.parseFromSlice(GoogleResponse, allocator, body, .{ .ignore_unknown_fields = true });
     defer parsed.deinit();
 
     const response = parsed.value;
