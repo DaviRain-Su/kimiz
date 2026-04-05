@@ -274,41 +274,6 @@ fn cmdSkill(ctx: *SlashContext, args: []const u8) !void {
     }
 }
 
-fn cmdSettings(ctx: *SlashContext, _: []const u8) !void {
-    ctx.printLine("\n╔════════════════════════════════════════════════════════════╗");
-    ctx.printLine("║                    Current Settings                        ║");
-    ctx.printLine("╚════════════════════════════════════════════════════════════╝");
-
-    const model = try std.fmt.allocPrint(ctx.allocator, "  Model:        {s}", .{ctx.cfg.default_model});
-    defer ctx.allocator.free(model);
-    ctx.printLine(model);
-
-    const temp = try std.fmt.allocPrint(ctx.allocator, "  Temperature:  {d:.2}", .{ctx.cfg.default_temperature});
-    defer ctx.allocator.free(temp);
-    ctx.printLine(temp);
-
-    const yolo = try std.fmt.allocPrint(ctx.allocator, "  YOLO mode:    {s}", .{if (ctx.cfg.yolo_mode) "ON" else "OFF"});
-    defer ctx.allocator.free(yolo);
-    ctx.printLine(yolo);
-
-    const tok = try std.fmt.allocPrint(
-        ctx.allocator,
-        "  Token opt:    {s} ({s})",
-        .{
-            if (ctx.cfg.token_optimization.enabled) "ON" else "OFF",
-            @tagName(ctx.cfg.token_optimization.strategy),
-        },
-    );
-    defer ctx.allocator.free(tok);
-    ctx.printLine(tok);
-
-    const has_key = try std.fmt.allocPrint(ctx.allocator, "  API keys:     {s}", .{if (ctx.cfg.hasAnyApiKey()) "configured" else "missing"});
-    defer ctx.allocator.free(has_key);
-    ctx.printLine(has_key);
-
-    ctx.printLine("");
-}
-
 // ============================================================================
 // Tests
 // ============================================================================
