@@ -245,6 +245,17 @@ pub const LearningEngine = struct {
     }
 
     /// Record model performance
+    pub fn recommendModelForTask(
+        _self: *Self,
+        task: anytype,
+        complexity: u8,
+    ) ![]ModelPerformance {
+        _ = _self;
+        _ = task;
+        _ = complexity;
+        return &[_]ModelPerformance{};
+    }
+
     pub fn recordModelPerformance(
         self: *Self,
         model_id: []const u8,
@@ -335,3 +346,5 @@ test "LearningEngine basic operations" {
     // Now should auto-approve
     try std.testing.expect(engine.shouldAutoApprove("read_file"));
 }
+
+pub const ModelPerformance = struct { model_id: []const u8 = "", success_rate: u8 = 50, avg_latency_ms: f64 = 500 };

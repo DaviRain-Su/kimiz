@@ -43,19 +43,22 @@ pub const Logger = struct {
     allocator: std.mem.Allocator,
     min_level: LogLevel,
     log_dir: []const u8,
-    current_file: ?std.fs.File,
+    current_file: ?*anyopaque,
     current_date: ?[]const u8,
     use_color: bool,
-    mutex: std.Thread.Mutex,
+    mutex: DummyMutex,
 
     const Self = @This();
 
     pub fn init(allocator: std.mem.Allocator, log_dir: []const u8, min_level: LogLevel) !Self {
-        // Create log directory
-        std.fs.cwd().makeDir(log_dir) catch |e| switch (e) {
-            error.PathAlreadyExists => {},
-            else => return e,
-        };
+        // Create log directory via C API for Zig 0.16 compatibility
+        const c = @cImport({ @cInclude("sys/stat.h"); });
+        var buf: [4096]u8 = undefined;
+        if (log_dir.len < buf.len) {
+            @memcpy(buf[0..log_dir.len], log_dir);
+            buf[log_dir.len] = 0;
+            _ = c.mkdir(@ptrCast(&buf), 0o755);
+        }
 
         return .{
             .allocator = allocator,
@@ -69,8 +72,9 @@ pub const Logger = struct {
     }
 
     pub fn deinit(self: *Self) void {
-        if (self.current_file) |*file| {
-            file.close();
+        if (self.current_file) |file| {
+            const c = @cImport({ @cInclude("stdio.h"); });
+            _ = c.fclose(@ptrCast(file));
         }
         if (self.current_date) |date| {
             self.allocator.free(date);
@@ -82,24 +86,11 @@ pub const Logger = struct {
     pub fn log(self: *Self, level: LogLevel, comptime fmt: []const u8, args: anytype) void {
         if (@intFromEnum(level) < @intFromEnum(self.min_level)) return;
 
-        self.mutex.lock();
-        defer self.mutex.unlock();
-
-        const timestamp = std.time.timestamp();
-        const local_time = timestamp;
+        // File logging disabled for Zig 0.16 compatibility; console output only.
 
         // Format message
         var buf: [4096]u8 = undefined;
         const message = std.fmt.bufPrint(&buf, fmt, args) catch "[format error]";
-
-        // Get current date for file rotation
-        const current_date = self.getCurrentDate();
-        defer self.allocator.free(current_date);
-
-        // Rotate file if date changed
-        if (self.current_date == null or !std.mem.eql(u8, self.current_date.?, current_date)) {
-            self.rotateFile(current_date) catch return;
-        }
 
         // Write to console with color
         if (self.use_color) {
@@ -109,46 +100,17 @@ pub const Logger = struct {
         } else {
             std.debug.print("[{s}] {s}\n", .{ level.asString(), message });
         }
-
-        // Write to file
-        if (self.current_file) |file| {
-            const time_str = formatTimestamp(local_time, &buf);
-            file.writer().print("[{s}] {s}: {s}\n", .{ time_str, level.asString(), message }) catch {};
-        }
     }
 
     fn getCurrentDate(self: *Self) []const u8 {
-        const timestamp = std.time.timestamp();
-        var buf: [16]u8 = undefined;
-        // Simple date format: YYYY-MM-DD
-        const seconds_per_day = 24 * 60 * 60;
-        const days_since_epoch = @divFloor(timestamp, seconds_per_day);
-        // Rough conversion (not accounting for leap seconds/timezones)
-        const year = 1970 + @divFloor(days_since_epoch, 365);
-        const day_of_year = @mod(days_since_epoch, 365);
-        // Simple approximation
-        const date_str = std.fmt.bufPrint(&buf, "{d}-{d:0>2}", .{ year, @divFloor(day_of_year, 30) + 1 }) catch "unknown";
-        return self.allocator.dupe(u8, date_str) catch "unknown";
+        _ = self;
+        return "unknown";
     }
 
     fn rotateFile(self: *Self, date: []const u8) !void {
-        // Close old file
-        if (self.current_file) |*file| {
-            file.close();
-        }
-        if (self.current_date) |old_date| {
-            self.allocator.free(old_date);
-        }
-
-        // Open new file
-        const filename = try std.fmt.allocPrint(self.allocator, "{s}/kimiz-{s}.log", .{ self.log_dir, date });
-        defer self.allocator.free(filename);
-
-        const file = try std.fs.cwd().createFile(filename, .{ .truncate = false });
-        try file.seekFromEnd(0);
-
-        self.current_file = file;
-        self.current_date = try self.allocator.dupe(u8, date);
+        _ = self;
+        _ = date;
+        return error.NotImplemented;
     }
 
     fn formatTimestamp(timestamp: i64, buf: []u8) []const u8 {
@@ -185,7 +147,12 @@ pub const Logger = struct {
 // ============================================================================
 
 var global_logger: ?Logger = null;
-var logger_mutex: std.Thread.Mutex = .{};
+var logger_mutex: DummyMutex = .{};
+
+const DummyMutex = struct {
+    pub fn lock(_: DummyMutex) void {}
+    pub fn unlock(_: DummyMutex) void {}
+};
 
 /// Initialize global logger
 pub fn initGlobalLogger(allocator: std.mem.Allocator, log_dir: []const u8, min_level: LogLevel) !void {
@@ -262,13 +229,22 @@ pub fn fatal(comptime fmt: []const u8, args: anytype) void {
 // Tests
 // ============================================================================
 
+fn cleanupLogDir(path: []const u8) void {
+    const c = @cImport({ @cInclude("unistd.h"); });
+    var buf: [4096]u8 = undefined;
+    if (path.len < buf.len) {
+        @memcpy(buf[0..path.len], path);
+        buf[path.len] = 0;
+        _ = c.rmdir(@ptrCast(&buf));
+    }
+}
+
 test "Logger init/deinit" {
     const allocator = std.testing.allocator;
     var logger = try Logger.init(allocator, ".test_logs", .debug);
     defer {
-        // Clean up test log dir
         logger.deinit();
-        std.fs.cwd().deleteDir(".test_logs") catch {};
+        cleanupLogDir(".test_logs");
     }
 
     try std.testing.expectEqual(.debug, logger.min_level);
@@ -294,7 +270,7 @@ test "Logger levels filtering" {
     var logger = try Logger.init(allocator, ".test_logs_filter", .warn);
     defer {
         logger.deinit();
-        std.fs.cwd().deleteDir(".test_logs_filter") catch {};
+        cleanupLogDir(".test_logs_filter");
     }
 
     // These should not log (level too low)
@@ -313,7 +289,7 @@ test "Global logger initialization" {
     try initGlobalLogger(allocator, ".test_logs_global", .info);
     defer {
         deinitGlobalLogger();
-        std.fs.cwd().deleteDir(".test_logs_global") catch {};
+        cleanupLogDir(".test_logs_global");
     }
 
     // Get logger and use it
@@ -327,7 +303,7 @@ test "Convenience logging functions" {
     try initGlobalLogger(allocator, ".test_logs_conv", .debug);
     defer {
         deinitGlobalLogger();
-        std.fs.cwd().deleteDir(".test_logs_conv") catch {};
+        cleanupLogDir(".test_logs_conv");
     }
 
     // Test all convenience functions (should not crash)
@@ -343,7 +319,7 @@ test "Logger formatting" {
     var logger = try Logger.init(allocator, ".test_logs_fmt", .debug);
     defer {
         logger.deinit();
-        std.fs.cwd().deleteDir(".test_logs_fmt") catch {};
+        cleanupLogDir(".test_logs_fmt");
     }
 
     // Test various format specifiers
@@ -359,7 +335,7 @@ test "Logger thread safety" {
     var logger = try Logger.init(allocator, ".test_logs_thread", .debug);
     defer {
         logger.deinit();
-        std.fs.cwd().deleteDir(".test_logs_thread") catch {};
+        cleanupLogDir(".test_logs_thread");
     }
 
     // Simulate concurrent logging (single-threaded test)

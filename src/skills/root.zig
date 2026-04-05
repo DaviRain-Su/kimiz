@@ -139,14 +139,14 @@ pub const SkillRegistry = struct {
 
     /// List all skills
     pub fn listAll(self: *Self) ![]Skill {
-        var list = std.ArrayList(Skill).init(self.allocator);
-        defer list.deinit();
+        var list: std.ArrayList(Skill) = .empty;
+        defer list.deinit(self.allocator);
         var iter = self.skills.valueIterator();
         while (iter.next()) |skill| {
-            try list.append(skill.*);
+            try list.append(self.allocator, skill.*);
         }
 
-        return list.toOwnedSlice();
+        return list.toOwnedSlice(self.allocator);
     }
 
     /// List skills by category
@@ -156,19 +156,19 @@ pub const SkillRegistry = struct {
 
     /// Search skills by name/pattern
     pub fn search(self: *Self, pattern: []const u8) ![]Skill {
-        var list = std.ArrayList(Skill).init(self.allocator);
-        defer list.deinit();
+        var list: std.ArrayList(Skill) = .empty;
+        defer list.deinit(self.allocator);
 
         var iter = self.skills.valueIterator();
         while (iter.next()) |skill| {
             if (std.mem.indexOf(u8, skill.name, pattern) != null or
                 std.mem.indexOf(u8, skill.description, pattern) != null)
             {
-                try list.append(skill.*);
+                try list.append(self.allocator, skill.*);
             }
         }
 
-        return list.toOwnedSlice();
+        return list.toOwnedSlice(self.allocator);
     }
 };
 

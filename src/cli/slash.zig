@@ -98,6 +98,24 @@ pub const registry = &[_]SlashCommand{
         .usage = "/skill <skill_id> [param=value...]",
         .handler = cmdSkill,
     },
+    .{
+        .name = "sessions",
+        .description = "List saved sessions",
+        .usage = "/sessions",
+        .handler = cmdSessions,
+    },
+    .{
+        .name = "resume",
+        .description = "Resume a saved session by ID",
+        .usage = "/resume <session_id>",
+        .handler = cmdResume,
+    },
+    .{
+        .name = "title",
+        .description = "Set current session title",
+        .usage = "/title <new_title>",
+        .handler = cmdTitle,
+    },
 };
 
 /// Look up a slash command by name
@@ -273,6 +291,71 @@ fn cmdSkill(ctx: *SlashContext, args: []const u8) !void {
             ctx.print("Error: ");
             ctx.printLine(err);
         }
+    }
+}
+
+fn cmdSessions(ctx: *SlashContext, _: []const u8) !void {
+    const home_dir = if (std.c.getenv("HOME")) |ptr| std.mem.sliceTo(ptr, 0) else {
+        ctx.printLine("❌ Could not determine HOME");
+        return;
+    };
+    const dir_path = try std.fmt.allocPrint(ctx.allocator, "{s}/.kimiz/sessions", .{home_dir});
+    defer ctx.allocator.free(dir_path);
+    const cmd = try std.fmt.allocPrint(ctx.allocator, "ls {s}/*.json 2>/dev/null", .{dir_path});
+    defer ctx.allocator.free(cmd);
+    const cc = @cImport({ @cInclude("stdio.h"); });
+    const c_cmd = try ctx.allocator.dupeZ(u8, cmd);
+    defer ctx.allocator.free(c_cmd);
+    const pipe = cc.popen(c_cmd.ptr, "r") orelse {
+        ctx.printLine("No sessions found.");
+        return;
+    };
+    defer _ = cc.pclose(pipe);
+    var buf: [4096]u8 = undefined;
+    var any = false;
+    ctx.printLine("Saved sessions:");
+    while (cc.fgets(&buf, buf.len, pipe)) |line| {
+        const entry = std.mem.trim(u8, std.mem.sliceTo(line, 0), "\n");
+        if (entry.len == 0) continue;
+        const basename = std.fs.path.basename(entry);
+        if (basename.len > 5 and std.mem.endsWith(u8, basename, ".json")) {
+            const sid = basename[0..(basename.len - 5)];
+            const msg = try std.fmt.allocPrint(ctx.allocator, "  - {s}", .{sid});
+            defer ctx.allocator.free(msg);
+            ctx.printLine(msg);
+            any = true;
+        }
+    }
+    if (!any) ctx.printLine("  (none)");
+}
+
+fn cmdResume(ctx: *SlashContext, args: []const u8) !void {
+    if (args.len == 0) { ctx.printLine("Usage: /resume <session_id>"); return; }
+    ctx.agent.restoreSession(args) catch |err| {
+        const msg = try std.fmt.allocPrint(ctx.allocator, "❌ Failed to resume session: {s}", .{@errorName(err)});
+        defer ctx.allocator.free(msg);
+        ctx.printLine(msg);
+        return;
+    };
+    const msg = try std.fmt.allocPrint(ctx.allocator, "🔄 Resumed session: {s}", .{args});
+    defer ctx.allocator.free(msg);
+    ctx.printLine(msg);
+}
+
+fn cmdTitle(ctx: *SlashContext, args: []const u8) !void {
+    if (args.len == 0) { ctx.printLine("Usage: /title <new_title>"); return; }
+    if (ctx.agent.session_manager.getCurrentSession()) |sid| {
+        ctx.agent.session_manager.renameSession(sid, args) catch |err| {
+            const msg = try std.fmt.allocPrint(ctx.allocator, "❌ Failed to rename session: {s}", .{@errorName(err)});
+            defer ctx.allocator.free(msg);
+            ctx.printLine(msg);
+            return;
+        };
+        const msg = try std.fmt.allocPrint(ctx.allocator, "✅ Session title set to: {s}", .{args});
+        defer ctx.allocator.free(msg);
+        ctx.printLine(msg);
+    } else {
+        ctx.printLine("❌ No active session. Send a message first.");
     }
 }
 

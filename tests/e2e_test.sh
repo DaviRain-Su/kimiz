@@ -84,6 +84,36 @@ echo "Test 6: Binary execution"
 timeout 1 $KIMIZ repl <<< "exit" 2>/dev/null || true
 echo -e "${GREEN}✓ Binary executes without crash${NC}"
 
+# Test 7: Slash commands in REPL
+echo ""
+echo "Test 7: Slash command /help"
+if printf '/help\n/exit\n' | $KIMIZ repl 2>&1 | grep -q "Available Slash Commands"; then
+    echo -e "${GREEN}✓ /help slash command works${NC}"
+else
+    echo -e "${RED}✗ /help slash command failed${NC}"
+    exit 1
+fi
+
+# Test 8: Slash command /yolo
+echo ""
+echo "Test 8: Slash command /yolo"
+if printf '/yolo on\n/exit\n' | $KIMIZ repl 2>&1 | grep -q "YOLO mode enabled"; then
+    echo -e "${GREEN}✓ /yolo slash command works${NC}"
+else
+    echo -e "${RED}✗ /yolo slash command failed${NC}"
+    exit 1
+fi
+
+# Test 9: Slash command /token
+echo ""
+echo "Test 9: Slash command /token"
+if printf '/token strategy aggressive\n/exit\n' | $KIMIZ repl 2>&1 | grep -q "Token strategy set to: aggressive"; then
+    echo -e "${GREEN}✓ /token slash command works${NC}"
+else
+    echo -e "${RED}✗ /token slash command failed${NC}"
+    exit 1
+fi
+
 # Summary
 echo ""
 echo "=========================================="

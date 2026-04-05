@@ -51,7 +51,7 @@ pub const SessionManager = struct {
         return .{
             .allocator = allocator,
             .sessions = std.StringHashMap(Session).init(allocator),
-            .messages = std.ArrayList(SessionMessage).init(allocator),
+            .messages = .empty,
             .current_session_id = null,
         };
     }
@@ -65,7 +65,9 @@ pub const SessionManager = struct {
 
         var value_iter = self.sessions.valueIterator();
         while (value_iter.next()) |value| {
+            self.allocator.free(value.id);
             self.allocator.free(value.name);
+            self.allocator.free(value.model_id);
         }
 
         self.sessions.deinit();
@@ -77,7 +79,7 @@ pub const SessionManager = struct {
             self.allocator.free(msg.content);
             if (msg.metadata) |m| self.allocator.free(m);
         }
-        self.messages.deinit();
+        self.messages.deinit(self.allocator);
     }
 
     // -------------------------------------------------------------------------
@@ -141,12 +143,12 @@ pub const SessionManager = struct {
 
     /// List all sessions
     pub fn listSessions(self: *Self) ![]Session {
-        var list = std.ArrayList(Session).init(self.allocator);
-        defer list.deinit();
+        var list: std.ArrayList(Session) = .empty;
+        defer list.deinit(self.allocator);
 
         var iter = self.sessions.valueIterator();
         while (iter.next()) |value| {
-            try list.append(value.*);
+            try list.append(self.allocator, value.*);
         }
 
         // Sort by updated_at descending
@@ -156,7 +158,7 @@ pub const SessionManager = struct {
             }
         }.lessThan);
 
-        return list.toOwnedSlice();
+        return list.toOwnedSlice(self.allocator);
     }
 
     /// Rename a session
@@ -219,7 +221,7 @@ pub const SessionManager = struct {
             .metadata = if (metadata) |m| try self.allocator.dupe(u8, m) else null,
         };
 
-        try self.messages.append(msg);
+        try self.messages.append(self.allocator, msg);
 
         // Update session stats
         if (self.sessions.getPtr(session_id)) |session| {
@@ -234,12 +236,12 @@ pub const SessionManager = struct {
     pub fn getMessages(self: *Self, session_id: SessionId) ![]SessionMessage {
         if (!self.sessions.contains(session_id)) return error.SessionNotFound;
 
-        var list = std.ArrayList(SessionMessage).init(self.allocator);
-        defer list.deinit();
+        var list: std.ArrayList(SessionMessage) = .empty;
+        defer list.deinit(self.allocator);
 
         for (self.messages.items) |msg| {
             if (std.mem.eql(u8, msg.session_id, session_id)) {
-                try list.append(msg);
+                try list.append(self.allocator, msg);
             }
         }
 
@@ -250,7 +252,7 @@ pub const SessionManager = struct {
             }
         }.lessThan);
 
-        return list.toOwnedSlice();
+        return list.toOwnedSlice(self.allocator);
     }
 
     /// Clear all messages in a session
@@ -325,6 +327,46 @@ pub const SessionManager = struct {
         return new_id;
     }
 
+    /// Restore session from JSON (preserves original ID and name)
+    pub fn restoreSessionFromJson(self: *Self, json: []const u8) !SessionId {
+        const ImportData = struct {
+            session: Session,
+            messages: []SessionMessage,
+        };
+
+        const parsed = try std.json.parseFromSlice(ImportData, self.allocator, json, .{
+            .ignore_unknown_fields = true,
+        });
+        defer parsed.deinit();
+
+        const data = parsed.value;
+        const sid = data.session.id;
+
+        // If a session with this ID already exists, remove it first
+        if (self.sessions.contains(sid)) {
+            try self.deleteSession(sid);
+        }
+
+        // Re-create with original metadata
+        const session = Session{
+            .id = try self.allocator.dupe(u8, sid),
+            .name = try self.allocator.dupe(u8, data.session.name),
+            .model_id = try self.allocator.dupe(u8, data.session.model_id),
+            .created_at = data.session.created_at,
+            .updated_at = data.session.updated_at,
+            .message_count = 0,
+        };
+        try self.sessions.put(session.id, session);
+        self.current_session_id = session.id;
+
+        // Restore messages
+        for (data.messages) |msg| {
+            _ = try self.addMessage(session.id, msg.role, msg.content, msg.metadata);
+        }
+
+        return session.id;
+    }
+
     // -------------------------------------------------------------------------
     // Stats
     // -------------------------------------------------------------------------
@@ -344,7 +386,8 @@ pub const SessionManager = struct {
 
 fn generateSessionId(allocator: std.mem.Allocator) ![]const u8 {
     const timestamp = utils.milliTimestamp();
-    const random = std.crypto.random.int(u32);
+    var prng = std.Random.DefaultPrng.init(@intCast(utils.milliTimestamp()));
+    const random = prng.random().int(u32);
     return try std.fmt.allocPrint(allocator, "sess-{x}-{x}", .{ timestamp, random });
 }
 

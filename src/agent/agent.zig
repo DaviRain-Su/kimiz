@@ -14,6 +14,7 @@ const skills = @import("../skills/root.zig");
 const memory = @import("../memory/root.zig");
 const learning = @import("../learning/root.zig");
 const harness_tool_approval = @import("../harness/tool_approval.zig");
+const session_mgmt = @import("../utils/session.zig");
 const Message = core.Message;
 const Context = core.Context;
 const AssistantMessage = core.AssistantMessage;
@@ -46,6 +47,23 @@ pub const ToolCallResult = struct {
     result: ToolResult,
     execution_time_ms: u64,
 };
+
+fn ensureDirExists(path: []const u8) !void {
+    const c = @cImport({ @cInclude("sys/stat.h"); @cInclude("string.h"); });
+    if (path.len == 0) return;
+    var buf: [std.fs.max_path_bytes]u8 = undefined;
+    @memcpy(buf[0..path.len], path);
+    buf[path.len] = 0;
+    var i: usize = 0;
+    while (i < path.len) : (i += 1) {
+        if (path[i] == '/' and i > 0) {
+            buf[i] = 0;
+            _ = c.mkdir(@ptrCast(&buf), 0o755);
+            buf[i] = '/';
+        }
+    }
+    _ = c.mkdir(@ptrCast(&buf), 0o755);
+}
 
 // ============================================================================
 // Agent State
@@ -95,6 +113,9 @@ pub const Agent = struct {
     memory_manager: ?memory.MemoryManager,
     learning_engine: ?learning.LearningEngine,
     approval_manager: harness_tool_approval.ApprovalManager,
+    session_manager: session_mgmt.SessionManager,
+    session_store_dir: ?[]const u8,
+    session_id: ?[]const u8,
 
     const Self = @This();
 
@@ -125,6 +146,15 @@ pub const Agent = struct {
         else
             .moderate;
 
+        const session_manager = session_mgmt.SessionManager.init(allocator);
+        const home_dir_maybe: ?[]const u8 = if (std.c.getenv("HOME")) |ptr| std.mem.sliceTo(ptr, 0) else null;
+        const store_dir = if (home_dir_maybe) |h| try std.fs.path.join(allocator, &.{ h, ".kimiz", "sessions" }) else null;
+        if (store_dir) |dir| { try ensureDirExists(dir); }
+        const session_store_dir = if (store_dir) |d| blk: {
+            const copy = try allocator.dupe(u8, d);
+            allocator.free(d);
+            break :blk copy;
+        } else null;
         return .{
             .allocator = allocator,
             .options = options,
@@ -137,29 +167,154 @@ pub const Agent = struct {
             .memory_manager = memory_manager,
             .learning_engine = learning_engine,
             .approval_manager = harness_tool_approval.ApprovalManager.init(allocator, approval_policy),
+            .session_manager = session_manager,
+            .session_store_dir = session_store_dir,
+            .session_id = null,
         };
     }
 
     pub fn deinit(self: *Self) void {
-        for (self.messages.items) |msg| {
-            msg.deinit(self.allocator);
-        }
+        self.saveSession() catch |err| { std.log.warn("Failed to save session: {s}", .{@errorName(err)}); };
+        for (self.messages.items) |msg| { msg.deinit(self.allocator); }
         self.messages.deinit(self.allocator);
         if (self.tool_defs_cache.len > 0) self.allocator.free(self.tool_defs_cache);
         self.ai_client.deinit();
         self.skill_registry.deinit();
-        if (self.memory_manager) |*mm| {
-            mm.deinit();
-        }
-        if (self.learning_engine) |*le| {
-            le.deinit();
-        }
+        if (self.memory_manager) |*mm| { mm.deinit(); }
+        if (self.learning_engine) |*le| { le.deinit(); }
         self.approval_manager.deinit();
+        self.session_manager.deinit();
+        if (self.session_store_dir) |dir| self.allocator.free(dir);
+        if (self.session_id) |id| self.allocator.free(id);
     }
 
     /// Set event callback for receiving agent events
     pub fn setEventCallback(self: *Self, callback: *const fn (event: AgentEvent) void) void {
         self.event_callback = callback;
+    }
+
+    pub fn saveSession(self: *Self) !void {
+        if (self.messages.items.len == 0) return;
+        const sid = if (self.session_id) |id| id else blk: {
+            const new_id = try self.session_manager.createSession("Unnamed Session", self.options.model.id);
+            const id_copy = try self.allocator.dupe(u8, new_id);
+            self.session_id = id_copy;
+            self.session_manager.setCurrentSession(new_id) catch {};
+            break :blk new_id;
+        };
+        defer if (self.session_id == null) self.allocator.free(sid);
+        try self.session_manager.clearMessages(sid);
+        for (self.messages.items) |msg| {
+            switch (msg) {
+                .user => |m| {
+                    const text = try self.userMessageToText(m);
+                    defer self.allocator.free(text);
+                    _ = try self.session_manager.addMessage(sid, "user", text, null);
+                },
+                .assistant => |m| {
+                    const text = try self.assistantMessageToText(m);
+                    defer self.allocator.free(text);
+                    _ = try self.session_manager.addMessage(sid, "assistant", text, null);
+                },
+                .tool_result => |m| {
+                    const text = try self.toolResultMessageToText(m);
+                    defer self.allocator.free(text);
+                    _ = try self.session_manager.addMessage(sid, "tool", text, null);
+                },
+            }
+        }
+        if (self.session_store_dir) |dir| {
+            const path = try std.fmt.allocPrint(self.allocator, "{s}/{s}.json", .{ dir, sid });
+            defer self.allocator.free(path);
+            const json = try self.session_manager.exportSessionToJson(sid, self.allocator);
+            defer self.allocator.free(json);
+            const cc = @cImport({ @cInclude("stdio.h"); });
+            const c_path = try self.allocator.dupeZ(u8, path);
+            defer self.allocator.free(c_path);
+            const file = cc.fopen(c_path.ptr, "wb") orelse return error.FileOpenFailed;
+            defer _ = cc.fclose(file);
+            _ = cc.fwrite(json.ptr, 1, json.len, file);
+        }
+    }
+
+    pub fn restoreSession(self: *Self, session_id: []const u8) !void {
+        if (self.session_store_dir == null) return error.NoSessionStore;
+        const path = try std.fmt.allocPrint(self.allocator, "{s}/{s}.json", .{ self.session_store_dir.?, session_id });
+        defer self.allocator.free(path);
+        const cc = @cImport({ @cInclude("stdio.h"); });
+        const c_path = try self.allocator.dupeZ(u8, path);
+        defer self.allocator.free(c_path);
+        const file = cc.fopen(c_path.ptr, "rb") orelse return error.SessionNotFound;
+        defer _ = cc.fclose(file);
+        _ = cc.fseek(file, 0, cc.SEEK_END);
+        const len = @as(usize, @intCast(cc.ftell(file)));
+        _ = cc.fseek(file, 0, cc.SEEK_SET);
+        if (len == 0) return error.EmptySession;
+        const buf = try self.allocator.alloc(u8, len);
+        defer self.allocator.free(buf);
+        _ = cc.fread(buf.ptr, 1, len, file);
+        const loaded_id = try self.session_manager.restoreSessionFromJson(buf);
+        self.session_id = try self.allocator.dupe(u8, loaded_id);
+        const messages = try self.session_manager.getMessages(loaded_id);
+        defer self.allocator.free(messages);
+        for (messages) |msg| {
+            if (std.mem.eql(u8, msg.role, "system")) continue;
+            if (std.mem.eql(u8, msg.role, "user")) {
+                const text = try self.allocator.dupe(u8, msg.content);
+                const content = try self.allocator.alloc(core.UserContentBlock, 1);
+                content[0] = .{ .text = text };
+                try self.messages.append(self.allocator, Message{ .user = .{ .content = content } });
+            } else if (std.mem.eql(u8, msg.role, "assistant")) {
+                const text = try self.allocator.dupe(u8, msg.content);
+                const content = try self.allocator.alloc(core.AssistantContentBlock, 1);
+                content[0] = .{ .text = .{ .text = text } };
+                try self.messages.append(self.allocator, Message{ .assistant = .{ .content = content, .stop_reason = .stop } });
+            } else if (std.mem.eql(u8, msg.role, "tool")) {
+                const text = try self.allocator.dupe(u8, msg.content);
+                const content = try self.allocator.alloc(core.UserContentBlock, 1);
+                content[0] = .{ .text = text };
+                try self.messages.append(self.allocator, Message{ .tool_result = .{ .tool_call_id = "restored", .tool_name = "restored", .content = content } });
+            }
+        }
+    }
+
+    fn userMessageToText(self: *Self, msg: core.UserMessage) ![]u8 {
+        var buf: std.ArrayList(u8) = .empty;
+        defer buf.deinit(self.allocator);
+        for (msg.content) |block| {
+            switch (block) {
+                .text => |t| try buf.appendSlice(self.allocator, t),
+                .image => try buf.appendSlice(self.allocator, "[image]"),
+                .image_url => try buf.appendSlice(self.allocator, "[image_url]"),
+            }
+        }
+        return try self.allocator.dupe(u8, buf.items);
+    }
+
+    fn assistantMessageToText(self: *Self, msg: core.AssistantMessage) ![]u8 {
+        var buf: std.ArrayList(u8) = .empty;
+        defer buf.deinit(self.allocator);
+        for (msg.content) |block| {
+            switch (block) {
+                .text => |t| try buf.appendSlice(self.allocator, t.text),
+                .thinking => try buf.appendSlice(self.allocator, "[thinking]"),
+                .tool_call => try buf.appendSlice(self.allocator, "[tool_call]"),
+            }
+        }
+        return try self.allocator.dupe(u8, buf.items);
+    }
+
+    fn toolResultMessageToText(self: *Self, msg: core.ToolResultMessage) ![]u8 {
+        var buf: std.ArrayList(u8) = .empty;
+        defer buf.deinit(self.allocator);
+        for (msg.content) |block| {
+            switch (block) {
+                .text => |t| try buf.appendSlice(self.allocator, t),
+                .image => try buf.appendSlice(self.allocator, "[image]"),
+                .image_url => try buf.appendSlice(self.allocator, "[image_url]"),
+            }
+        }
+        return try self.allocator.dupe(u8, buf.items);
     }
 
     /// Emit an event

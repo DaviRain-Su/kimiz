@@ -2,11 +2,12 @@
 //! Provides streaming and non-streaming completion APIs
 
 const std = @import("std");
-const core = @import("../core/root.zig");
+pub const core = @import("../core/root.zig");
 const models = @import("models.zig");
 
 pub const types = core;
 pub const models_registry = models;
+pub const routing = @import("routing.zig");
 
 // Re-export common types
 pub const Model = core.Model;

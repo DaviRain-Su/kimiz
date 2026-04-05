@@ -4,6 +4,9 @@ const std = @import("std");
 // Core module - types, session, workspace
 pub const core = @import("core/root.zig");
 
+// AI module - models, providers, routing
+pub const ai = @import("ai/root.zig");
+
 // Utils module - utility functions and compatibility layers
 pub const utils = @import("utils/root.zig");
 
@@ -18,6 +21,9 @@ pub const skills = @import("skills/root.zig");
 
 // Harness module - Harness Engineering Platform
 pub const harness = @import("harness/root.zig");
+
+// CLI module - command-line interface
+pub const cli = @import("cli/root.zig");
 
 // Extension module - WASM-based extension system
 pub const extension = @import("extension/root.zig");

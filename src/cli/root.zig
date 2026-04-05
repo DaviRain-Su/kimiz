@@ -8,7 +8,7 @@ const extension = @import("../extension/root.zig");
 const harness = @import("../harness/root.zig");
 const workspace = @import("../workspace/root.zig");
 const config = @import("../config.zig");
-const slash = @import("slash.zig");
+pub const slash = @import("slash.zig");
 
 const c = @cImport({
     @cInclude("stdio.h");
@@ -145,8 +145,14 @@ pub fn run(
     const args_slice = args_list.items;
 
     // Check for help
-    if (args_slice.len > 1 and (std.mem.eql(u8, args_slice[1], "--help") or std.mem.eql(u8, args_slice[1], "-h"))) {
+    if (args_slice.len > 1 and (std.mem.eql(u8, args_slice[1], "--help") or std.mem.eql(u8, args_slice[1], "-h") or std.mem.eql(u8, args_slice[1], "help"))) {
         printHelp();
+        return;
+    }
+
+    // Check for version
+    if (args_slice.len > 1 and (std.mem.eql(u8, args_slice[1], "--version") or std.mem.eql(u8, args_slice[1], "-v") or std.mem.eql(u8, args_slice[1], "version"))) {
+        printLine("kimiz version 0.3.0");
         return;
     }
 
