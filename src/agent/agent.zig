@@ -149,6 +149,7 @@ pub const Agent = struct {
         else
             .moderate;
 
+        // Session persistence (experimental feature - currently not exposed in CLI)
         const session_manager = session_mgmt.SessionManager.init(allocator);
         const home_dir_maybe: ?[]const u8 = if (std.c.getenv("HOME")) |ptr| std.mem.sliceTo(ptr, 0) else null;
         const store_dir = if (home_dir_maybe) |h| try std.fs.path.join(allocator, &.{ h, ".kimiz", "sessions" }) else null;
