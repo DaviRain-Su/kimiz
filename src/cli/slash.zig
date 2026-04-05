@@ -116,6 +116,12 @@ pub const registry = &[_]SlashCommand{
         .usage = "/title <new_title>",
         .handler = cmdTitle,
     },
+    .{
+        .name = "plan",
+        .description = "Toggle Plan mode (read-only exploration)",
+        .usage = "/plan [on|off]",
+        .handler = cmdPlan,
+    },
 };
 
 /// Look up a slash command by name
@@ -357,6 +363,22 @@ fn cmdTitle(ctx: *SlashContext, args: []const u8) !void {
     } else {
         ctx.printLine("❌ No active session. Send a message first.");
     }
+}
+
+fn cmdPlan(ctx: *SlashContext, args: []const u8) !void {
+    var new_state: ?bool = null;
+    if (std.mem.eql(u8, args, "on")) new_state = true;
+    if (std.mem.eql(u8, args, "off")) new_state = false;
+
+    if (new_state) |state| {
+        ctx.agent.options.plan_mode = state;
+    } else {
+        ctx.agent.options.plan_mode = !ctx.agent.options.plan_mode;
+    }
+    ctx.agent.clearToolDefsCache();
+    const msg = try std.fmt.allocPrint(ctx.allocator, "✅ Plan mode {s}", .{if (ctx.agent.options.plan_mode) "enabled" else "disabled"});
+    defer ctx.allocator.free(msg);
+    ctx.printLine(msg);
 }
 
 // ============================================================================

@@ -328,16 +328,23 @@ pub const Agent = struct {
     pub fn prompt(self: *Self, user_content: []const u8) !void {
         // Inject system prompt on first message
         if (self.messages.items.len == 0) {
-            const system_text = try std.fmt.allocPrint(self.allocator,
-                \\You are Kimiz, an AI coding assistant. You have access to tools for reading, writing, and editing files, running shell commands, and searching code.
-                \\When asked to modify code, use the edit tool with exact old_string/new_string matches.
-                \\When asked to read files, use absolute paths.
-                \\Working directory: {s}
-                \\\n\n{s}
-            , .{
-                self.options.project_path orelse ".",
-                user_content,
-            });
+            const system_text = if (self.options.plan_mode)
+                try std.fmt.allocPrint(self.allocator,
+                    \\You are Kimiz in PLAN MODE. Your job is to EXPLORE the codebase using ONLY read-only tools.
+                    \\Allowed tools: read_file, fff_grep, fff_file_search, git_status, git_diff, git_log.
+                    \\You MUST NOT use write_file, edit, or bash.
+                    \\After exploring, provide a detailed step-by-step Markdown plan.
+                    \\Working directory: {s}
+                    \\\n\nUser request: {s}
+                , .{ self.options.project_path orelse ".", user_content })
+            else
+                try std.fmt.allocPrint(self.allocator,
+                    \\You are Kimiz, an AI coding assistant. You have access to tools for reading, writing, and editing files, running shell commands, and searching code.
+                    \\When asked to modify code, use the edit tool with exact old_string/new_string matches.
+                    \\When asked to read files, use absolute paths.
+                    \\Working directory: {s}
+                    \\\n\n{s}
+                , .{ self.options.project_path orelse ".", user_content });
             const content = try self.allocator.alloc(core.UserContentBlock, 1);
             content[0] = .{ .text = system_text };
             const user_msg = Message{
@@ -464,6 +471,9 @@ pub const Agent = struct {
             } else {
                 // No tool calls, we're done
                 self.state = .completed;
+                self.savePlan() catch |err| {
+                    std.log.warn("Failed to save plan: {s}", .{@errorName(err)});
+                };
                 self.emit(.done);
                 break;
             }
@@ -637,6 +647,15 @@ pub const Agent = struct {
 
         var defs: std.ArrayList(core.Tool) = .empty;
         for (self.options.tools) |agent_tool| {
+            if (self.options.plan_mode) {
+                const is_readonly = std.mem.eql(u8, agent_tool.tool.name, "read_file") or
+                    std.mem.eql(u8, agent_tool.tool.name, "fff_grep") or
+                    std.mem.eql(u8, agent_tool.tool.name, "fff_file_search") or
+                    std.mem.eql(u8, agent_tool.tool.name, "git_status") or
+                    std.mem.eql(u8, agent_tool.tool.name, "git_diff") or
+                    std.mem.eql(u8, agent_tool.tool.name, "git_log");
+                if (!is_readonly) continue;
+            }
             defs.append(self.allocator, .{
                 .name = agent_tool.tool.name,
                 .description = agent_tool.tool.description,
@@ -645,6 +664,34 @@ pub const Agent = struct {
         }
         self.tool_defs_cache = defs.toOwnedSlice(self.allocator) catch &[_]core.Tool{};
         return self.tool_defs_cache;
+    }
+
+    /// Clear cached tool definitions (call after changing plan_mode or yolo_mode)
+    pub fn clearToolDefsCache(self: *Self) void {
+        if (self.tool_defs_cache.len > 0) {
+            self.allocator.free(self.tool_defs_cache);
+            self.tool_defs_cache = &[_]core.Tool{};
+        }
+    }
+
+    /// Save the final assistant message to plan.md when in plan mode
+    pub fn savePlan(self: *Self) !void {
+        if (!self.options.plan_mode) return;
+        if (self.messages.items.len == 0) return;
+        const last_msg = self.messages.items[self.messages.items.len - 1];
+        const plan_text = switch (last_msg) {
+            .assistant => |m| try self.assistantMessageToText(m),
+            else => return,
+        };
+        defer self.allocator.free(plan_text);
+        const path = try std.fmt.allocPrint(self.allocator, "{s}/plan.md", .{self.options.project_path orelse "."});
+        defer self.allocator.free(path);
+        const cc = @cImport({ @cInclude("stdio.h"); });
+        const c_path = try self.allocator.dupeZ(u8, path);
+        defer self.allocator.free(c_path);
+        const file = cc.fopen(c_path.ptr, "wb") orelse return error.FileOpenFailed;
+        defer _ = cc.fclose(file);
+        _ = cc.fwrite(plan_text.ptr, 1, plan_text.len, file);
     }
 
     /// Execute a skill with given arguments
