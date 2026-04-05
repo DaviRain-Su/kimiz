@@ -74,11 +74,11 @@ const CompressionStrategy = enum {
     }
 
     fn toRTKFlag(self: CompressionStrategy) ?[]const u8 {
-        return switch (self) {
-            .conservative => null, // rtk default
-            .balanced => null, // rtk default
-            .aggressive => "-l", // rtk aggressive flag
-        };
+        // Note: rtk doesn't have a global strategy flag
+        // Each subcommand has its own flags (e.g., -u for git status)
+        // For now, we use rtk's default optimizations for all strategies
+        _ = self;
+        return null;
     }
 };
 
@@ -154,17 +154,12 @@ fn executeRTKCommand(
     }
     
     // Build rtk command
-    try cmd_buf.appendSlice(allocator, "rtk");
+    try cmd_buf.appendSlice(allocator, "rtk ");
     
-    // Add strategy flag if needed
-    if (strategy.toRTKFlag()) |flag| {
-        try cmd_buf.appendSlice(allocator, " ");
-        try cmd_buf.appendSlice(allocator, flag);
-        try cmd_buf.appendSlice(allocator, " aggressive");
-    }
-    
-    // Add the actual command
-    try cmd_buf.appendSlice(allocator, " ");
+    // Add the actual command (rtk uses default optimizations)
+    // TODO: Future enhancement - add command-specific flags based on strategy
+    // e.g., "git status" + aggressive → "rtk git status -u"
+    _ = strategy; // unused for now
     try cmd_buf.appendSlice(allocator, command);
     try cmd_buf.appendSlice(allocator, " 2>&1");
     

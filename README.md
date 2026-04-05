@@ -125,6 +125,33 @@ export KIMI_API_KEY="..."
 
 ## 🎯 Features
 
+### Token Optimization 🔥
+
+kimiz integrates [rtk](https://github.com/rtk-ai/rtk) for intelligent command output compression, reducing LLM token consumption by **60-90%**:
+
+```bash
+# Standard git status: ~2,000 tokens
+# RTK optimized: ~200 tokens (-90%)
+kimiz skill rtk-optimize command="git status"
+
+#Output:
+📌 main...origin/main [ahead 6]
+📝 Modified: 4 files
+   src/agent/agent.zig
+   src/skills/builtin.zig
+   ...
+```
+
+**Supported Commands**: git, ls, find, grep, tests (cargo/npm/pytest/go), linters (tsc/eslint/clippy), and 100+ more.
+
+**Installation**:
+```bash
+brew install rtk
+# or download from https://github.com/rtk-ai/rtk/releases
+```
+
+See [RTK Skill Documentation](docs/skills/rtk-optimize.md) for details.
+
 ### Built-in Skills
 
 kimiz comes with powerful built-in skills:
