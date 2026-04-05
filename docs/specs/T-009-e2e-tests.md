@@ -7,6 +7,14 @@
 
 ---
 
+## 参考文档
+
+- [TigerBeetle Patterns](../TIGERBEETLE-PATTERNS-ANALYSIS.md) - Zig 测试与资源管理原则
+- [NullClaw Lessons](../NULLCLAW-LESSONS-QUICKREF.md) - 可观测性与边界测试思想
+- [Zbench Benchmark Testing](../research/zbench-benchmark-testing-analysis.md) - Zig 测试框架生态
+
+---
+
 ## 背景
 
 当前项目的测试覆盖率极低。`zig build test` 虽然能运行（在编译修复后），但现有测试主要集中在底层模块的孤立单元测试上，缺乏对 **AI Provider 解析**、**Agent 工具调用**、**Agent Loop 基础流程** 的端到端验证。

@@ -7,6 +7,13 @@
 
 ---
 
+## 参考文档
+
+- [SUBAGENT-ARCHITECTURE-AND-IMPLEMENTATION-PLAN](../design/SUBAGENT-ARCHITECTURE-AND-IMPLEMENTATION-PLAN.md) - delegate 工具集成详细设计
+- [NullClaw Lessons](../NULLCLAW-LESSONS-QUICKREF.md) - 工具安全边界与错误恢复
+
+---
+
 ## 背景
 
 Commit `9a24161` (`feat: register delegate subagent tool into main Agent loop`) 已经将 `delegate` 工具注册到主 Agent 的工具列表中。但由于后续代码改用了 Zig 0.16 API，导致项目无法编译，**这一功能从未被实际验证过**。

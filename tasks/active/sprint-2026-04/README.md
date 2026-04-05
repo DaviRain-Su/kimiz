@@ -31,4 +31,5 @@
 
 - **路线图**: `docs/ROADMAP-v2.md`
 - **特性清单**: `docs/FEATURES.md`
+- **实现参考索引**: `docs/DESIGN-REFERENCES.md`（执行任务前必读）
 - **Agent 入口**: `AGENT-ENTRYPOINT.md`

@@ -7,6 +7,13 @@
 
 ---
 
+## 参考文档
+
+- [SUBAGENT-ARCHITECTURE-AND-IMPLEMENTATION-PLAN](../design/SUBAGENT-ARCHITECTURE-AND-IMPLEMENTATION-PLAN.md) - Worktree 隔离架构设计
+- [TigerBeetle Patterns](../TIGERBEETLE-PATTERNS-ANALYSIS.md) - Zig 资源管理原则
+
+---
+
 ## 背景
 
 Commit `74c22ff` (`feat: implement git worktree isolation for subagents (T-119)`) 实现了子 Agent 的 git worktree 隔离功能。这一功能让子 Agent 在执行文件操作时，不再与主 Agent 共享同一个 git working tree，而是运行在独立的 git worktree 中，避免文件冲突。

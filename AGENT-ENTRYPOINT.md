@@ -24,9 +24,10 @@ zig version  # 必须是 0.15.2
 |------|------|------|
 | 1 | **`AGENT-ENTRYPOINT.md`** | 本文件，当前执行入口 |
 | 2 | **`tasks/active/sprint-2026-04/README.md`** | 当前 Sprint 看板 |
-| 3 | **`docs/specs/FIX-ZIG-015-compatibility.md`** | 第一个任务的 Technical Spec |
-| 4 | **`docs/ROADMAP-v2.md`** | 0-10 阶段统一路线图（需要上下文时读） |
-| 5 | **`docs/FEATURES.md`** | 已实现特性清单（需要上下文时读） |
+| 3 | **`docs/DESIGN-REFERENCES.md`** | 实现参考索引（做任务前必须查） |
+| 4 | **`docs/specs/FIX-ZIG-015-compatibility.md`** | 第一个任务的 Technical Spec |
+| 5 | **`docs/ROADMAP-v2.md`** | 0-10 阶段统一路线图（需要上下文时读） |
+| 6 | **`docs/FEATURES.md`** | 已实现特性清单（需要上下文时读） |
 
 ---
 
@@ -52,11 +53,12 @@ zig version  # 必须是 0.15.2
 
 1. **从队列中选第一个 `todo` 任务**
 2. **阅读对应的 Technical Spec**（`docs/specs/` 下的 `.md` 文件）
-3. **实现代码**
-4. **运行 `zig build test`**（必须全绿）
-5. **更新本文件中的状态**（把 `todo` 改成 `done`）
-6. **更新 `tasks/active/sprint-2026-04/README.md` 中的状态**
-7. **提交 commit**，消息格式：
+3. **根据任务阶段，阅读 `docs/DESIGN-REFERENCES.md` 中的相关参考文档**
+4. **实现代码**（遵守参考文档中的设计原则）
+5. **运行 `zig build test`**（必须全绿）
+6. **更新本文件中的状态**（把 `todo` 改成 `done`）
+7. **更新 `tasks/active/sprint-2026-04/README.md` 中的状态**
+8. **提交 commit**，消息格式：
    ```
    fix: 简短描述 (任务ID)
 

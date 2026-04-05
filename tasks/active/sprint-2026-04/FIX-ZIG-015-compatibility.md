@@ -7,6 +7,14 @@
 
 ---
 
+## 参考文档
+
+- [TigerBeetle Patterns](../TIGERBEETLE-PATTERNS-ANALYSIS.md) - Zig 代码质量基线（显式错误处理、资源边界）
+- [NullClaw Lessons](../NULLCLAW-LESSONS-QUICKREF.md) - 错误恢复与资源管理原则
+- [Zig 0.16 Breaking Changes](../ZIG-0.16-BREAKING-CHANGES-SUMMARY.md) - 0.15→0.16 API 差异对照
+
+---
+
 ## 问题描述
 
 项目代码在最近几次提交中被部分改写成 **Zig 0.16** API，但当前构建环境仍然是 **Zig 0.15.2**。这导致 `zig build` 完全失败，项目无法编译、无法测试、无法运行。

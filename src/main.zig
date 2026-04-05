@@ -11,13 +11,10 @@ pub fn main() !void {
     try utils.initIoManager(allocator);
     defer utils.deinitIoManager();
 
-    var env_map = try std.process.getEnvMap(allocator);
-    defer env_map.deinit();
-
     const args = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, args);
 
-    try cli.run(allocator, &env_map, args);
+    try cli.run(allocator, args);
 }
 
 test "simple test" {
