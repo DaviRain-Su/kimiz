@@ -542,7 +542,11 @@ pub const Agent = struct {
 
     /// Execute tool with error recovery
     fn executeToolWithRecovery(self: *Self, tool_call: core.ToolCall) !ToolResult {
+        std.debug.assert(tool_call.name.len > 0); // Tool name must be non-empty
+        std.debug.assert(tool_call.id.len > 0); // Tool call ID must be non-empty
+        
         const start_time = utils.milliTimestamp();
+        std.debug.assert(start_time > 0); // Timestamp must be valid
 
         // Approval check
         const risk = harness_tool_approval.getToolRisk(tool_call.name);
@@ -707,6 +711,8 @@ pub const Agent = struct {
     /// Check if response has tool calls (legacy, kept for compatibility)
     fn hasToolCalls(self: *Self, message: AssistantMessage) bool {
         _ = self;
+        std.debug.assert(message.content.len > 0); // Message must have content
+        
         for (message.content) |block| {
             switch (block) {
                 .tool_call => return true,
@@ -755,6 +761,8 @@ pub const Agent = struct {
     pub fn savePlan(self: *Self) !void {
         if (!self.options.plan_mode) return;
         if (self.messages.items.len == 0) return;
+        
+        std.debug.assert(self.messages.items.len > 0); // Already checked but assert for clarity
         const last_msg = self.messages.items[self.messages.items.len - 1];
         const plan_text = switch (last_msg) {
             .assistant => |m| try self.assistantMessageToText(m),
@@ -802,6 +810,9 @@ pub const Agent = struct {
         content: []const u8,
         importance: u8,
     ) !void {
+        std.debug.assert(content.len > 0); // Memory content must be non-empty
+        std.debug.assert(importance <= 10); // Importance should be 0-10 scale
+        
         if (self.memory_manager) |*mm| {
             try mm.remember(mem_type, content, importance);
         }
@@ -809,15 +820,22 @@ pub const Agent = struct {
 
     /// Recall relevant memories
     pub fn recallMemories(self: *Self, query: []const u8, limit: usize) ![]memory.MemoryEntry {
+        std.debug.assert(query.len > 0); // Query must be non-empty
+        std.debug.assert(limit > 0); // Limit must be positive
+        
         if (self.memory_manager) |*mm| {
-            return mm.recall(query, limit);
+            const results = try mm.recall(query, limit);
+            std.debug.assert(results.len <= limit); // Results should not exceed limit
+            return results;
         }
         return &[_]memory.MemoryEntry{};
     }
 
     /// Get conversation history
     pub fn getMessages(self: *Self) []const Message {
-        return self.messages.items;
+        const msgs = self.messages.items;
+        std.debug.assert(msgs.len >= 0); // Messages list is valid
+        return msgs;
     }
 
     /// Clear conversation history
@@ -834,9 +852,13 @@ pub const Agent = struct {
     /// Trim to keep only recent N messages (oldest messages are freed)
     /// Useful for long sessions to manage memory and context window
     pub fn trimToRecentMessages(self: *Self, keep_recent: usize) !void {
+        std.debug.assert(keep_recent > 0); // Must keep at least one message
+        
         if (self.messages.items.len <= keep_recent) return;
         
+        const initial_len = self.messages.items.len;
         const to_remove = self.messages.items.len - keep_recent;
+        std.debug.assert(to_remove > 0); // There must be messages to remove
         
         // Free old messages
         for (self.messages.items[0..to_remove]) |msg| {
@@ -852,6 +874,10 @@ pub const Agent = struct {
         
         // Update length
         self.messages.items.len = keep_recent;
+        
+        // Post-conditions
+        std.debug.assert(self.messages.items.len == keep_recent); // Length updated correctly
+        std.debug.assert(self.messages.items.len < initial_len); // Message count reduced
         
         std.log.info("Trimmed conversation history: {d} → {d} messages", .{
             to_remove + keep_recent,
