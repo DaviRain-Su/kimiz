@@ -50,20 +50,11 @@ pub const ToolCallResult = struct {
 };
 
 fn ensureDirExists(path: []const u8) !void {
-    const c = @cImport({ @cInclude("sys/stat.h"); @cInclude("string.h"); });
     if (path.len == 0) return;
-    var buf: [std.fs.max_path_bytes]u8 = undefined;
-    @memcpy(buf[0..path.len], path);
-    buf[path.len] = 0;
-    var i: usize = 0;
-    while (i < path.len) : (i += 1) {
-        if (path[i] == '/' and i > 0) {
-            buf[i] = 0;
-            _ = c.mkdir(@ptrCast(&buf), 0o755);
-            buf[i] = '/';
-        }
-    }
-    _ = c.mkdir(@ptrCast(&buf), 0o755);
+    utils.makeDirRecursive(path) catch |err| {
+        if (err == error.PathAlreadyExists) return;
+        return err;
+    };
 }
 
 // ============================================================================
@@ -262,12 +253,7 @@ pub const Agent = struct {
             defer self.allocator.free(path);
             const json = try self.session_manager.exportSessionToJson(sid, self.allocator);
             defer self.allocator.free(json);
-            const cc = @cImport({ @cInclude("stdio.h"); });
-            const c_path = try self.allocator.dupeZ(u8, path);
-            defer self.allocator.free(c_path);
-            const file = cc.fopen(c_path.ptr, "wb") orelse return error.FileOpenFailed;
-            defer _ = cc.fclose(file);
-            _ = cc.fwrite(json.ptr, 1, json.len, file);
+            try utils.writeFile(path, json);
         }
     }
 
@@ -275,18 +261,12 @@ pub const Agent = struct {
         if (self.session_store_dir == null) return error.NoSessionStore;
         const path = try std.fmt.allocPrint(self.allocator, "{s}/{s}.json", .{ self.session_store_dir.?, session_id });
         defer self.allocator.free(path);
-        const cc = @cImport({ @cInclude("stdio.h"); });
-        const c_path = try self.allocator.dupeZ(u8, path);
-        defer self.allocator.free(c_path);
-        const file = cc.fopen(c_path.ptr, "rb") orelse return error.SessionNotFound;
-        defer _ = cc.fclose(file);
-        _ = cc.fseek(file, 0, cc.SEEK_END);
-        const len = @as(usize, @intCast(cc.ftell(file)));
-        _ = cc.fseek(file, 0, cc.SEEK_SET);
-        if (len == 0) return error.EmptySession;
-        const buf = try self.allocator.alloc(u8, len);
+        const buf = utils.readFileAlloc(self.allocator, path, 1024 * 1024) catch |err| {
+            if (err == error.FileNotFound) return error.SessionNotFound;
+            return err;
+        };
         defer self.allocator.free(buf);
-        _ = cc.fread(buf.ptr, 1, len, file);
+        if (buf.len == 0) return error.EmptySession;
         const loaded_id = try self.session_manager.restoreSessionFromJson(buf);
         self.session_id = try self.allocator.dupe(u8, loaded_id);
         const messages = try self.session_manager.getMessages(loaded_id);
@@ -720,12 +700,7 @@ pub const Agent = struct {
         defer self.allocator.free(plan_text);
         const path = try std.fmt.allocPrint(self.allocator, "{s}/plan.md", .{self.options.project_path orelse "."});
         defer self.allocator.free(path);
-        const cc = @cImport({ @cInclude("stdio.h"); });
-        const c_path = try self.allocator.dupeZ(u8, path);
-        defer self.allocator.free(c_path);
-        const file = cc.fopen(c_path.ptr, "wb") orelse return error.FileOpenFailed;
-        defer _ = cc.fclose(file);
-        _ = cc.fwrite(plan_text.ptr, 1, plan_text.len, file);
+        try utils.writeFile(path, plan_text);
     }
 
     /// Execute a skill with given arguments

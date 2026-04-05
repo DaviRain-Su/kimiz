@@ -17,8 +17,8 @@ pub fn writeFileAlloc(_: std.mem.Allocator, path: []const u8, data: []const u8) 
 
 test "readFileAlloc basic" {
     const allocator = std.testing.allocator;
-    try std.fs.cwd().writeFile(.{ .sub_path = "/tmp/kimiz_fio_test.txt", .data = "hello" });
-    defer std.fs.cwd().deleteFile("/tmp/kimiz_fio_test.txt") catch {};
+    try writeFileAlloc(allocator, "/tmp/kimiz_fio_test.txt", "hello");
+    defer utils.deleteFile("/tmp/kimiz_fio_test.txt") catch {};
 
     const data = try readFileAlloc(allocator, "/tmp/kimiz_fio_test.txt", 1024);
     defer allocator.free(data);
@@ -33,7 +33,7 @@ test "writeFileAlloc and read back" {
     const allocator = std.testing.allocator;
     const path = "/tmp/kimiz_fio_write_test.txt";
     try writeFileAlloc(allocator, path, "test data");
-    defer std.fs.cwd().deleteFile(path) catch {};
+    defer utils.deleteFile(path) catch {};
 
     const data = try readFileAlloc(allocator, path, 1024);
     defer allocator.free(data);
@@ -45,10 +45,8 @@ test "writeFileAlloc creates parent dirs" {
     const path = "/tmp/kimiz_fio_nested/a/b/test.txt";
     try writeFileAlloc(allocator, path, "nested");
     defer {
-        std.fs.cwd().deleteFile(path) catch {};
-        std.fs.cwd().deleteDir("/tmp/kimiz_fio_nested/a/b") catch {};
-        std.fs.cwd().deleteDir("/tmp/kimiz_fio_nested/a") catch {};
-        std.fs.cwd().deleteDir("/tmp/kimiz_fio_nested") catch {};
+        utils.deleteFile(path) catch {};
+        utils.deleteTree("/tmp/kimiz_fio_nested") catch {};
     }
 
     const data = try readFileAlloc(allocator, path, 1024);
