@@ -117,19 +117,25 @@ fn executeCommand(
     working_dir: ?[]const u8,
     timeout_ms: u32,
 ) !CommandResult {
-    _ = timeout_ms;
     const cc = @cImport({ @cInclude("stdlib.h"); @cInclude("stdio.h"); });
 
-    // Build command with optional cd
+    // Build command with optional cd and output truncation
     var cmd_buf: std.ArrayList(u8) = .empty;
     defer cmd_buf.deinit(arena);
     if (working_dir) |wd| {
-        try cmd_buf.appendSlice(arena, "cd '\'");
+        try cmd_buf.appendSlice(arena, "cd '");
         try cmd_buf.appendSlice(arena, wd);
         try cmd_buf.appendSlice(arena, "' && ");
     }
+    // Wrap: timeout via perl alarm, truncate output to 100KB
+    const timeout_secs = @max(timeout_ms / 1000, 1);
+    var timeout_str: [16]u8 = undefined;
+    const timeout_slice = std.fmt.bufPrint(&timeout_str, "{d}", .{timeout_secs}) catch &[_]u8{ '3', '0' };
+    try cmd_buf.appendSlice(arena, "perl -e 'alarm ");
+    try cmd_buf.appendSlice(arena, timeout_slice);
+    try cmd_buf.appendSlice(arena, "; exec @ARGV' ");
     try cmd_buf.appendSlice(arena, command);
-    try cmd_buf.appendSlice(arena, " 2>&1");
+    try cmd_buf.appendSlice(arena, " 2>&1 | head -c 102400");
 
     const c_cmd = try arena.dupeZ(u8, cmd_buf.items);
     const pipe = cc.popen(c_cmd.ptr, "r") orelse {
@@ -138,8 +144,9 @@ fn executeCommand(
 
     var output: std.ArrayList(u8) = .empty;
     defer output.deinit(arena);
+    const max_output: usize = 100 * 1024; // 100KB limit
     var buf: [4096]u8 = undefined;
-    while (true) {
+    while (output.items.len < max_output) {
         const n = cc.fread(&buf, 1, buf.len, pipe);
         if (n == 0) break;
         try output.appendSlice(arena, buf[0..n]);

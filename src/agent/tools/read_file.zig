@@ -81,30 +81,38 @@ fn execute(
         return tool.errorResult(arena, err_msg);
     };
 
-    // Handle offset and limit if specified
-    if (parsed_args.offset != null or parsed_args.limit != null) {
-        const offset = parsed_args.offset orelse 0;
-        const limit = parsed_args.limit orelse std.math.maxInt(usize);
+    // Add line numbers and handle offset/limit
+    const offset = parsed_args.offset orelse 0;
+    const limit = parsed_args.limit orelse 2400;
 
-        var lines: std.ArrayList([]const u8) = .empty;
-        defer lines.deinit(arena);
+    var buf: std.ArrayList(u8) = .empty;
+    defer buf.deinit(arena);
 
-        var iter = std.mem.splitScalar(u8, content, '\n');
-        var line_num: usize = 0;
-        while (iter.next()) |line| {
-            if (line_num >= offset and lines.items.len < limit) {
-                try lines.append(arena, line);
-            }
-            line_num += 1;
-            if (lines.items.len >= limit) break;
+    var iter = std.mem.splitScalar(u8, content, '\n');
+    var line_num: usize = 0;
+    var shown: usize = 0;
+    var total_lines: usize = 0;
+    while (iter.next()) |_| : (total_lines += 1) {}
+
+    // Re-iterate with output
+    iter = std.mem.splitScalar(u8, content, '\n');
+    while (iter.next()) |line| {
+        if (line_num >= offset and shown < limit) {
+            if (buf.items.len > 0) try buf.append(arena, '\n');
+            const numbered = try std.fmt.allocPrint(arena, "{d: >5}| {s}", .{ line_num + 1, line });
+            try buf.appendSlice(arena, numbered);
+            shown += 1;
         }
-
-        // Reconstruct content
-        const limited_content = try std.mem.join(arena, "\n", lines.items);
-        return tool.textContent(arena, limited_content);
+        line_num += 1;
+        if (shown >= limit) break;
     }
 
-    return tool.textContent(arena, content);
+    if (total_lines > shown) {
+        const note = try std.fmt.allocPrint(arena, "\n\n[Showing lines {d}-{d} of {d} total]", .{ offset + 1, offset + shown, total_lines });
+        try buf.appendSlice(arena, note);
+    }
+
+    return tool.textContent(arena, try arena.dupe(u8, buf.items));
 }
 
 // ============================================================================

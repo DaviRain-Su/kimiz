@@ -17,7 +17,7 @@
 
 ### MVP-A1: 修复 Agent 循环稳定性
 
-**状态**: in_progress  
+**状态**: ✅ completed  
 **预计工时**: 8 小时  
 **指派给**: TBD
 
@@ -41,7 +41,7 @@
 
 ### MVP-A2: 简化 Memory 系统
 
-**状态**: pending  
+**状态**: ✅ completed  
 **预计工时**: 6 小时  
 **指派给**: TBD
 
@@ -102,7 +102,7 @@ const model_id = getEnvVar(allocator, "KIMIZ_MODEL") catch |err| switch (err) {
 
 ### MVP-A4: 工具可靠性
 
-**状态**: pending  
+**状态**: ✅ completed  
 **预计工时**: 6 小时  
 **指派给**: TBD
 
