@@ -37,14 +37,57 @@ pub const createDefault = runtime.createDefault;
 
 pub const PromptCache = prompt_cache.PromptCache;
 pub const PromptFormatter = prompt_cache.PromptFormatter;
-pub const ContextTruncator = @import("context_truncation.zig").ContextTruncator;
-pub const ContextLimits = @import("context_truncation.zig").ContextLimits;
-pub const truncateMessages = @import("context_truncation.zig").truncateMessages;
-pub const tool_approval = @import("tool_approval.zig");
-pub const ApprovalPolicy = tool_approval.ApprovalPolicy;
-pub const ToolRisk = tool_approval.ToolRisk;
-pub const ApprovalManager = tool_approval.ApprovalManager;
-pub const getToolRisk = tool_approval.getToolRisk;
+
+// Reasoning Trace
+pub const reasoning_trace = @import("reasoning_trace.zig");
+pub const Trace = reasoning_trace.Trace;
+pub const ReasoningStep = reasoning_trace.ReasoningStep;
+pub const TraceManager = reasoning_trace.TraceManager;
+
+// Phase 2/3 Core Modules
+// Resource Limits - FEAT-013
+pub const resource_limits = @import("resource_limits.zig");
+pub const ResourceLimits = resource_limits.ResourceLimits;
+pub const ResourceUsage = resource_limits.ResourceUsage;
+pub const ResourceTracker = resource_limits.ResourceTracker;
+pub const LimitCheckResult = resource_limits.LimitCheckResult;
+pub const LimitViolation = resource_limits.LimitViolation;
+pub const LimitType = resource_limits.LimitType;
+
+// Knowledge Base - FEAT-014
+pub const knowledge_base = @import("knowledge_base.zig");
+pub const KnowledgeBase = knowledge_base.KnowledgeBase;
+pub const KnowledgeSection = knowledge_base.KnowledgeSection;
+pub const findAgentsMd = knowledge_base.findAgentsMd;
+pub const loadNearest = knowledge_base.loadNearest;
+
+// Agent Linter - FEAT-015
+pub const agent_linter = @import("agent_linter.zig");
+pub const Linter = agent_linter.Linter;
+pub const LintResult = agent_linter.LintResult;
+pub const LintIssue = agent_linter.LintIssue;
+pub const Severity = agent_linter.Severity;
+pub const ValidationRule = agent_linter.ValidationRule;
+pub const OutputType = agent_linter.OutputType;
+pub const lintOutput = agent_linter.lintOutput;
+
+// Slop Collector - FEAT-016
+pub const slop_collector = @import("slop_collector.zig");
+pub const SlopCollector = slop_collector.SlopCollector;
+pub const SlopAnalysis = slop_collector.SlopAnalysis;
+pub const SlopEntry = slop_collector.SlopEntry;
+pub const SlopLevel = slop_collector.SlopLevel;
+pub const SlopPattern = slop_collector.SlopPattern;
+pub const checkQuality = slop_collector.checkQuality;
+
+// Self Review - FEAT-017
+pub const self_review = @import("self_review.zig");
+pub const SelfReview = self_review.SelfReview;
+pub const SelfReviewResult = self_review.SelfReviewResult;
+pub const ReviewFinding = self_review.ReviewFinding;
+pub const ImprovementSuggestion = self_review.ImprovementSuggestion;
+pub const ReviewConfig = self_review.ReviewConfig;
+pub const FindingSeverity = self_review.FindingSeverity;
 
 /// Parse AGENTS.md and create runtime
 pub fn loadFromAgentsMd(allocator: std.mem.Allocator, content: []const u8) !HarnessRuntime {
@@ -69,4 +112,12 @@ test "harness module imports" {
     _ = Harness;
     _ = ConstraintChecker;
     _ = HarnessRuntime;
+    
+    // Phase 2/3 modules
+    _ = ResourceLimits;
+    _ = ResourceTracker;
+    _ = KnowledgeBase;
+    _ = Linter;
+    _ = SlopCollector;
+    _ = SelfReview;
 }

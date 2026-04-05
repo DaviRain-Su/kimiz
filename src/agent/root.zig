@@ -5,6 +5,7 @@ const std = @import("std");
 
 pub const tool = @import("tool.zig");
 pub const agent = @import("agent.zig");
+pub const subagent = @import("subagent.zig");
 pub const read_file = @import("tools/read_file.zig");
 pub const write_file = @import("tools/write_file.zig");
 pub const edit = @import("tools/edit.zig");
@@ -23,6 +24,18 @@ pub const Agent = agent.Agent;
 pub const AgentOptions = agent.AgentOptions;
 pub const AgentState = agent.AgentState;
 pub const AgentEvent = agent.AgentEvent;
+
+// Re-export SubAgent types
+pub const SubAgent = subagent.SubAgent;
+pub const SubAgentConfig = subagent.SubAgentConfig;
+pub const SubAgentError = subagent.SubAgentError;
+pub const DelegateContext = subagent.DelegateContext;
+pub const DelegateTool = struct {
+    pub const definition = subagent.definition;
+    pub fn createAgentTool(ctx: *DelegateContext) AgentTool {
+        return subagent.createAgentTool(ctx);
+    }
+};
 
 /// Built-in tool registry (5 core tools)
 pub const builtin_tools = &[_]AgentTool{};

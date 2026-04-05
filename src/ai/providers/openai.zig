@@ -400,7 +400,31 @@ fn serializeRequest(allocator: std.mem.Allocator, ctx: core.Context) ![]u8 {
             try req_buf.appendSlice(allocator, "\"");
         }
         
-        // TODO: Handle tool_calls serialization
+        // Handle tool_calls serialization
+        if (msg.tool_calls) |tool_calls| {
+            try req_buf.appendSlice(allocator, ",\"tool_calls\":[");
+            for (tool_calls, 0..) |tc, j| {
+                if (j > 0) try req_buf.appendSlice(allocator, ",");
+                try req_buf.appendSlice(allocator, "{\"id\":\"");
+                try req_buf.appendSlice(allocator, tc.id);
+                try req_buf.appendSlice(allocator, "\",\"type\":\"function\",\"function\":{\"name\":\"");
+                try req_buf.appendSlice(allocator, tc.function.name);
+                try req_buf.appendSlice(allocator, "\",\"arguments\":\"");
+                // Escape quotes in arguments
+                for (tc.function.arguments) |c| {
+                    if (c == '"') {
+                        try req_buf.appendSlice(allocator, "\\\"");
+                    } else if (c == '\\') {
+                        try req_buf.appendSlice(allocator, "\\\\");
+                    } else {
+                        try req_buf.append(allocator, c);
+                    }
+                }
+                try req_buf.appendSlice(allocator, "\"}}");
+            }
+            try req_buf.appendSlice(allocator, "]");
+        }
+        
         try req_buf.appendSlice(allocator, "}");
     }
     

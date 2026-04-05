@@ -305,6 +305,13 @@
 
 **目标**: Agent 具备完整能力
 
+### 阶段 2.5: LMDB 持久化层 (并行)
+a. TASK-INFRA-001-evaluate-zig-lmdb (2h)
+b. TASK-INFRA-002-lmdb-longterm-memory (8h)
+c. TASK-INFRA-003-lmdb-session-store (4h)
+
+**目标**: 替换 JSON 持久化，提升性能
+
 ### 阶段 3: Provider 修复（第3周）
 10. TASK-BUG-014-fix-cli-unimplemented (6h)
 11. TASK-BUG-013-fix-page-allocator-abuse (4h)
@@ -320,6 +327,137 @@
 17. TASK-FEAT-006~017 (Harness 功能，详见 docs/07-kimiz-vision-b.md)
 
 **目标**: Claude Code 模式完成
+
+---
+
+## LMDB 持久化层升级任务 (新增)
+
+基于 redb 研究评估，决定采用 **LMDB** 替代 JSON 文件持久化。
+
+**研究结论**:
+- ❌ redb (Rust): 需要 2-3 周 FFI 基础设施，风险高
+- ❌ autozig: 仅 3 stars，不成熟
+- ✅ **LMDB (C)**: 有成熟 Zig bindings，1 周可集成
+
+**推荐 binding**: `nDimensional/zig-lmdb` (36 stars, 成熟稳定)
+
+| 任务 ID | 功能 | 优先级 | 预计 | 依赖 |
+|---------|------|--------|------|------|
+| TASK-INFRA-001 | 评估并添加 zig-lmdb 依赖 | P1 | 2h | 无 |
+| TASK-INFRA-002 | LongTermMemory 迁移到 LMDB | P1 | 8h | INFRA-001 |
+| TASK-INFRA-003 | SessionStore 迁移到 LMDB | P2 | 4h | INFRA-002 |
+| TASK-INFRA-004 | LMDB 性能测试与基准 | P2 | 4h | INFRA-002, INFRA-003 |
+| TASK-INFRA-005 | LMDB 压缩支持 (zstd) | P3 | 6h | INFRA-002 |
+
+**性能目标**:
+| 操作 | 当前 (JSON) | 目标 (LMDB) |
+|------|-------------|-------------|
+| Memory 写入 | ~10ms | < 1ms |
+| Memory 读取 | ~5ms | < 0.1ms |
+| 启动加载 (10k条) | ~200ms | < 100ms |
+
+---
+
+## FFF 搜索工具集成 (新增)
+
+基于 [fff.nvim](https://github.com/dmtrKovalenko/fff.nvim) 研究评估。
+
+**核心优势**:
+- 500k 文件 < 100ms 搜索
+- 模糊匹配 + typo 纠错
+- Frecency 排名（记忆常用文件）
+- Git 感知（modified/staged 优先）
+- MCP Server 已支持 Claude Code/OpenCode
+
+**集成方案**: MCP Server (subprocess) - 最简方案
+
+| 任务 ID | 功能 | 优先级 | 预计 | 依赖 |
+|---------|------|--------|------|------|
+| TASK-TOOL-001 | 集成 fff MCP Server | **P0** | 3h | fff-mcp 安装 |
+| TASK-TOOL-002 | 集成 fff C FFI (可选高性能) | P2 | 8h | 需要源码 |
+
+**性能对比**:
+| 操作 | 当前 grep.zig | fff MCP |
+|------|---------------|---------|
+| 文件搜索 | O(n) 遍历 | < 100ms |
+| 模糊搜索 | ❌ 无 | ✅ |
+| typo 纠错 | ❌ 无 | ✅ |
+| Frecency | ❌ 无 | ✅ LMDB |
+
+---
+
+## MCX 执行沙箱集成 (新增)
+
+基于 [MCX](https://github.com/schizoidcock/mcx) 研究评估。
+
+**核心价值**:
+- **98% token 节省** - 过滤在沙箱内完成
+- **变量持久化** ($var) - 工作记忆层
+- **大文件沙箱存储** - 超过 50KB 自动 storeAs
+- **内置 FFF** - mcx_find/mcx_grep 已集成
+- **后台任务** - mcx_spawn 支持
+
+**技术栈**: Bun 运行时 + TypeScript
+
+**注意**: MCX 需要 Bun 运行时。如果需要完全自包含，考虑其他方案。
+
+| 任务 ID | 功能 | 优先级 | 预计 | 依赖 |
+|---------|------|--------|------|------|
+| TASK-TOOL-003 | 集成 MCX MCP Server | **P0** | 2h | Bun + mcx-cli |
+
+**Token 节省示例**:
+```
+传统工具调用:  Tool(read_file) → 50KB → Model
+MCX 沙箱执行:  const data = await api.getInvoices(); return { count: data.length };
+               → ~50 tokens (99% 节省)
+```
+
+---
+
+## Obsidian Wiki 记忆层 (新增)
+
+基于 Karpathy Idea File 方法论 + Obsidian Wiki 研究。
+
+**核心思路**: 用 Obsidian Markdown 文件作为 Long-Term Memory，LMDB 做索引。
+
+**优势**:
+- 人类可读、可编辑
+- 双链 `[[link]]` 建立记忆关联
+- Obsidian 可直接读取
+- 标签 + 全文搜索
+
+**架构**:
+```
+memories/
+├── {id}.md          # frontmatter + 内容
+├── journals/        # 每日日志
+└── .index/         # LMDB 索引
+```
+
+| 任务 ID | 功能 | 优先级 | 预计 | 依赖 |
+|---------|------|--------|------|------|
+| TASK-INFRA-006 | Obsidian Wiki Memory | P1 | 6h | INFRA-002 |
+
+---
+
+## Idea File 模板系统 (新增)
+
+基于 Karpathy "分享想法而不是代码" 方法论。
+
+**Idea File**: 用户填写 YAML 配置，Agent 自动配置自己。
+
+**配置内容**:
+- identity (Agent 身份)
+- workflow (工作流程)
+- tools (工具链偏好)
+- memory (记忆组织)
+- behavior (行为模式)
+- knowledge (Obsidian 结构)
+- skills (启用的技能)
+
+| 任务 ID | 功能 | 优先级 | 预计 | 依赖 |
+|---------|------|--------|------|------|
+| TASK-FEAT-018 | Idea File 模板系统 | **P4** | 2h | INFRA-006 |
 
 ---
 
@@ -344,6 +482,15 @@
 |---------|------|--------|------|------|
 | TASK-FEAT-014 | AGENTS.md 结构化知识 | **P0** | 8h | FEAT-006 |
 | TASK-FEAT-015 | Agent Linter 约束 | **P0** | 6h | FEAT-006 |
+
+### Memory 增强 (基于 Letta/Sarah Wooders 观点)
+
+基于 Sarah Wooders (Letta CTO) "记忆是 Harness 核心" 观点。
+
+| 任务 ID | 功能 | 优先级 | 预计 | 依赖 |
+|---------|------|--------|------|------|
+| TASK-FEAT-019 | Context Constitution (上下文宪法) | P1 | 4h | FEAT-008 |
+| TASK-FEAT-020 | AI 驱动上下文摘要 | P1 | 8h | FEAT-019 |
 | TASK-FEAT-016 | AI Slop 垃圾回收 | P2 | 6h | FEAT-014 |
 | TASK-FEAT-017 | Agent Self-Review | P2 | 8h | FEAT-014, FEAT-015 |
 
@@ -353,12 +500,14 @@
 
 | 优先级 | 任务数 | 预计工时 |
 |--------|--------|----------|
-| P0 | 9 | 36.5h |
-| P1 | 18 | 94h |
-| P2 | 6 | 22h |
-| **总计** | **33** | **152.5h** |
+| P0 | 12 | 44.5h |
+| P1 | 23 | 122h |
+| P2 | 12 | 38h |
+| P3 | 1 | 6h |
+| P4 | 1 | 2h |
+| **总计** | **49** | **212.5h** |
 
-按每天 6 小时有效工作时间计算：约 **25 个工作日** (5 周)
+按每天 6 小时有效工作时间计算：约 **35 个工作日** (7 周)
 
 **详细分解**: 见 `docs/07-kimiz-vision-b.md`
 
@@ -380,9 +529,46 @@ TASK-INTEG-002 (Learning 集成)
 TASK-INTEG-003 (Skills 集成)
 ```
 
+**LMDB 路径 (可并行)**:
+```
+TASK-INFRA-001 (添加 zig-lmdb 依赖)
+    ↓
+TASK-INFRA-002 (LongTermMemory LMDB)
+    ↓
+TASK-INFRA-003 (SessionStore LMDB)
+    ↓
+TASK-INFRA-004 (性能测试)
+```
+
+**FFF 路径 (可并行)**:
+```
+TASK-TOOL-001 (集成 fff MCP Server)
+    ↓
+TASK-TOOL-002 (可选: C FFI 高性能)
+```
+
+**MCX 路径 (可并行)**:
+```
+TASK-TOOL-003 (集成 MCX MCP Server)
+    ↓
+验证 Bun 运行时依赖
+```
+
+**Obsidian 路径 (可并行)**:
+```
+TASK-INFRA-006 (Obsidian Wiki Memory)
+    ↓
+TASK-FEAT-018 (Idea File 模板)
+```
+
 ---
 
 **下一步行动**:
 1. 立即开始 TASK-BUG-021 (创建缺失工具)
 2. 然后修复 TASK-BUG-022, TASK-BUG-023
 3. 最后集成 Memory/Learning/Skills
+4. 同时可以并行开始:
+   - TASK-INFRA-001 (LMDB 依赖评估)
+   - TASK-TOOL-001 (fff MCP Server 集成)
+   - TASK-TOOL-003 (MCX MCP Server 集成)
+   - TASK-INFRA-006 (Obsidian Wiki Memory)

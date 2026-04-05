@@ -4,6 +4,7 @@ const std = @import("std");
 const core = @import("../core/root.zig");
 const ai = @import("../ai/root.zig");
 const agent = @import("../agent/root.zig");
+const extension = @import("../extension/root.zig");
 
 // Use linux syscalls directly
 const STDOUT_FILENO = 1;
@@ -17,16 +18,26 @@ fn sysRead(fd: usize, buf: []u8) usize {
     return std.os.linux.syscall3(.read, fd, @intFromPtr(buf.ptr), buf.len);
 }
 
+fn print(msg: []const u8) void {
+    _ = sysWrite(STDOUT_FILENO, msg);
+}
+
 pub fn run(allocator: std.mem.Allocator) !void {
     _ = allocator;
     
-    const welcome = "kimiz v0.1.0 - AI Coding Agent\nType 'exit' or 'quit' to exit.\n\n";
-    _ = sysWrite(STDOUT_FILENO, welcome);
+    // Interactive mode only for now
+    // TODO: Parse args when Zig 0.16 API stabilizes
+    try runInteractive();
+}
+
+fn runInteractive() !void {
+    const welcome = "kimiz v0.2.0 - AI Coding Agent with Extension System\nType 'exit' or 'quit' to exit.\n\n";
+    print(welcome);
 
     var buf: [1024]u8 = undefined;
     
     while (true) {
-        _ = sysWrite(STDOUT_FILENO, "> ");
+        print("> ");
         
         const n = sysRead(STDIN_FILENO, &buf);
         if (n == 0 or n > buf.len) break;
@@ -38,11 +49,30 @@ pub fn run(allocator: std.mem.Allocator) !void {
         const input = std.mem.trim(u8, buf[0..len], " \t\r\n");
         if (input.len == 0) continue;
         if (std.mem.eql(u8, input, "exit") or std.mem.eql(u8, input, "quit")) break;
-
-        _ = sysWrite(STDOUT_FILENO, "Processing: ");
-        _ = sysWrite(STDOUT_FILENO, input);
-        _ = sysWrite(STDOUT_FILENO, "\n(Full integration coming soon)\n\n");
+        
+        if (std.mem.eql(u8, input, "help")) {
+            printHelp();
+            continue;
+        }
+        
+        print("Processing: ");
+        print(input);
+        print("\n(Full AI integration coming soon)\n\n");
     }
 
-    _ = sysWrite(STDOUT_FILENO, "Goodbye!\n");
+    print("Goodbye!\n");
+}
+
+fn printHelp() void {
+    print("kimiz - AI Coding Agent with Extension System\n");
+    print("\n");
+    print("Commands:\n");
+    print("  help    Show this help\n");
+    print("  exit    Exit the program\n");
+    print("\n");
+    print("Extension commands (coming soon):\n");
+    print("  ext list     List installed extensions\n");
+    print("  ext add      Install extension\n");
+    print("  ext remove   Remove extension\n");
+    print("\n");
 }

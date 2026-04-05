@@ -1,0 +1,9 @@
+name = "example-ext"
+version = "1.0.0"
+description = "An example extension for Kimiz"
+author = "Kimiz Team"
+main = "extension.wasm"
+
+keywords = ["example", "test"]
+license = "MIT"
+repository = "https://github.com/kimiz/kimiz"

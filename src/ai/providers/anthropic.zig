@@ -244,7 +244,13 @@ pub fn stream(
 
     const url = core.ANTHROPIC_BASE_URL ++ "/v1/messages";
 
-    _ = StreamContext{ .callback = callback };
+    var stream_ctx = StreamContext{
+        .callback = callback,
+        .current_block_type = null,
+        .current_block_index = 0,
+        .allocator = http_client.allocator,
+    };
+    _ = stream_ctx;
 
     try http_client.postStream(url, headers.items, request_body, struct {
         fn onLine(line: []const u8, ctx_ptr: *StreamContext) void {
@@ -257,19 +263,79 @@ pub fn stream(
 
 const StreamContext = struct {
     callback: *const fn (event: ai.SseEvent) void,
+    current_block_type: ?[]const u8,
+    current_block_index: u32,
+    allocator: std.mem.Allocator,
 
     fn processLine(self: *StreamContext, line: []const u8) !void {
         if (line.len == 0) return;
-        if (!std.mem.startsWith(u8, line, "event: ")) return;
+        
+        // Handle SSE data lines
+        if (!std.mem.startsWith(u8, line, "data: ")) return;
 
-        const event_type = line[7..];
-        // Next line should be "data: {...}"
-        // For simplicity, just parse the data line
-
-        if (std.mem.eql(u8, event_type, "content_block_delta")) {
-            // Parse and handle delta
-        } else if (std.mem.eql(u8, event_type, "message_stop")) {
+        const data = line[6..]; // Skip "data: "
+        
+        // Check for stream end
+        if (std.mem.eql(u8, data, "[DONE]")) {
             self.callback(.{ .done = .stop });
+            return;
+        }
+
+        // Parse the event data
+        const parsed = try std.json.parseFromSlice(AnthropicStreamEvent, self.allocator, data, .{
+            .ignore_unknown_fields = true,
+        });
+        defer parsed.deinit(self.allocator);
+
+        const event = parsed.value;
+        
+        switch (event) {
+            .content_block_start => |block| {
+                self.current_block_index = block.index;
+                switch (block.content_block) {
+                    .text => |t| {
+                        self.callback(.{ .text_delta = t.text });
+                    },
+                    .thinking => |t| {
+                        self.callback(.{ .thinking_delta = t.thinking });
+                    },
+                    .tool_use => |t| {
+                        self.callback(.{ .toolcall_start = .{
+                            .id = t.id,
+                            .name = t.name,
+                        } });
+                    },
+                }
+            },
+            .content_block_delta => |delta| {
+                switch (delta.delta) {
+                    .text_delta => |td| {
+                        self.callback(.{ .text_delta = td.text });
+                    },
+                    .thinking_delta => |td| {
+                        self.callback(.{ .thinking_delta = td.thinking });
+                    },
+                    .input_json_delta => |jd| {
+                        self.callback(.{ .toolcall_delta = .{
+                            .arguments_json_chunk = jd.partial_json,
+                        } });
+                    },
+                }
+            },
+            .message_stop => {
+                self.callback(.{ .done = .stop });
+            },
+            .message_delta => |md| {
+                if (md.delta.stop_reason) |reason| {
+                    const stop_reason = mapStopReason(reason);
+                    self.callback(.{ .done = stop_reason });
+                }
+            },
+            .err => |e| {
+                std.log.err("Anthropic API error: {s} - {s}", .{ e.err.type, e.err.message });
+                self.callback(.{ .done = .stop });
+            },
+            else => {},
         }
     }
 };

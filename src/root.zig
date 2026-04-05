@@ -14,8 +14,10 @@ pub const agent = @import("agent/root.zig");
 pub const skills = @import("skills/root.zig");
 
 // Harness module - Harness Engineering Platform
-// Note: Temporarily disabled due to compilation errors in harness/
-// pub const harness = @import("harness/root.zig");
+pub const harness = @import("harness/root.zig");
+
+// Extension module - WASM-based extension system
+pub const extension = @import("extension/root.zig");
 
 pub fn bufferedPrint() !void {
     // Stdout is for the actual output of your application, for example if you
