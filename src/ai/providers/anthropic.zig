@@ -585,3 +585,42 @@ fn mapStopReason(reason: ?[]const u8) core.StopReason {
     if (std.mem.eql(u8, r, "tool_use")) return .tool_use;
     return .stop;
 }
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+test "mapStopReason" {
+    try std.testing.expectEqual(.stop, mapStopReason("end_turn"));
+    try std.testing.expectEqual(.length, mapStopReason("max_tokens"));
+    try std.testing.expectEqual(.tool_use, mapStopReason("tool_use"));
+    try std.testing.expectEqual(.stop, mapStopReason(null));
+}
+
+test "parseResponse text only" {
+    const body =
+        \\{"id":"msg_1","type":"message","role":"assistant","content":[{"type":"text","text":"Hello"}],"stop_reason":"end_turn","usage":{"input_tokens":10,"output_tokens":3}}
+    ;
+    const msg = try parseResponse(std.testing.allocator, body);
+    defer std.testing.allocator.free(msg.content);
+    try std.testing.expectEqual(@as(usize, 1), msg.content.len);
+    try std.testing.expectEqualStrings("Hello", msg.content[0].text.text);
+    try std.testing.expectEqual(.stop, msg.stop_reason);
+}
+
+test "parseResponse with tool_use" {
+    const body =
+        \\{"id":"msg_2","type":"message","role":"assistant","content":[{"type":"tool_use","id":"tu_1","name":"bash","input":{"command":"ls"}}],"stop_reason":"tool_use","usage":{"input_tokens":20,"output_tokens":10}}
+    ;
+    const msg = try parseResponse(std.testing.allocator, body);
+    defer {
+        for (msg.content) |block| {
+            if (block == .tool_call) std.testing.allocator.free(block.tool_call.tool_call.arguments);
+        }
+        std.testing.allocator.free(msg.content);
+    }
+    try std.testing.expectEqual(@as(usize, 1), msg.content.len);
+    try std.testing.expectEqualStrings("tu_1", msg.content[0].tool_call.tool_call.id);
+    try std.testing.expectEqualStrings("bash", msg.content[0].tool_call.tool_call.name);
+    try std.testing.expectEqual(.tool_use, msg.stop_reason);
+}

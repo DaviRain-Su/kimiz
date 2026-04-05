@@ -482,3 +482,34 @@ test "mapFinishReason" {
     try std.testing.expectEqual(.length, mapFinishReason("length"));
     try std.testing.expectEqual(.tool_use, mapFinishReason("tool_calls"));
 }
+
+test "parseResponse text only" {
+    const body =
+        \\{"id":"chatcmpl-1","object":"chat.completion","choices":[{"index":0,"message":{"role":"assistant","content":"Hello world"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":5}}
+    ;
+    const msg = try parseResponse(std.testing.allocator, body);
+    defer std.testing.allocator.free(msg.content);
+    try std.testing.expectEqual(@as(usize, 1), msg.content.len);
+    try std.testing.expectEqualStrings("Hello world", msg.content[0].text.text);
+    try std.testing.expectEqual(.stop, msg.stop_reason);
+    try std.testing.expectEqual(@as(u32, 10), msg.usage.?.input_tokens);
+}
+
+test "parseResponse with tool_calls" {
+    const body =
+        \\{"id":"chatcmpl-2","object":"chat.completion","choices":[{"index":0,"message":{"role":"assistant","content":null,"tool_calls":[{"id":"call_abc","type":"function","function":{"name":"read_file","arguments":"{\"path\":\"/tmp/test\"}"}}]},"finish_reason":"tool_calls"}]}
+    ;
+    const msg = try parseResponse(std.testing.allocator, body);
+    defer std.testing.allocator.free(msg.content);
+    try std.testing.expectEqual(@as(usize, 1), msg.content.len);
+    try std.testing.expectEqualStrings("call_abc", msg.content[0].tool_call.tool_call.id);
+    try std.testing.expectEqualStrings("read_file", msg.content[0].tool_call.tool_call.name);
+    try std.testing.expectEqual(.tool_use, msg.stop_reason);
+}
+
+test "parseResponse empty choices" {
+    const body =
+        \\{"id":"chatcmpl-3","object":"chat.completion","choices":[]}
+    ;
+    try std.testing.expectError(error.ApiUnexpectedResponse, parseResponse(std.testing.allocator, body));
+}

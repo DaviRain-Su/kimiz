@@ -356,6 +356,10 @@ fn runSkillCommand(allocator: std.mem.Allocator, args: []const []const u8) !void
         print("\n");
         return;
     };
+    defer {
+        if (result.output.len > 0) allocator.free(result.output);
+        if (result.error_message) |err_msg| allocator.free(err_msg);
+    }
 
     if (result.success) {
         printLine("✅ Success!");

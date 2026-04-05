@@ -13,15 +13,24 @@ const SkillContext = root.SkillContext;
 const SkillResult = root.SkillResult;
 
 // ============================================================================
+// Skill Metadata
+// ============================================================================
+
+pub const SKILL_ID = "rtk-optimize";
+pub const SKILL_NAME = "RTK Token Optimizer";
+pub const SKILL_DESCRIPTION = "Compress command outputs using rtk tool, reducing token consumption by 60-90%. Supports git, file operations, tests, and build tools.";
+pub const SKILL_VERSION = "1.0.0";
+
+// ============================================================================
 // Skill Definition
 // ============================================================================
 
 /// RTK Token Optimizer Skill
 pub const rtk_optimize = Skill{
-    .id = "rtk-optimize",
-    .name = "RTK Token Optimizer",
-    .description = "Compress command outputs using rtk tool, reducing token consumption by 60-90%. Supports git, file operations, tests, and build tools.",
-    .version = "1.0.0",
+    .id = SKILL_ID,
+    .name = SKILL_NAME,
+    .description = SKILL_DESCRIPTION,
+    .version = SKILL_VERSION,
     .category = .misc,
     .params = &[_]SkillParam{
         .{
@@ -74,42 +83,57 @@ const CompressionStrategy = enum {
 };
 
 // ============================================================================
+// C Interop
+// ============================================================================
+
+const cc = @cImport({
+    @cInclude("stdlib.h");
+    @cInclude("stdio.h");
+});
+
+// ============================================================================
 // RTK Installation Check
 // ============================================================================
 
 /// Check if rtk is installed and accessible
 fn checkRTKInstalled(allocator: std.mem.Allocator) !bool {
-    const result = std.process.Child.run(.{
-        .allocator = allocator,
-        .argv = &[_][]const u8{ "which", "rtk" },
-    }) catch return false;
+    const cmd = "which rtk > /dev/null 2>&1";
+    const c_cmd = try allocator.dupeZ(u8, cmd);
+    defer allocator.free(c_cmd);
     
-    defer allocator.free(result.stdout);
-    defer allocator.free(result.stderr);
-    
-    return result.term.Exited == 0;
+    const result = cc.system(c_cmd.ptr);
+    return result == 0;
 }
 
 /// Get rtk version for debugging
 fn getRTKVersion(allocator: std.mem.Allocator) ![]const u8 {
-    const result = try std.process.Child.run(.{
-        .allocator = allocator,
-        .argv = &[_][]const u8{ "rtk", "--version" },
-    });
-    
-    defer allocator.free(result.stderr);
-    
-    if (result.term.Exited == 0) {
-        return result.stdout;
-    } else {
-        allocator.free(result.stdout);
+    const pipe = cc.popen("rtk --version 2>&1", "r") orelse {
         return error.RTKVersionFailed;
+    };
+    defer _ = cc.pclose(pipe);
+    
+    var output: std.ArrayList(u8) = .empty;
+    defer output.deinit(allocator);
+    
+    var buf: [256]u8 = undefined;
+    while (true) {
+        const n = cc.fread(&buf, 1, buf.len, pipe);
+        if (n == 0) break;
+        try output.appendSlice(allocator, buf[0..n]);
     }
+    
+    return try output.toOwnedSlice(allocator);
 }
 
 // ============================================================================
 // Command Execution
 // ============================================================================
+
+const CommandResult = struct {
+    stdout: []const u8,
+    stderr: []const u8,
+    exit_code: i32,
+};
 
 /// Execute command through rtk with compression
 fn executeRTKCommand(
@@ -117,36 +141,61 @@ fn executeRTKCommand(
     command: []const u8,
     strategy: CompressionStrategy,
     working_dir: []const u8,
-) !std.process.Child.RunResult {
-    var argv = std.ArrayList([]const u8).init(allocator);
-    defer argv.deinit();
-
-    // Start with rtk
-    try argv.append("rtk");
-
+) !CommandResult {
+    // Build command string
+    var cmd_buf: std.ArrayList(u8) = .empty;
+    defer cmd_buf.deinit(allocator);
+    
+    // Change directory if needed
+    if (!std.mem.eql(u8, working_dir, ".")) {
+        try cmd_buf.appendSlice(allocator, "cd '");
+        try cmd_buf.appendSlice(allocator, working_dir);
+        try cmd_buf.appendSlice(allocator, "' && ");
+    }
+    
+    // Build rtk command
+    try cmd_buf.appendSlice(allocator, "rtk");
+    
     // Add strategy flag if needed
     if (strategy.toRTKFlag()) |flag| {
-        try argv.append(flag);
-        if (std.mem.eql(u8, flag, "-l")) {
-            try argv.append("aggressive");
-        }
+        try cmd_buf.appendSlice(allocator, " ");
+        try cmd_buf.appendSlice(allocator, flag);
+        try cmd_buf.appendSlice(allocator, " aggressive");
     }
-
-    // Parse and add the command
-    // Simple tokenization (TODO: improve for complex commands with quotes)
-    var cmd_iter = std.mem.tokenizeAny(u8, command, " \t");
-    while (cmd_iter.next()) |part| {
-        try argv.append(part);
+    
+    // Add the actual command
+    try cmd_buf.appendSlice(allocator, " ");
+    try cmd_buf.appendSlice(allocator, command);
+    try cmd_buf.appendSlice(allocator, " 2>&1");
+    
+    const c_cmd = try allocator.dupeZ(u8, cmd_buf.items);
+    defer allocator.free(c_cmd);
+    
+    // Execute via popen
+    const pipe = cc.popen(c_cmd.ptr, "r") orelse {
+        return error.CommandExecutionFailed;
+    };
+    
+    // Read output
+    var output: std.ArrayList(u8) = .empty;
+    defer output.deinit(allocator);
+    
+    const max_output: usize = 100 * 1024; // 100KB limit
+    var buf: [4096]u8 = undefined;
+    while (output.items.len < max_output) {
+        const n = cc.fread(&buf, 1, buf.len, pipe);
+        if (n == 0) break;
+        try output.appendSlice(allocator, buf[0..n]);
     }
-
-    // Execute
-    const result = try std.process.Child.run(.{
-        .allocator = allocator,
-        .argv = argv.items,
-        .cwd = working_dir,
-    });
-
-    return result;
+    
+    const exit_code: i32 = cc.pclose(pipe);
+    const stdout_owned = try output.toOwnedSlice(allocator);
+    
+    return CommandResult{
+        .stdout = stdout_owned,
+        .stderr = "",
+        .exit_code = exit_code,
+    };
 }
 
 // ============================================================================
@@ -159,7 +208,7 @@ fn execute(
     args: std.json.ObjectMap,
     arena: std.mem.Allocator,
 ) anyerror!SkillResult {
-    const start_time = std.time.milliTimestamp();
+    const start_time = @import("../utils/root.zig").milliTimestamp();
 
     // Step 1: Check if rtk is installed
     if (!try checkRTKInstalled(arena)) {
@@ -231,7 +280,7 @@ fn execute(
         strategy,
         working_dir,
     ) catch |err| {
-        const elapsed = std.time.milliTimestamp() - start_time;
+        const elapsed = @import("../utils/root.zig").milliTimestamp() - start_time;
         return SkillResult{
             .success = false,
             .output = "",
@@ -243,36 +292,29 @@ fn execute(
         };
     };
 
-    defer arena.free(result.stdout);
-    defer arena.free(result.stderr);
-
-    const elapsed = std.time.milliTimestamp() - start_time;
+    // Note: result.stdout is owned by arena allocator and will be freed by caller
+    const elapsed = @import("../utils/root.zig").milliTimestamp() - start_time;
 
     // Step 4: Return result
-    if (result.term.Exited == 0) {
+    if (result.exit_code == 0) {
         // Success - calculate token estimate
         const output_tokens = estimateTokens(result.stdout);
         
         return SkillResult{
             .success = true,
-            .output = try arena.dupe(u8, result.stdout),
+            .output = result.stdout, // Already owned by arena
             .error_message = null,
             .execution_time_ms = @intCast(elapsed),
             .tokens_used = output_tokens,
         };
     } else {
         // Command failed
-        const error_msg = if (result.stderr.len > 0)
-            result.stderr
-        else
-            "Command execution failed (no error output)";
-
         return SkillResult{
             .success = false,
-            .output = try arena.dupe(u8, result.stdout), // Include stdout for debugging
+            .output = result.stdout, // Include output for debugging
             .error_message = try std.fmt.allocPrint(arena,
-                "RTK command failed:\n{s}",
-                .{error_msg},
+                "RTK command failed with exit code: {d}",
+                .{result.exit_code},
             ),
             .execution_time_ms = @intCast(elapsed),
         };
@@ -331,4 +373,13 @@ test "estimateTokens" {
     try std.testing.expectEqual(@as(u32, 10), estimateTokens("x" ** 40));
     try std.testing.expectEqual(@as(u32, 0), estimateTokens(""));
     try std.testing.expectEqual(@as(u32, 1), estimateTokens("test"));
+}
+
+// ============================================================================
+// Skill Getter (for consistency with other skills)
+// ============================================================================
+
+/// Get skill definition (for compatibility with builtin skill system)
+pub fn getSkill() Skill {
+    return rtk_optimize;
 }

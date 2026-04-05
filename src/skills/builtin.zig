@@ -11,6 +11,7 @@ const refactor = @import("refactor.zig");
 const test_gen = @import("test_gen.zig");
 const doc_gen = @import("doc_gen.zig");
 const debug = @import("debug.zig");
+const token_optimize = @import("token_optimize.zig");
 
 /// Register all built-in skills with the registry
 pub fn registerAll(registry: *SkillRegistry) !void {
@@ -19,6 +20,9 @@ pub fn registerAll(registry: *SkillRegistry) !void {
     try registry.register(test_gen.getSkill());
     try registry.register(doc_gen.getSkill());
     try registry.register(debug.getSkill());
+    
+    // RTK Token Optimizer
+    try registry.register(token_optimize.getSkill());
 }
 
 /// Get list of all built-in skill IDs
@@ -29,6 +33,7 @@ pub fn getBuiltinSkillIds() []const []const u8 {
         test_gen.SKILL_ID,
         doc_gen.SKILL_ID,
         debug.SKILL_ID,
+        token_optimize.SKILL_ID,
     };
 }
 
@@ -72,6 +77,14 @@ pub fn getSkillInfo(skill_id: []const u8) ?SkillInfo {
             .name = debug.SKILL_NAME,
             .description = debug.SKILL_DESCRIPTION,
             .version = debug.SKILL_VERSION,
+        };
+    }
+    if (std.mem.eql(u8, skill_id, token_optimize.SKILL_ID)) {
+        return .{
+            .id = token_optimize.SKILL_ID,
+            .name = token_optimize.SKILL_NAME,
+            .description = token_optimize.SKILL_DESCRIPTION,
+            .version = token_optimize.SKILL_VERSION,
         };
     }
     return null;

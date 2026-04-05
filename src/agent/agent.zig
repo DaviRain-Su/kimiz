@@ -3,6 +3,7 @@
 
 const std = @import("std");
 const utils = @import("../utils/root.zig");
+const error_handler = @import("../utils/error_handler.zig");
 const tool_mod = @import("tool.zig");
 const Tool = tool_mod.Tool;
 const AgentTool = tool_mod.AgentTool;
@@ -212,7 +213,8 @@ pub const Agent = struct {
             // Call AI using the reused client with error recovery
             const response = self.ai_client.complete(ctx) catch |err| {
                 self.state = .err;
-                const err_msg = try std.fmt.allocPrint(self.allocator, "AI call failed: {s}", .{@errorName(err)});
+                const err_msg = error_handler.formatError(self.allocator, err) catch
+                    try std.fmt.allocPrint(self.allocator, "AI call failed: {s}", .{@errorName(err)});
                 defer self.allocator.free(err_msg);
                 self.emit(.{ .err = err_msg });
                 

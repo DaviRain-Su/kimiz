@@ -214,11 +214,9 @@ pub const SkillEngine = struct {
             }
         }
 
-        // TODO: Add timing when std.Io is available in this context
-        var arena = std.heap.ArenaAllocator.init(self.allocator);
-        defer arena.deinit();
-
-        const result = skill.execute_fn(ctx, args, arena.allocator()) catch |err| {
+        // Use the main allocator for the result, not arena
+        // This ensures strings survive after the function returns
+        const result = skill.execute_fn(ctx, args, self.allocator) catch |err| {
             const elapsed_ms: u64 = 0;
             return SkillResult{
                 .success = false,
