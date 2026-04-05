@@ -1,0 +1,51 @@
+# Assertion Density Makefile
+# TigerBeetle standard: 1.5 assertions per function
+
+.PHONY: check-assertions check-assertions-strict report-assertions build-checker
+
+# Build the assertion checker
+build-checker:
+	@zig build-exe tools/check_assertion_density.zig -O ReleaseFast
+
+# Check assertion density (warning only)
+check-assertions: build-checker
+	@./check_assertion_density src || true
+	@rm -f check_assertion_density check_assertion_density.o
+
+# Check assertion density (strict, fails on < 1.5/fn)
+check-assertions-strict: build-checker
+	@./check_assertion_density --min-density 1.5 src
+	@rm -f check_assertion_density check_assertion_density.o
+
+# Generate detailed report
+report-assertions: build-checker
+	@./check_assertion_density src > assertion_density_report.txt
+	@cat assertion_density_report.txt
+	@rm -f check_assertion_density check_assertion_density.o
+
+# Check specific module
+check-module: build-checker
+	@if [ -z "$(MODULE)" ]; then \
+		echo "Usage: make check-module MODULE=src/agent/agent.zig"; \
+		exit 1; \
+	fi
+	@./check_assertion_density $(MODULE)
+	@rm -f check_assertion_density check_assertion_density.o
+
+# Pre-commit hook to check changed files
+pre-commit-assertions:
+	@echo "Checking assertion density on changed files..."
+	@git diff --cached --name-only --diff-filter=ACM | grep "\.zig$$" | while read file; do \
+		if [ -f "$$file" ]; then \
+			echo "Checking $$file..."; \
+			fns=$$(grep -c "fn " "$$file" || echo 0); \
+			asserts=$$(grep -c "assert(" "$$file" || echo 0); \
+			if [ "$$fns" -gt 0 ]; then \
+				density=$$(echo "scale=2; $$asserts / $$fns" | bc -l); \
+				echo "  Functions: $$fns, Asserts: $$asserts, Density: $$density/fn"; \
+				if [ $$(echo "$$density < 1.5" | bc -l) -eq 1 ]; then \
+					echo "  ⚠️  Warning: Below 1.5/fn target"; \
+				fi; \
+			fi; \
+		fi; \
+	done

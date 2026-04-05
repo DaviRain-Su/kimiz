@@ -1,4 +1,4 @@
-//! comptime Skill DSL - T-103 SPIKE
+//! comptime Skill DSL - T-103 SPIKE (Extended)
 //! Compile-time skill definition with type-safe input/output validation
 
 const std = @import("std");
@@ -7,54 +7,39 @@ const skills = @import("root.zig");
 /// Define a skill at compile time with type-safe input/output contracts.
 /// Returns a struct type that can generate a runtime `Skill` via `.toSkill()`.
 pub fn defineSkill(comptime config: anytype) type {
+    // Comptime validation
     comptime {
-        // Validate input is struct
-        const input_info = @typeInfo(config.input);
-        if (input_info != .@"struct") {
-            @compileError("defineSkill: `input` must be a struct");
-        }
-
-        // Validate output is struct
-        const output_info = @typeInfo(config.output);
-        if (output_info != .@"struct") {
-            @compileError("defineSkill: `output` must be a struct");
-        }
-
-        // Validate output has success: bool
-        var has_success = false;
-        for (output_info.@"struct".fields) |field| {
-            if (std.mem.eql(u8, field.name, "success") and field.type == bool) {
-                has_success = true;
-            }
-        }
-        if (!has_success) {
-            @compileError("defineSkill: `output` must contain a `success: bool` field");
-        }
-
-        // Validate handler is a function
-        const HandlerType = @TypeOf(config.handler);
-        const handler_info = @typeInfo(HandlerType);
-        if (handler_info != .@"fn") {
-            @compileError("defineSkill: `handler` must be a function");
-        }
-
-        // Validate handler takes exactly 1 argument
-        if (handler_info.@"fn".params.len != 1) {
-            @compileError("defineSkill: `handler` must take exactly 1 argument");
-        }
-
-        // Validate handler argument type structurally matches input
-        const expected_param_type = handler_info.@"fn".params[0].type orelse {
-            @compileError("defineSkill: `handler` parameter type must be explicit");
-        };
-        assertStructMatch(expected_param_type, config.input, "handler parameter", "input");
-
-        // Validate handler return type structurally matches output
-        const expected_return_type = handler_info.@"fn".return_type orelse {
-            @compileError("defineSkill: `handler` return type must be explicit");
-        };
-        assertStructMatch(expected_return_type, config.output, "handler return", "output");
+        validateConfig(config);
     }
+
+    // Extract handler signature metadata at comptime
+    const HandlerType = @TypeOf(config.handler);
+    const fn_info = @typeInfo(HandlerType).@"fn";
+
+    comptime var has_ctx = false;
+    comptime var has_alloc = false;
+    comptime var input_index: usize = 0;
+    comptime var found_input = false;
+
+    inline for (fn_info.params, 0..) |param, i| {
+        const P = param.type orelse {
+            @compileError("defineSkill: `handler` parameter types must be explicit");
+        };
+        if (P == config.input or isStructurallyEquivalent(P, config.input)) {
+            if (found_input) @compileError("defineSkill: `handler` has multiple input-like parameters");
+            found_input = true;
+            input_index = i;
+        } else if (P == skills.SkillContext) {
+            if (has_ctx) @compileError("defineSkill: `handler` has multiple SkillContext parameters");
+            has_ctx = true;
+        } else if (P == std.mem.Allocator) {
+            if (has_alloc) @compileError("defineSkill: `handler` has multiple Allocator parameters");
+            has_alloc = true;
+        } else {
+            @compileError("defineSkill: `handler` has an unrecognized parameter type");
+        }
+    }
+    if (!found_input) @compileError("defineSkill: `handler` must have a parameter matching `input`");
 
     return struct {
         pub const id = config.name;
@@ -68,11 +53,15 @@ pub fn defineSkill(comptime config: anytype) type {
             const input_info = @typeInfo(config.input);
             var params_array: [input_info.@"struct".fields.len]skills.SkillParam = undefined;
             for (input_info.@"struct".fields, 0..) |field, i| {
+                const param_type = mapTypeToParamType(field.type, field.name);
+                const has_default = field.default_value_ptr != null;
+                const required = @typeInfo(field.type) != .optional and !has_default;
                 params_array[i] = skills.SkillParam{
                     .name = field.name,
                     .description = field.name,
-                    .param_type = mapTypeToParamType(field.type),
-                    .required = @typeInfo(field.type) != .optional,
+                    .param_type = param_type,
+                    .required = required,
+                    .default_value = getDefaultValue(field.type, field.default_value_ptr),
                 };
             }
             const final = params_array;
@@ -85,11 +74,7 @@ pub fn defineSkill(comptime config: anytype) type {
             args: std.json.ObjectMap,
             arena: std.mem.Allocator,
         ) anyerror!skills.SkillResult {
-            _ = ctx;
-
-            // Build input struct from JSON args using handler's actual parameter type
-            const HandlerType = @TypeOf(config.handler);
-            const InputType = @typeInfo(HandlerType).@"fn".params[0].type.?;
+            const InputType = fn_info.params[input_index].type.?;
             var input: InputType = undefined;
             inline for (comptime @typeInfo(InputType).@"struct".fields) |field| {
                 const arg_val = args.get(field.name);
@@ -97,6 +82,8 @@ pub fn defineSkill(comptime config: anytype) type {
                     @field(input, field.name) = try parseJsonValue(val, field.type, arena);
                 } else if (@typeInfo(field.type) == .optional) {
                     @field(input, field.name) = null;
+                } else if (field.default_value_ptr) |ptr| {
+                    @field(input, field.name) = comptime defaultToValue(field.type, ptr);
                 } else {
                     return skills.SkillResult{
                         .success = false,
@@ -107,20 +94,35 @@ pub fn defineSkill(comptime config: anytype) type {
                 }
             }
 
-            // Call handler
-            const output = config.handler(input);
+            const output = callHandler(input, ctx, arena);
 
-            // Build SkillResult
             const output_str = try formatOutput(output, arena);
-
-            return skills.SkillResult{
+            var result = skills.SkillResult{
                 .success = output.success,
                 .output = output_str,
                 .execution_time_ms = 0,
             };
+
+            if (@hasField(@TypeOf(output), "error_message")) {
+                if (@TypeOf(output.error_message) == ?[]const u8) {
+                    if (output.error_message) |em| {
+                        result.error_message = try arena.dupe(u8, em);
+                    }
+                } else if (@TypeOf(output.error_message) == []const u8) {
+                    result.error_message = try arena.dupe(u8, output.error_message);
+                }
+            }
+
+            return result;
         }
 
-        /// Generate a runtime Skill struct
+        fn callHandler(input: anytype, ctx: skills.SkillContext, arena: std.mem.Allocator) fn_info.return_type.? {
+            if (has_ctx and has_alloc) return config.handler(ctx, input, arena);
+            if (has_ctx) return config.handler(ctx, input);
+            if (has_alloc) return config.handler(input, arena);
+            return config.handler(input);
+        }
+
         pub fn toSkill() skills.Skill {
             return skills.Skill{
                 .id = id,
@@ -135,39 +137,127 @@ pub fn defineSkill(comptime config: anytype) type {
     };
 }
 
-/// Map Zig types to SkillParam.ParamType at comptime
-fn assertStructMatch(comptime actual: type, comptime expected: type, comptime actual_label: []const u8, comptime expected_label: []const u8) void {
-    const actual_info = @typeInfo(actual);
-    const expected_info = @typeInfo(expected);
-    if (actual_info != .@"struct" or expected_info != .@"struct") {
-        @compileError("defineSkill: `" ++ actual_label ++ "` and `" ++ expected_label ++ "` must both be structs");
+fn validateConfig(comptime config: anytype) void {
+    const input_info = @typeInfo(config.input);
+    if (input_info != .@"struct") {
+        @compileError("defineSkill: `input` must be a struct");
     }
-    const actual_fields = actual_info.@"struct".fields;
-    const expected_fields = expected_info.@"struct".fields;
-    if (actual_fields.len != expected_fields.len) {
-        @compileError("defineSkill: `" ++ actual_label ++ "` field count does not match `" ++ expected_label ++ "`");
+
+    const output_info = @typeInfo(config.output);
+    if (output_info != .@"struct") {
+        @compileError("defineSkill: `output` must be a struct");
     }
-    for (actual_fields, expected_fields) |a, e| {
-        if (!std.mem.eql(u8, a.name, e.name)) {
-            @compileError("defineSkill: field name mismatch: `" ++ actual_label ++ "` has `" ++ a.name ++ "` but `" ++ expected_label ++ "` expected `" ++ e.name ++ "`");
+
+    var has_success = false;
+    for (output_info.@"struct".fields) |field| {
+        if (std.mem.eql(u8, field.name, "success") and field.type == bool) {
+            has_success = true;
         }
-        if (a.type != e.type) {
-            @compileError("defineSkill: field type mismatch for `" ++ a.name ++ "`: `" ++ actual_label ++ "` and `" ++ expected_label ++ "` differ");
-        }
+    }
+    if (!has_success) {
+        @compileError("defineSkill: `output` must contain a `success: bool` field");
+    }
+
+    const HandlerType = @TypeOf(config.handler);
+    const handler_info = @typeInfo(HandlerType);
+    if (handler_info != .@"fn") {
+        @compileError("defineSkill: `handler` must be a function");
+    }
+
+    const expected_return_type = handler_info.@"fn".return_type orelse {
+        @compileError("defineSkill: `handler` return type must be explicit");
+    };
+    if (expected_return_type != config.output and !isStructurallyEquivalent(expected_return_type, config.output)) {
+        @compileError("defineSkill: `handler` return type must match `output`");
     }
 }
 
-fn mapTypeToParamType(comptime T: type) skills.SkillParam.ParamType {
+fn isStructurallyEquivalent(comptime a: type, comptime b: type) bool {
+    const a_info = @typeInfo(a);
+    const b_info = @typeInfo(b);
+    if (a_info != .@"struct" or b_info != .@"struct") return false;
+    const a_fields = a_info.@"struct".fields;
+    const b_fields = b_info.@"struct".fields;
+    if (a_fields.len != b_fields.len) return false;
+    for (a_fields, b_fields) |af, bf| {
+        if (!std.mem.eql(u8, af.name, bf.name)) return false;
+        if (af.type != bf.type) return false;
+    }
+    return true;
+}
+
+fn mapTypeToParamType(comptime T: type, comptime field_name: []const u8) skills.SkillParam.ParamType {
+    if (@typeInfo(T) == .@"enum") return .selection;
+    if (@typeInfo(T) == .optional and @typeInfo(@typeInfo(T).optional.child) == .@"enum") return .selection;
+
     return switch (T) {
-        []const u8 => .string,
-        ?[]const u8 => .string,
         bool => .boolean,
         i32, i64, u32, u64 => .integer,
+        []const u8 => classifyStringParam(field_name),
+        ?[]const u8 => classifyStringParam(field_name),
         else => .string,
     };
 }
 
-/// Parse a std.json.Value into a Zig type
+fn classifyStringParam(comptime name: []const u8) skills.SkillParam.ParamType {
+    if (endsWithAny(name, &.{ "filepath", "file_path", "path" })) return .filepath;
+    if (endsWithAny(name, &.{ "directory", "dir", "folder" })) return .directory;
+    if (endsWithAny(name, &.{ "code", "context", "content", "script", "patch" })) return .code;
+    return .string;
+}
+
+fn endsWithAny(comptime haystack: []const u8, comptime needles: []const []const u8) bool {
+    inline for (needles) |needle| {
+        if (haystack.len >= needle.len and std.mem.eql(u8, haystack[haystack.len - needle.len ..], needle)) return true;
+    }
+    return false;
+}
+
+fn getDefaultValue(comptime T: type, comptime default_ptr: ?*const anyopaque) ?[]const u8 {
+    const ptr = default_ptr orelse return null;
+    return switch (T) {
+        ?[]const u8 => {
+            const val: *const ?[]const u8 = @ptrCast(@alignCast(ptr));
+            return val.*;
+        },
+        []const u8 => {
+            const val: *const []const u8 = @ptrCast(@alignCast(ptr));
+            return val.*;
+        },
+        bool => {
+            const val: *const bool = @ptrCast(@alignCast(ptr));
+            return if (val.*) "true" else "false";
+        },
+        i32, i64, u32, u64 => {
+            const val: *const T = @ptrCast(@alignCast(ptr));
+            return std.fmt.comptimePrint("{d}", .{val.*});
+        },
+        else => blk: {
+            if (@typeInfo(T) == .@"enum") {
+                const val: *const T = @ptrCast(@alignCast(ptr));
+                break :blk @tagName(val.*);
+            }
+            break :blk null;
+        },
+    };
+}
+
+fn defaultToValue(comptime T: type, comptime default_ptr: *const anyopaque) T {
+    return switch (T) {
+        ?[]const u8, []const u8, bool, i32, i64, u32, u64 => {
+            const val: *const T = @ptrCast(@alignCast(default_ptr));
+            return val.*;
+        },
+        else => blk: {
+            if (@typeInfo(T) == .@"enum") {
+                const val: *const T = @ptrCast(@alignCast(default_ptr));
+                break :blk val.*;
+            }
+            @compileError("unsupported default value type");
+        },
+    };
+}
+
 fn parseJsonValue(val: std.json.Value, comptime T: type, arena: std.mem.Allocator) !T {
     return switch (T) {
         []const u8 => switch (val) {
@@ -199,20 +289,31 @@ fn parseJsonValue(val: std.json.Value, comptime T: type, arena: std.mem.Allocato
             .integer => |n| if (n >= 0) @intCast(n) else error.InvalidParamType,
             else => error.InvalidParamType,
         },
-        else => @compileError("unsupported parameter type for defineSkill"),
+        else => blk: {
+            if (@typeInfo(T) == .@"enum") {
+                break :blk switch (val) {
+                    .string => |s| std.meta.stringToEnum(T, s) orelse error.InvalidParamType,
+                    else => error.InvalidParamType,
+                };
+            }
+            if (@typeInfo(T) == .optional and @typeInfo(@typeInfo(T).optional.child) == .@"enum") {
+                break :blk switch (val) {
+                    .string => |s| std.meta.stringToEnum(@typeInfo(T).optional.child, s) orelse error.InvalidParamType,
+                    .null => null,
+                    else => error.InvalidParamType,
+                };
+            }
+            @compileError("unsupported parameter type for defineSkill");
+        },
     };
 }
 
-/// Format output struct into a string for SkillResult.output
 fn formatOutput(output: anytype, arena: std.mem.Allocator) ![]const u8 {
-    // If output has an `output` string field, use it directly
     if (@hasField(@TypeOf(output), "output")) {
         if (@TypeOf(output.output) == []const u8) {
             return try arena.dupe(u8, output.output);
         }
     }
-
-    // Otherwise, JSON stringify the output struct
     return try std.json.stringifyAlloc(arena, output, .{});
 }
 
@@ -220,43 +321,61 @@ fn formatOutput(output: anytype, arena: std.mem.Allocator) ![]const u8 {
 // Tests
 // ============================================================================
 
-fn debugHandler(input: struct {
+const Tone = enum {
+    junior_dev,
+    peer_reviewer,
+    senior_architect,
+};
+
+fn enumHandler(input: struct {
     code: []const u8,
-    language: ?[]const u8 = null,
+    tone: Tone = .junior_dev,
+    verbose: ?bool = null,
 }) struct {
     success: bool,
     output: []const u8,
 } {
     _ = input;
-    return .{ .success = true, .output = "debug completed" };
+    return .{ .success = true, .output = "enum ok" };
 }
 
-test "defineSkill basic validation" {
-    const DebugSkill = defineSkill(.{
-        .name = "debug",
-        .description = "Debug skill",
+test "defineSkill with enum fields" {
+    const EnumSkill = defineSkill(.{
+        .name = "enum_test",
+        .description = "Test enum support",
         .input = struct {
             code: []const u8,
-            language: ?[]const u8 = null,
+            tone: Tone = .junior_dev,
+            verbose: ?bool = null,
         },
         .output = struct {
             success: bool,
             output: []const u8,
         },
-        .handler = debugHandler,
+        .handler = enumHandler,
     });
 
-    try std.testing.expectEqualStrings("debug", DebugSkill.id);
-    try std.testing.expectEqualStrings("debug", DebugSkill.name);
-    try std.testing.expect(DebugSkill.params.len == 2);
+    try std.testing.expectEqualStrings("enum_test", EnumSkill.id);
+    try std.testing.expect(EnumSkill.params.len == 3);
+
+    // tone should be selection type
+    try std.testing.expect(EnumSkill.params[1].param_type == .selection);
+    try std.testing.expectEqualStrings("junior_dev", EnumSkill.params[1].default_value.?);
+
+    // filepath should be filepath type
+    try std.testing.expect(EnumSkill.params[0].param_type == .filepath);
+
+    // verbose should be boolean and not required
+    try std.testing.expect(EnumSkill.params[2].param_type == .boolean);
+    try std.testing.expect(EnumSkill.params[2].required == false);
 }
 
-test "defineSkill execution" {
+test "defineSkill with SkillContext handler" {
     const allocator = std.testing.allocator;
 
-    const EchoSkill = defineSkill(.{
-        .name = "echo",
-        .description = "Echo skill",
+    const CtxSkill = defineSkill(.{
+        .name = "ctx_test",
+        .description = "Test context handler",
         .input = struct {
             message: []const u8,
         },
@@ -265,22 +384,19 @@ test "defineSkill execution" {
             output: []const u8,
         },
         .handler = struct {
-            fn exec(input: struct { message: []const u8 }) struct {
+            fn exec(ctx: skills.SkillContext, input: struct { message: []const u8 }) struct {
                 success: bool,
                 output: []const u8,
             } {
+                _ = ctx;
                 return .{ .success = true, .output = input.message };
             }
         }.exec,
     });
 
-    const skill = EchoSkill.toSkill();
-    try std.testing.expectEqualStrings("echo", skill.id);
-    try std.testing.expectEqualStrings("echo", skill.name);
-
     var args = std.json.ObjectMap.init(allocator);
     defer args.deinit();
-    try args.put("message", std.json.Value{ .string = "hello dsl" });
+    try args.put("message", std.json.Value{ .string = "hello ctx" });
 
     const ctx = skills.SkillContext{
         .allocator = allocator,
@@ -288,42 +404,51 @@ test "defineSkill execution" {
         .session_id = "test",
     };
 
-    const result = try skill.execute_fn(ctx, args, allocator);
+    const result = try CtxSkill.execute_fn(ctx, args, allocator);
     try std.testing.expect(result.success);
-    try std.testing.expectEqualStrings("hello dsl", result.output);
+    try std.testing.expectEqualStrings("hello ctx", result.output);
 }
 
-test "defineSkill compile error on mismatch" {
-    // This test validates that defineSkill produces a clear compile error
-    // when handler signature doesn't match input. We can't test compile errors
-    // at runtime, but we document the expected behavior here.
-    //
-    // Example of code that WOULD fail to compile:
-    //
-    // fn badHandler(input: struct { code: []const u8 }) struct { success: bool } { ... }
-    //
-    // const BadSkill = defineSkill(.{
-    //     .name = "bad",
-    //     .input = struct { code: []const u8, extra: []const u8 },
-    //     .output = struct { success: bool },
-    //     .handler = badHandler,
-    // });
-    //
-    // Expected error: "defineSkill: `handler` parameter type must match `input`"
+test "defineSkill with allocator handler" {
+    const allocator = std.testing.allocator;
 
-    // For now, verify that a correct definition compiles without issue.
-    const GoodSkill = defineSkill(.{
-        .name = "good",
-        .description = "Good skill",
-        .input = struct { code: []const u8 },
-        .output = struct { success: bool, output: []const u8 },
+    const AllocSkill = defineSkill(.{
+        .name = "alloc_test",
+        .description = "Test allocator handler",
+        .input = struct {
+            count: u32 = 10,
+        },
+        .output = struct {
+            success: bool,
+            output: []const u8,
+        },
         .handler = struct {
-            fn exec(input: struct { code: []const u8 }) struct { success: bool, output: []const u8 } {
-                return .{ .success = true, .output = input.code };
+            fn exec(input: struct { count: u32 }, arena: std.mem.Allocator) struct {
+                success: bool,
+                output: []const u8,
+            } {
+                const s = std.fmt.allocPrint(arena, "count={d}", .{input.count}) catch return .{ .success = false, .output = "" };
+                return .{ .success = true, .output = s };
             }
         }.exec,
     });
-    try std.testing.expectEqualStrings("good", GoodSkill.name);
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    var args = std.json.ObjectMap.init(allocator);
+    defer args.deinit();
+    try args.put("count", std.json.Value{ .integer = 42 });
+
+    const ctx = skills.SkillContext{
+        .allocator = allocator,
+        .working_dir = ".",
+        .session_id = "test",
+    };
+
+    const result = try AllocSkill.execute_fn(ctx, args, arena.allocator());
+    try std.testing.expect(result.success);
+    try std.testing.expectEqualStrings("count=42", result.output);
 }
 
 test "defineSkill registry integration" {

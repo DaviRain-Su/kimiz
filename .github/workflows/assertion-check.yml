@@ -1,0 +1,51 @@
+name: Assertion Density Check
+
+on:
+  pull_request:
+    paths:
+      - 'src/**/*.zig'
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/**/*.zig'
+
+jobs:
+  check-assertions:
+    name: Check Assertion Density (TigerBeetle Standard)
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: 0.16.0-dev
+      
+      - name: Build assertion checker
+        run: |
+          zig build-exe tools/check_assertion_density.zig -O ReleaseFast
+      
+      - name: Run assertion density check
+        id: check
+        run: |
+          ./check_assertion_density --ci --min-density 1.5 src || echo "CHECK_FAILED=true" >> $GITHUB_OUTPUT
+        continue-on-error: true
+      
+      - name: Comment on PR (if failed)
+        if: steps.check.outputs.CHECK_FAILED == 'true' && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.name,
+              body: '⚠️ **Assertion Density Check Failed**\\n\\nThe code changes do not meet the TigerBeetle standard of 1.5 assertions per function.\\n\\nPlease review the CI logs for details on which files need more assertions.\\n\\n**Why this matters:**\\n- Assertions catch bugs at compile-time in debug builds\\n- They document invariants and preconditions\\n- They make code more robust and easier to debug\\n\\nSee [Assertion Density Guide](docs/designs/assertion-density-improvement.md) for patterns and examples.'
+            })
+      
+      - name: Fail workflow if check failed
+        if: steps.check.outputs.CHECK_FAILED == 'true'
+        run: exit 1

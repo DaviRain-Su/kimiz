@@ -6,12 +6,12 @@ const skills = @import("./root.zig");
 const SkillRegistry = skills.SkillRegistry;
 
 // Import all built-in skills
-const code_review = @import("code_review.zig");
-const refactor = @import("refactor.zig");
-const test_gen = @import("test_gen.zig");
+const code_review = @import("code_review_dsl.zig");
+const refactor = @import("refactor_dsl.zig");
+const test_gen = @import("test_gen_dsl.zig");
 const doc_gen = @import("doc_gen_dsl.zig");
 const debug = @import("debug_dsl.zig");
-const token_optimize = @import("token_optimize.zig");
+const token_optimize = @import("token_optimize_dsl.zig");
 
 /// Register all built-in skills with the registry
 pub fn registerAll(registry: *SkillRegistry) !void {
