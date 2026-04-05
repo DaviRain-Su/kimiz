@@ -29,9 +29,9 @@
 
 | 文档 | 核心要点 | 应用场景 |
 |------|----------|----------|
-| [TigerBeetle Patterns](TIGERBEETLE-PATTERNS-ANALYSIS.md) | 状态机、显式错误处理、无隐藏分配、Arena 模式 | **所有 Zig 代码** |
-| [NullClaw Lessons](NULLCLAW-LESSONS-QUICKREF.md) | 工具沙箱、优雅降级、日志可观测、资源边界 | **Agent Loop、工具实现** |
-| [Zig 0.16 Breaking Changes](ZIG-0.16-BREAKING-CHANGES-SUMMARY.md) | 0.15→0.16 迁移差异对照 | **API 选型时必读** |
+| [TigerBeetle Patterns](research/TIGERBEETLE-PATTERNS-ANALYSIS.md) | 状态机、显式错误处理、无隐藏分配、Arena 模式 | **所有 Zig 代码** |
+| [NullClaw Lessons](guides/NULLCLAW-LESSONS-QUICKREF.md) | 工具沙箱、优雅降级、日志可观测、资源边界 | **Agent Loop、工具实现** |
+| [Zig 0.16 Breaking Changes](guides/ZIG-0.16-BREAKING-CHANGES-SUMMARY.md) | 0.15→0.16 迁移差异对照 | **API 选型时必读** |
 
 **关键原则（写入代码时必须遵守）**:
 - **Zig 0.16 优先**: 新实现优先使用 0.16 引入的 API，不向后兼容 0.15
@@ -60,8 +60,8 @@
 | 文档 | 核心要点 | 应用场景 |
 |------|----------|----------|
 | [Harness Four Pillars](research/harness-four-pillars-nyk-analysis.md) | WorkspaceContext、PromptCache、ContextTruncation、SessionPersistence | **Harness 全部实现** |
-| [Claude Code Prompt Analysis](CLAUDE-CODE-PROMPT-ANALYSIS.md) | Prompt 分层、Stable Prefix、System Prompt 工程 | **PromptCache、Agent 提示** |
-| [06-agent-harness-upgrade.md](06-agent-harness-upgrade.md) | 项目自身的 Harness 升级计划 | **Harness 优先级排序** |
+| [Claude Code Prompt Analysis](research/CLAUDE-CODE-PROMPT-ANALYSIS.md) | Prompt 分层、Stable Prefix、System Prompt 工程 | **PromptCache、Agent 提示** |
+| [06-agent-harness-upgrade.md](lifecycle/06-agent-harness-upgrade.md) | 项目自身的 Harness 升级计划 | **Harness 优先级排序** |
 
 **关键原则**:
 - PromptCache 的核心是"Stable Prefix"：不重复发送静态上下文
@@ -74,7 +74,7 @@
 
 | 文档 | 核心要点 | 应用场景 |
 |------|----------|----------|
-| [NullClaw Analysis](NULLCLAW-ANALYSIS.md) | 失败模式分类、日志追踪、安全分类器 | **Agent Linter、Resource Limits** |
+| [NullClaw Analysis](research/NULLCLAW-ANALYSIS.md) | 失败模式分类、日志追踪、安全分类器 | **Agent Linter、Resource Limits** |
 
 **关键原则**:
 - 每个 Agent 步骤都要产生可读的 trace（thought → action → observation）
@@ -87,9 +87,9 @@
 
 | 文档 | 核心要点 | 应用场景 |
 |------|----------|----------|
-| [OpenCLI Analysis](OPENCLI-ANALYSIS.md) | CLI adapter 设计、命令发现、参数映射 | **OpenCLI Skill** |
-| [AutoLab Integration](AUTOLAB-INTEGRATION-ANALYSIS.md) | 外部 Critic 接入、评估循环、反馈驱动迭代 | **AutoLab Critic** |
-| [MCX Integration](MCX-INTEGRATION-ANALYSIS.md) | MCP 服务器协议、Zig 客户端实现 | **MCP Client** |
+| [OpenCLI Analysis](research/OPENCLI-ANALYSIS.md) | CLI adapter 设计、命令发现、参数映射 | **OpenCLI Skill** |
+| [AutoLab Integration](research/AUTOLAB-INTEGRATION-ANALYSIS.md) | 外部 Critic 接入、评估循环、反馈驱动迭代 | **AutoLab Critic** |
+| [MCX Integration](research/MCX-INTEGRATION-ANALYSIS.md) | MCP 服务器协议、Zig 客户端实现 | **MCP Client** |
 | [Lightpanda Browser](research/lightpanda-browser-analysis.md) | 无头浏览器集成、轻量化 web 抓取 | **Web 工具增强** |
 
 **关键原则**:
@@ -103,8 +103,8 @@
 
 | 文档 | 核心要点 | 应用场景 |
 |------|----------|----------|
-| [Yoyo Evolve](YOYO-EVOLVE-ANALYSIS.md) | 自进化循环、编译反馈、代码生成-测试-修复 | **AI Slop GC、Self-Review、Learning** |
-| [Zig LLM Self-Evolution](ZIG-LLM-SELF-EVOLUTION-STRATEGY.md) | LLM 驱动的 Zig 代码生成策略 | **Skill 自生成** |
+| [Yoyo Evolve](research/YOYO-EVOLVE-ANALYSIS.md) | 自进化循环、编译反馈、代码生成-测试-修复 | **AI Slop GC、Self-Review、Learning** |
+| [Zig LLM Self-Evolution](research/ZIG-LLM-SELF-EVOLUTION-STRATEGY.md) | LLM 驱动的 Zig 代码生成策略 | **Skill 自生成** |
 
 **关键原则**:
 - 自进化的核心是"编译-运行-反馈"闭环
@@ -134,8 +134,8 @@
 
 | 文档 | 核心要点 | 应用场景 |
 |------|----------|----------|
-| [Pay-As-You-Go AI](PAY-AS-YOU-GO-AI-ANALYSIS.md) | 余额策略、充值入口、智能合约评估 | **PayGo 计费** |
-| [OpenWallet Analysis](OPENWALLET-ANALYSIS.md) | 钱包集成、支付流程 | **充值入口** |
+| [Pay-As-You-Go AI](research/PAY-AS-YOU-GO-AI-ANALYSIS.md) | 余额策略、充值入口、智能合约评估 | **PayGo 计费** |
+| [OpenWallet Analysis](research/OPENWALLET-ANALYSIS.md) | 钱包集成、支付流程 | **充值入口** |
 
 ---
 

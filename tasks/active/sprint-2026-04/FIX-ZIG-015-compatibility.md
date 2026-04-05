@@ -29,9 +29,9 @@
 
 ## 参考文档
 
-- [TigerBeetle Patterns](../TIGERBEETLE-PATTERNS-ANALYSIS.md) - Zig 代码质量基线（显式错误处理、资源边界）
-- [NullClaw Lessons](../NULLCLAW-LESSONS-QUICKREF.md) - 错误恢复与资源管理原则
-- [Zig 0.16 Breaking Changes](../ZIG-0.16-BREAKING-CHANGES-SUMMARY.md) - 0.15→0.16 API 差异对照
+- [TigerBeetle Patterns](../research/TIGERBEETLE-PATTERNS-ANALYSIS.md) - Zig 代码质量基线（显式错误处理、资源边界）
+- [NullClaw Lessons](../guides/NULLCLAW-LESSONS-QUICKREF.md) - 错误恢复与资源管理原则
+- [Zig 0.16 Breaking Changes](../guides/ZIG-0.16-BREAKING-CHANGES-SUMMARY.md) - 0.15→0.16 API 差异对照
 
 ### 编译错误输出
 

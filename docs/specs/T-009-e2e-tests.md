@@ -9,8 +9,8 @@
 
 ## 参考文档
 
-- [TigerBeetle Patterns](../TIGERBEETLE-PATTERNS-ANALYSIS.md) - Zig 测试与资源管理原则
-- [NullClaw Lessons](../NULLCLAW-LESSONS-QUICKREF.md) - 可观测性与边界测试思想
+- [TigerBeetle Patterns](../research/TIGERBEETLE-PATTERNS-ANALYSIS.md) - Zig 测试与资源管理原则
+- [NullClaw Lessons](../guides/NULLCLAW-LESSONS-QUICKREF.md) - 可观测性与边界测试思想
 - [Zbench Benchmark Testing](../research/zbench-benchmark-testing-analysis.md) - Zig 测试框架生态
 
 ---

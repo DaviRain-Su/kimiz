@@ -10,7 +10,7 @@
 ## 参考文档
 
 - [SUBAGENT-ARCHITECTURE-AND-IMPLEMENTATION-PLAN](../design/SUBAGENT-ARCHITECTURE-AND-IMPLEMENTATION-PLAN.md) - delegate 工具集成详细设计
-- [NullClaw Lessons](../NULLCLAW-LESSONS-QUICKREF.md) - 工具安全边界与错误恢复
+- [NullClaw Lessons](../guides/NULLCLAW-LESSONS-QUICKREF.md) - 工具安全边界与错误恢复
 
 ---
 

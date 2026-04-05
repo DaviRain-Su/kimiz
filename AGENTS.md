@@ -80,10 +80,12 @@ Current queue:
 | `docs/specs/*.md` | Executable technical specs | Per-task |
 
 ### Do NOT Read (Outdated / Misleading)
-- `docs/08-project-audit-report.md`
-- `docs/09-task-status-audit.md`
-- `docs/10-handoff-to-coding-agent.md`
+- `docs/reports/08-project-audit-report.md`
+- `docs/reports/09-task-status-audit.md`
+- `docs/reports/10-handoff-to-coding-agent.md`
+- `docs/reports/review-report.md`
 - `tasks/archive/` (historical garbage)
+- `tasks/completed/` (read only if you need historical context)
 
 ---
 
@@ -91,13 +93,13 @@ Current queue:
 
 ### Code Quality
 Read these **before** writing Zig code:
-- [TigerBeetle Patterns](docs/TIGERBEETLE-PATTERNS-ANALYSIS.md) — State machines, explicit error handling, no hidden allocations
-- [NullClaw Lessons](docs/NULLCLAW-LESSONS-QUICKREF.md) — Tool sandboxing, graceful degradation, resource boundaries
+- [TigerBeetle Patterns](docs/research/TIGERBEETLE-PATTERNS-ANALYSIS.md) — State machines, explicit error handling, no hidden allocations
+- [NullClaw Lessons](docs/guides/NULLCLAW-LESSONS-QUICKREF.md) — Tool sandboxing, graceful degradation, resource boundaries
 
 ### Zig API Version Rule
 - **New code = Zig 0.16 only**
 - If an API has both 0.15 and 0.16 forms, use the 0.16 form
-- If an API is gone in 0.16, use its 0.16 replacement (check `docs/ZIG-0.16-BREAKING-CHANGES-SUMMARY.md`)
+- If an API is gone in 0.16, use its 0.16 replacement (check `docs/guides/ZIG-0.16-BREAKING-CHANGES-SUMMARY.md`)
 
 ### Memory Management
 - No hidden allocations
@@ -175,7 +177,7 @@ Types: `feat`, `fix`, `docs`, `test`, `refactor`, `revert`
 
 - **P0 Blocker**: Fix immediately, update task status, notify in commit message
 - **Spec Ambiguity**: Update the spec file in `docs/specs/`, do not guess
-- **API Confusion**: Check `docs/ZIG-0.16-BREAKING-CHANGES-SUMMARY.md`
+- **API Confusion**: Check `docs/guides/ZIG-0.16-BREAKING-CHANGES-SUMMARY.md`
 
 ---
 

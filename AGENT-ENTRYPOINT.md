@@ -75,9 +75,10 @@ zig version  # 必须是 0.16.0-dev+
 
 以下文档写于编译修复之前，内容已过时：
 
-- ❌ `docs/08-project-audit-report.md`
-- ❌ `docs/09-task-status-audit.md`
-- ❌ `docs/10-handoff-to-coding-agent.md`
+- ❌ `docs/reports/08-project-audit-report.md`
+- ❌ `docs/reports/09-task-status-audit.md`
+- ❌ `docs/reports/10-handoff-to-coding-agent.md`
+- ❌ `docs/reports/review-report.md`
 - ❌ `tasks/archive/sprint-01-core/T-00*.md`（旧 Sprint，状态混乱）
 - ❌ `tasks/archive/old-backlog/*`（历史归档）
 
