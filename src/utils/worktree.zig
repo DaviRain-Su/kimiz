@@ -36,7 +36,8 @@ pub const WorktreeManager = struct {
         errdefer self.allocator.free(worktree_path);
 
         // Ensure parent directory exists
-        std.fs.makeDirAbsolute(base_dir) catch |e| {
+        const utils = @import("root.zig");
+        utils.makeDirRecursive(base_dir) catch |e| {
             if (e != error.PathAlreadyExists) return WorktreeError.WorktreeCreateFailed;
         };
 
@@ -102,9 +103,10 @@ pub const WorktreeManager = struct {
 
     /// Generate a unique worktree name based on timestamp and random suffix
     pub fn generateName(self: *const Self, prefix: []const u8) WorktreeError![]const u8 {
-        const c = @cImport({ @cInclude("time.h"); });
-        const ts: i64 = c.time(null);
-        const rand = std.crypto.random.int(u32);
+        const utils = @import("root.zig");
+        const ts = utils.milliTimestamp();
+        var prng = std.Random.DefaultPrng.init(@intCast(ts));
+        const rand = prng.random().int(u32);
         return try std.fmt.allocPrint(self.allocator, "{s}-{d}-{x}", .{ prefix, ts, rand });
     }
 

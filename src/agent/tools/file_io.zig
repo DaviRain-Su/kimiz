@@ -1,21 +1,14 @@
 //! File I/O helpers using Zig 0.16 native APIs
 
 const std = @import("std");
+const utils = @import("../../utils/root.zig");
 
 pub fn readFileAlloc(allocator: std.mem.Allocator, path: []const u8, max_size: usize) ![]u8 {
-    return std.fs.cwd().readFileAlloc(allocator, path, max_size);
+    return utils.readFileAlloc(allocator, path, max_size);
 }
 
 pub fn writeFileAlloc(_: std.mem.Allocator, path: []const u8, data: []const u8) !void {
-    // Ensure parent directories exist
-    if (std.fs.path.dirname(path)) |dir| {
-        try std.fs.cwd().makePath(dir);
-    }
-
-    try std.fs.cwd().writeFile(.{
-        .sub_path = path,
-        .data = data,
-    });
+    return utils.writeFile(path, data);
 }
 
 // ============================================================================

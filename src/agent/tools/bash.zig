@@ -197,12 +197,12 @@ fn executeCommand(
     }
 
     // Execute using Zig 0.16 native API
-    const timeout_ns = @as(u64, timeout_ms) * std.time.ns_per_ms;
+    const timeout_ns: i96 = @as(i96, timeout_ms) * std.time.ns_per_ms;
     const result = std.process.run(arena, io, .{
         .argv = &.{ "sh", "-c", full_cmd },
         .stdout_limit = @enumFromInt(100 * 1024),
         .stderr_limit = @enumFromInt(100 * 1024),
-        .timeout = timeout_ns,
+        .timeout = .{ .duration = .{ .raw = std.Io.Duration.fromNanoseconds(timeout_ns), .clock = undefined } },
     }) catch {
         return CommandResult{ .stdout = "", .stderr = "Failed to execute command", .exit_code = null };
     };

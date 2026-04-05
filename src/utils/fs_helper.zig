@@ -16,54 +16,58 @@ fn getIo() !std.Io {
 }
 
 /// Read file contents into allocated memory
-/// Convenience wrapper around Io.Dir operations
+/// Uses C API for simplicity
 pub fn readFileAlloc(
     allocator: std.mem.Allocator,
     path: []const u8,
     max_size: usize,
 ) ![]u8 {
-    const io = try getIo();
-    const dir = cwd();
+    const c = @cImport({ @cInclude("stdio.h"); @cInclude("stdlib.h"); });
     
-    // Open the file
-    const file = try dir.openFile(&io.interface, path, .{});
-    defer file.close(&io.interface);
-    
-    // Get file size
-    const stat = try file.stat(&io.interface);
-    const size = @min(stat.size, max_size);
-    
-    // Allocate buffer
-    const content = try allocator.alloc(u8, size);
-    errdefer allocator.free(content);
-    
-    // Read file content
-    var reader = file.reader(&io.interface, content);
-    const read_size = try reader.interface.readAll(content);
-    
-    if (read_size < size) {
-        // Shrink allocation if we read less than expected
-        const resized = try allocator.realloc(content, read_size);
-        return resized;
+    const c_path = try allocator.dupeZ(u8, path);
+    defer allocator.free(c_path);
+
+    const fp = c.fopen(c_path.ptr, "rb") orelse return error.FileNotFound;
+    defer _ = c.fclose(fp);
+
+    _ = c.fseek(fp, 0, c.SEEK_END);
+    const raw_size = c.ftell(fp);
+    if (raw_size < 0) return error.FileNotFound;
+    const size: usize = @intCast(raw_size);
+    _ = c.fseek(fp, 0, c.SEEK_SET);
+
+    const read_size = @min(size, max_size);
+    const buf = try allocator.alloc(u8, read_size);
+    errdefer allocator.free(buf);
+
+    const n = c.fread(buf.ptr, 1, read_size, fp);
+    if (n < read_size) {
+        return allocator.realloc(buf, n);
     }
-    
-    return content;
+    return buf;
 }
 
 /// Write contents to file
+/// Uses C API for simplicity
 pub fn writeFile(
     path: []const u8,
     contents: []const u8,
 ) !void {
-    const io = try getIo();
-    const dir = cwd();
+    const c = @cImport({ @cInclude("stdio.h"); @cInclude("stdlib.h"); @cInclude("sys/stat.h"); });
     
-    const file = try dir.createFile(&io.interface, path, .{});
-    defer file.close(&io.interface);
-    
-    var writer = file.writer(&io.interface, contents);
-    try writer.interface.writeAll(contents);
-    try writer.flush();
+    const c_path = try std.heap.page_allocator.dupeZ(u8, path);
+    defer std.heap.page_allocator.free(c_path);
+
+    // Ensure parent directory exists
+    if (std.fs.path.dirname(path)) |dir| {
+        try makeDirRecursive(dir);
+    }
+
+    const fp = c.fopen(c_path.ptr, "wb") orelse return error.FileCreateFailed;
+    defer _ = c.fclose(fp);
+
+    const written = c.fwrite(contents.ptr, 1, contents.len, fp);
+    if (written != contents.len) return error.WriteFailure;
 }
 
 /// Check if file exists
@@ -78,14 +82,27 @@ pub fn fileExists(path: []const u8) bool {
 pub fn makeDir(path: []const u8) !void {
     const io = try getIo();
     const dir = cwd();
-    try dir.makeDir(&io.interface, path);
+    try dir.makeDir(io, path);
 }
 
-/// Create directory and all parent directories
+/// Create directory and all parent directories - fallback to C mkdir
 pub fn makeDirRecursive(path: []const u8) !void {
-    const io = try getIo();
-    const dir = cwd();
-    try dir.makePath(&io.interface, path);
+    // Zig 0.16 Dir doesn't have makePath, use C API
+    const c = @cImport({ @cInclude("sys/stat.h"); @cInclude("string.h"); });
+    var buf: [std.fs.max_path_bytes]u8 = undefined;
+    if (path.len >= buf.len) return error.NameTooLong;
+    
+    @memcpy(buf[0..path.len], path);
+    var i: usize = 0;
+    while (i < path.len) : (i += 1) {
+        if (path[i] == '/' and i > 0) {
+            buf[i] = 0;
+            _ = c.mkdir(@ptrCast(&buf), 0o755);
+            buf[i] = '/';
+        }
+    }
+    buf[path.len] = 0;
+    _ = c.mkdir(@ptrCast(&buf), 0o755);
 }
 
 /// Open directory for iteration
