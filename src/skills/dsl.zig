@@ -10,19 +10,19 @@ pub fn defineSkill(comptime config: anytype) type {
     comptime {
         // Validate input is struct
         const input_info = @typeInfo(config.input);
-        if (input_info != .Struct) {
+        if (input_info != .@"struct") {
             @compileError("defineSkill: `input` must be a struct");
         }
 
         // Validate output is struct
         const output_info = @typeInfo(config.output);
-        if (output_info != .Struct) {
+        if (output_info != .@"struct") {
             @compileError("defineSkill: `output` must be a struct");
         }
 
         // Validate output has success: bool
         var has_success = false;
-        for (output_info.Struct.fields) |field| {
+        for (output_info.@"struct".fields) |field| {
             if (std.mem.eql(u8, field.name, "success") and field.type == bool) {
                 has_success = true;
             }
@@ -34,30 +34,26 @@ pub fn defineSkill(comptime config: anytype) type {
         // Validate handler is a function
         const HandlerType = @TypeOf(config.handler);
         const handler_info = @typeInfo(HandlerType);
-        if (handler_info != .Fn) {
+        if (handler_info != .@"fn") {
             @compileError("defineSkill: `handler` must be a function");
         }
 
         // Validate handler takes exactly 1 argument
-        if (handler_info.Fn.params.len != 1) {
+        if (handler_info.@"fn".params.len != 1) {
             @compileError("defineSkill: `handler` must take exactly 1 argument");
         }
 
-        // Validate handler argument type matches input
-        const expected_param_type = handler_info.Fn.params[0].type orelse {
+        // Validate handler argument type structurally matches input
+        const expected_param_type = handler_info.@"fn".params[0].type orelse {
             @compileError("defineSkill: `handler` parameter type must be explicit");
         };
-        if (expected_param_type != config.input) {
-            @compileError("defineSkill: `handler` parameter type must match `input`");
-        }
+        assertStructMatch(expected_param_type, config.input, "handler parameter", "input");
 
-        // Validate handler return type matches output
-        const expected_return_type = handler_info.Fn.return_type orelse {
+        // Validate handler return type structurally matches output
+        const expected_return_type = handler_info.@"fn".return_type orelse {
             @compileError("defineSkill: `handler` return type must be explicit");
         };
-        if (expected_return_type != config.output) {
-            @compileError("defineSkill: `handler` return type must match `output`");
-        }
+        assertStructMatch(expected_return_type, config.output, "handler return", "output");
     }
 
     return struct {
@@ -67,22 +63,21 @@ pub fn defineSkill(comptime config: anytype) type {
         pub const version = "1.0.0";
         pub const category = skills.Skill.SkillCategory.misc;
 
-        /// Convert input struct fields to SkillParam array
-        pub fn getParams() []const skills.SkillParam {
-            comptime {
-                const input_info = @typeInfo(config.input);
-        var params_array: [input_info.Struct.fields.len]skills.SkillParam = undefined;
-                for (input_info.Struct.fields, 0..) |field, i| {
-                    params_array[i] = skills.SkillParam{
-                        .name = field.name,
-                        .description = field.name,
-                        .param_type = mapTypeToParamType(field.type),
-                        .required = @typeInfo(field.type) != .Optional,
-                    };
-                }
-                return &params_array;
+        /// Auto-generated params from input struct fields
+        pub const params = blk: {
+            const input_info = @typeInfo(config.input);
+            var params_array: [input_info.@"struct".fields.len]skills.SkillParam = undefined;
+            for (input_info.@"struct".fields, 0..) |field, i| {
+                params_array[i] = skills.SkillParam{
+                    .name = field.name,
+                    .description = field.name,
+                    .param_type = mapTypeToParamType(field.type),
+                    .required = @typeInfo(field.type) != .optional,
+                };
             }
-        }
+            const final = params_array;
+            break :blk &final;
+        };
 
         /// Execute function compatible with Skill.execute_fn
         pub fn execute_fn(
@@ -92,13 +87,15 @@ pub fn defineSkill(comptime config: anytype) type {
         ) anyerror!skills.SkillResult {
             _ = ctx;
 
-            // Build input struct from JSON args
-            var input: config.input = undefined;
-            inline for (comptime @typeInfo(config.input).Struct.fields) |field| {
+            // Build input struct from JSON args using handler's actual parameter type
+            const HandlerType = @TypeOf(config.handler);
+            const InputType = @typeInfo(HandlerType).@"fn".params[0].type.?;
+            var input: InputType = undefined;
+            inline for (comptime @typeInfo(InputType).@"struct".fields) |field| {
                 const arg_val = args.get(field.name);
                 if (arg_val) |val| {
                     @field(input, field.name) = try parseJsonValue(val, field.type, arena);
-                } else if (@typeInfo(field.type) == .Optional) {
+                } else if (@typeInfo(field.type) == .optional) {
                     @field(input, field.name) = null;
                 } else {
                     return skills.SkillResult{
@@ -131,7 +128,7 @@ pub fn defineSkill(comptime config: anytype) type {
                 .description = description,
                 .version = version,
                 .category = category,
-                .params = getParams(),
+                .params = params,
                 .execute_fn = execute_fn,
             };
         }
@@ -139,6 +136,27 @@ pub fn defineSkill(comptime config: anytype) type {
 }
 
 /// Map Zig types to SkillParam.ParamType at comptime
+fn assertStructMatch(comptime actual: type, comptime expected: type, comptime actual_label: []const u8, comptime expected_label: []const u8) void {
+    const actual_info = @typeInfo(actual);
+    const expected_info = @typeInfo(expected);
+    if (actual_info != .@"struct" or expected_info != .@"struct") {
+        @compileError("defineSkill: `" ++ actual_label ++ "` and `" ++ expected_label ++ "` must both be structs");
+    }
+    const actual_fields = actual_info.@"struct".fields;
+    const expected_fields = expected_info.@"struct".fields;
+    if (actual_fields.len != expected_fields.len) {
+        @compileError("defineSkill: `" ++ actual_label ++ "` field count does not match `" ++ expected_label ++ "`");
+    }
+    for (actual_fields, expected_fields) |a, e| {
+        if (!std.mem.eql(u8, a.name, e.name)) {
+            @compileError("defineSkill: field name mismatch: `" ++ actual_label ++ "` has `" ++ a.name ++ "` but `" ++ expected_label ++ "` expected `" ++ e.name ++ "`");
+        }
+        if (a.type != e.type) {
+            @compileError("defineSkill: field type mismatch for `" ++ a.name ++ "`: `" ++ actual_label ++ "` and `" ++ expected_label ++ "` differ");
+        }
+    }
+}
+
 fn mapTypeToParamType(comptime T: type) skills.SkillParam.ParamType {
     return switch (T) {
         []const u8 => .string,
@@ -230,7 +248,7 @@ test "defineSkill basic validation" {
 
     try std.testing.expectEqualStrings("debug", DebugSkill.id);
     try std.testing.expectEqualStrings("debug", DebugSkill.name);
-    try std.testing.expect(DebugSkill.getParams().len == 2);
+    try std.testing.expect(DebugSkill.params.len == 2);
 }
 
 test "defineSkill execution" {

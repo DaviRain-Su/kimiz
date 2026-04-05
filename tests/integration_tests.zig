@@ -503,3 +503,85 @@ test "E2E: HttpClient basic lifecycle" {
     defer client.deinit();
     try std.testing.expect(@intFromPtr(&client) != 0);
 }
+
+test "E2E: defineSkill basic validation" {
+    const EchoSkill = skills.defineSkill(.{
+        .name = "echo",
+        .description = "Echo skill",
+        .input = struct {
+            message: []const u8,
+        },
+        .output = struct {
+            success: bool,
+            output: []const u8,
+        },
+        .handler = struct {
+            fn exec(input: struct { message: []const u8 }) struct {
+                success: bool,
+                output: []const u8,
+            } {
+                return .{ .success = true, .output = input.message };
+            }
+        }.exec,
+    });
+
+    try std.testing.expectEqualStrings("echo", EchoSkill.id);
+    try std.testing.expectEqualStrings("echo", EchoSkill.name);
+    try std.testing.expect(EchoSkill.params.len == 1);
+    try std.testing.expectEqualStrings("message", EchoSkill.params[0].name);
+}
+
+test "E2E: defineSkill execution and registry" {
+    const allocator = std.testing.allocator;
+
+    const DebugSkill = skills.defineSkill(.{
+        .name = "debug_dsl",
+        .description = "Debug via DSL",
+        .input = struct {
+            code: []const u8,
+            language: ?[]const u8 = null,
+        },
+        .output = struct {
+            success: bool,
+            output: []const u8,
+        },
+        .handler = struct {
+            fn exec(input: struct { code: []const u8, language: ?[]const u8 }) struct {
+                success: bool,
+                output: []const u8,
+            } {
+                _ = input.language;
+                return .{ .success = true, .output = "debug ok" };
+            }
+        }.exec,
+    });
+
+    const skill = DebugSkill.toSkill();
+    try std.testing.expectEqualStrings("debug_dsl", skill.id);
+    try std.testing.expect(skill.params.len == 2);
+
+    var registry = skills.SkillRegistry.init(allocator);
+    defer registry.deinit();
+    try registry.register(skill);
+
+    const retrieved = registry.get("debug_dsl");
+    try std.testing.expect(retrieved != null);
+    try std.testing.expectEqualStrings("Debug via DSL", retrieved.?.description);
+
+    // Execute with valid args
+    var args = std.json.ObjectMap.init(allocator);
+    defer args.deinit();
+    try args.put("code", std.json.Value{ .string = "print(1)" });
+
+    const ctx = skills.SkillContext{
+        .allocator = allocator,
+        .working_dir = ".",
+        .session_id = "test",
+    };
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const result = try retrieved.?.execute_fn(ctx, args, arena.allocator());
+    try std.testing.expect(result.success);
+    try std.testing.expectEqualStrings("debug ok", result.output);
+}

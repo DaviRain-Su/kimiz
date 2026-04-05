@@ -9,8 +9,8 @@ const SkillRegistry = skills.SkillRegistry;
 const code_review = @import("code_review.zig");
 const refactor = @import("refactor.zig");
 const test_gen = @import("test_gen.zig");
-const doc_gen = @import("doc_gen.zig");
-const debug = @import("debug.zig");
+const doc_gen = @import("doc_gen_dsl.zig");
+const debug = @import("debug_dsl.zig");
 const token_optimize = @import("token_optimize.zig");
 
 /// Register all built-in skills with the registry
