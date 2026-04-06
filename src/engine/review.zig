@@ -76,10 +76,12 @@ pub const ReviewAgent = struct {
     /// Review a document using an LLM. Reads the role-specific prompt from
     /// prompts/review/{role-file}, appends the document, and asks the model
     /// for a VERDICT.
-    pub fn review(self: *const Self, agent: *Agent, document: []const u8) !ReviewReport {
+    /// `maybe_override_prompt_file` optionally replaces the role's default prompt file.
+    pub fn review(self: *const Self, agent: *Agent, document: []const u8, maybe_override_prompt_file: ?[]const u8) !ReviewReport {
         // Load review prompt via PromptLoader cascade (.kimiz > ~/.kimiz > package builtin)
+        const prompt_file = maybe_override_prompt_file orelse self.role.promptFile();
         var loader = prompts.PromptLoader.init(self.allocator);
-        const maybe_path = try loader.resolvePromptPath(self.role.promptFile());
+        const maybe_path = try loader.resolvePromptPath(prompt_file);
 
         const prompt_content: []const u8 = blk: {
             if (maybe_path) |cp| {

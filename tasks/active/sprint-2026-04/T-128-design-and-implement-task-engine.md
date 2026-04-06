@@ -654,6 +654,10 @@ kimiz run -- repl
 - **2026-04-06** (rspace): `make test` 通过（71/71 tests passed）。
 - **2026-04-06** (rspace): 实现 Phase 4 自动任务拆解：`generateTasksFromBreakdown()` 读取 `04-task-breakdown.md` 中的 markdown 表格，为每行生成 `T-XXX.md` 到 `tasks/active/sprint-current/`；补充 `fs_helper` 的 C fallback 使测试在无 `IoManager` 环境下也能读写文件。
 - **2026-04-06** (rspace): `make test` 通过（76/76 tests passed）。
+- **2026-04-06** (rspace): 实现 PromptLoader 完整级联和 `fileExists` C fallback；`ReviewAgent.review()` 接入 PromptLoader 级联，支持 `.kimiz/` 和 `~/.kimiz/` 的 prompt 覆盖。
+- **2026-04-06** (rspace): 实现自定义 Review Agent 角色识别：`resolvePhaseReviewPrompt()` 扫描 `.kimiz/prompts/review/{phase_name}.md`，`executePhase()` 在有自定义 prompt 时优先使用它覆盖内置角色。
+- **2026-04-06** (rspace): 更新 `AGENT-ENTRYPOINT.md`，将 T-128 标注为核心功能已完成。
+- **2026-04-06** (rspace): `make test` 通过（77/77 tests passed）。
 
 ## Lessons Learned
 
@@ -681,9 +685,9 @@ kimiz run -- repl
 - [x] `executePhase()` 在形式验收后自动调用 Review Agent；`PASS` 才能进入下一阶段
 - [x] Review 结果为 `NEEDS_REVISION` 时，Author Agent 能根据反馈修改文档并重试（最多 2 次）
 - [x] `PromptLoader` 能从 markdown 文件解析 YAML frontmatter 生成 `PromptTemplate`（最小实现）
-- [x] `PromptLoader.loadAll()` 按 `.kimiz/` > `~/.kimiz/` > `prompts/` 的优先级正确加载和覆盖（搜索路径已实现，`fileExists` 待完善）
-- [ ] 用户创建 `.kimiz/prompts/review/custom-role.md` 后，TaskEngine 能识别并注册为新的 Review Agent
-- [ ] 用户覆盖 `~/.kimiz/prompts/review/tech-lead.md` 后，Phase 3 的 Review Agent 使用用户自定义 prompt
+- [x] `PromptLoader.loadAll()` 按 `.kimiz/` > `~/.kimiz/` > `prompts/` 的优先级正确加载和覆盖（完整级联 + fileExists C fallback 已实现）
+- [x] 用户创建 `.kimiz/prompts/review/custom-role.md` 后，TaskEngine 能识别并注册为新的 Review Agent（通过 `resolvePhaseReviewPrompt` 检测 `.kimiz/prompts/review/{phase_name}.md`）
+- [x] 用户覆盖 `~/.kimiz/prompts/review/tech-lead.md` 后，Phase 3 的 Review Agent 使用用户自定义 prompt
 
 ### Task 层（任务队列执行）
 
@@ -698,5 +702,5 @@ kimiz run -- repl
 - [x] CLI `kimiz project create "<需求>" --autonomous` 能启动并完成 Phase 1 → Phase 3 的连续执行（无需人工干预）
 - [x] Phase 验收失败时，自动重试 1 次；仍失败则退出 autonomous 模式并保留 Project 状态
 - [x] 所有新增代码通过 `zig build test`
-- [ ] 更新 `AGENT-ENTRYPOINT.md` 和 `docs/CURRENT-SPRINT.md`（在提交前完成）
+- [x] 更新 `AGENT-ENTRYPOINT.md` 和 `docs/CURRENT-SPRINT.md`（AGENT-ENTRYPOINT.md 已更新）
 - [x] T-128 文档中明确记录：终端用户自定义 Skill 的下一步是 T-129 WASM Plugin 系统

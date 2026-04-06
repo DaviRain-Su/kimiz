@@ -65,8 +65,12 @@ pub fn executePhase(
     }
 
     // 5. Content review (with one retry on NEEDS_REVISION)
+    // Check for phase-specific custom reviewer prompt in .kimiz/prompts/review/
+    const custom_prompt_file = try resolvePhaseReviewPrompt(allocator, phase);
+    defer if (custom_prompt_file) |cpf| allocator.free(cpf);
+
     var reviewer = review_mod.ReviewAgent.init(allocator, reviewRoleForPhase(phase));
-    var report = try reviewer.review(agent, assistant_msg);
+    var report = try reviewer.review(agent, assistant_msg, custom_prompt_file);
     defer report.deinit();
 
     if (report.result == .needs_revision) {
@@ -86,7 +90,7 @@ pub fn executePhase(
             return PhaseResult.init(allocator, .needs_revision, "Retry document still fails structural validation.");
         }
 
-        var retry_report = try reviewer.review(agent, retry_msg);
+        var retry_report = try reviewer.review(agent, retry_msg, custom_prompt_file);
         defer retry_report.deinit();
 
         if (phase == .task_breakdown and retry_report.result == .pass) {
@@ -107,6 +111,23 @@ fn mapReviewResult(r: review_mod.ReviewResult) PhaseStatus {
         .needs_revision => .needs_revision,
         .blocked => .blocked,
     };
+}
+
+/// Check if `.kimiz/prompts/review/{phase_name}.md` exists.
+/// If so, return the filename so executePhase can use it as a custom reviewer.
+/// Caller owns returned memory (if non-null).
+fn resolvePhaseReviewPrompt(allocator: std.mem.Allocator, phase: project_mod.Phase) !?[]const u8 {
+    const phase_name = @tagName(phase);
+    const prompt_file = try std.fmt.allocPrint(allocator, "{s}.md", .{phase_name});
+    const custom_path = try std.fs.path.join(allocator, &.{ ".kimiz/prompts/review", prompt_file });
+    defer allocator.free(prompt_file);
+
+    if (fs.fileExists(custom_path)) {
+        allocator.free(custom_path);
+        return try allocator.dupe(u8, prompt_file);
+    }
+    allocator.free(custom_path);
+    return null;
 }
 
 /// After Phase 4 (task_breakdown) passes review, parse the breakdown markdown
@@ -516,4 +537,25 @@ test "generateTasksFromBreakdown parses markdown table" {
     const t2 = try fs.readFileAlloc(allocator, task2, 64 * 1024);
     defer allocator.free(t2);
     try std.testing.expect(std.mem.indexOf(u8, t2, "id: T-002") != null);
+}
+
+test "resolvePhaseReviewPrompt detects custom phase reviewer" {
+    const allocator = std.testing.allocator;
+    const custom_dir = ".kimiz/prompts/review";
+    try fs.makeDirRecursive(custom_dir);
+    defer fs.deleteTree(".kimiz") catch {};
+
+    const custom_path = try std.fs.path.join(allocator, &.{ custom_dir, "technical_spec.md" });
+    defer allocator.free(custom_path);
+    try fs.writeFile(custom_path, "Custom reviewer prompt");
+
+    const result = try resolvePhaseReviewPrompt(allocator, .technical_spec);
+    try std.testing.expect(result != null);
+    if (result) |r| {
+        defer allocator.free(r);
+        try std.testing.expectEqualStrings("technical_spec.md", r);
+    }
+
+    const no_result = try resolvePhaseReviewPrompt(allocator, .prd);
+    try std.testing.expect(no_result == null);
 }
