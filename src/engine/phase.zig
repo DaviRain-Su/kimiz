@@ -89,9 +89,15 @@ pub fn executePhase(
         var retry_report = try reviewer.review(agent, retry_msg);
         defer retry_report.deinit();
 
+        if (phase == .task_breakdown and retry_report.result == .pass) {
+            try generateTasksFromBreakdown(allocator, project);
+        }
         return PhaseResult.init(allocator, mapReviewResult(retry_report.result), retry_report.feedback);
     }
 
+    if (phase == .task_breakdown and report.result == .pass) {
+        try generateTasksFromBreakdown(allocator, project);
+    }
     return PhaseResult.init(allocator, mapReviewResult(report.result), report.feedback);
 }
 
@@ -101,6 +107,115 @@ fn mapReviewResult(r: review_mod.ReviewResult) PhaseStatus {
         .needs_revision => .needs_revision,
         .blocked => .blocked,
     };
+}
+
+/// After Phase 4 (task_breakdown) passes review, parse the breakdown markdown
+/// table and generate T-XXX.md task files in tasks/active/sprint-current/.
+fn generateTasksFromBreakdown(allocator: std.mem.Allocator, project: *project_mod.Project) !void {
+    const doc_path = try std.fs.path.join(allocator, &.{ project.dir_path, project_mod.Phase.task_breakdown.docName() });
+    defer allocator.free(doc_path);
+
+    const content = try fs.readFileAlloc(allocator, doc_path, 256 * 1024);
+    defer allocator.free(content);
+
+    // Find ## Tasks section
+    const tasks_heading = "## Tasks";
+    const tasks_start = std.mem.indexOf(u8, content, tasks_heading) orelse {
+        std.log.warn("Task Breakdown document missing '## Tasks' section; no tasks generated.", .{});
+        return;
+    };
+    const section = content[tasks_start + tasks_heading.len ..];
+
+    // Find the end of the section (next ## heading or end of file)
+    const section_end = std.mem.indexOf(u8, section, "\n## ") orelse section.len;
+    const tasks_block = section[0..section_end];
+
+    // Output directory
+    const out_dir = "tasks/active/sprint-current";
+    fs.makeDirRecursive(out_dir) catch |err| {
+        if (err != error.PathAlreadyExists) return err;
+    };
+
+    var lines = std.mem.splitScalar(u8, tasks_block, '\n');
+    var generated: usize = 0;
+    while (lines.next()) |line| {
+        const trimmed = std.mem.trim(u8, line, " \t\r");
+        if (trimmed.len == 0) continue;
+        if (std.mem.startsWith(u8, trimmed, "|")) {
+            // Skip header separator
+            if (std.mem.indexOf(u8, trimmed, "---") != null) continue;
+            if (try parseTaskRowAndWrite(allocator, trimmed, out_dir, project.name)) {
+                generated += 1;
+            }
+        }
+    }
+
+    std.log.info("Generated {d} tasks from breakdown into {s}", .{ generated, out_dir });
+}
+
+/// Parse a single markdown table row like `| T-129 | Title | p0 | 16 |`
+/// and write the corresponding task file.
+fn parseTaskRowAndWrite(allocator: std.mem.Allocator, row: []const u8, out_dir: []const u8, project_name: []const u8) !bool {
+    // Split by '|' and trim each field
+    var fields: [6][]const u8 = undefined;
+    var field_count: usize = 0;
+
+    var it = std.mem.splitScalar(u8, row, '|');
+    while (it.next()) |raw| {
+        const f = std.mem.trim(u8, raw, " \t\r");
+        if (f.len == 0) continue; // skip empty splits before first and after last |
+        if (field_count >= fields.len) return false;
+        fields[field_count] = f;
+        field_count += 1;
+    }
+
+    // Expect at least 4 columns: ID, Title, Priority, Estimated Hours
+    if (field_count < 4) return false;
+
+    const id = fields[0];
+    const title = fields[1];
+    const priority = fields[2];
+    const hours = fields[3];
+
+    // Skip header row accidentally passed in
+    if (std.mem.eql(u8, id, "ID")) return false;
+
+    const filename = try std.fmt.allocPrint(allocator, "{s}.md", .{id});
+    defer allocator.free(filename);
+    const filepath = try std.fs.path.join(allocator, &.{ out_dir, filename });
+    defer allocator.free(filepath);
+
+    const task_doc = try std.fmt.allocPrint(allocator,
+        \\---
+        \\id: {s}
+        \\title: "{s}"
+        \\status: todo
+        \\priority: {s}
+        \\estimated_hours: {s}
+        \\dependencies: []
+        \\max_steps: 50
+        \\---
+        \\n        \\# {s}: {s}
+        \\n        \\## 参考文档
+        \\n        \\- Spec: `docs/specs/{s}-design.md`
+        \\n        \\## 背景
+        \\n        \\Auto-generated from Phase 4 Task Breakdown for project "{s}".
+        \\n        \\## 目标
+        \\n        \\- 
+        \\n        \\## 验收标准
+        \\n        \\- [ ] 
+        \\n        \\## Log
+        \\n        \\- **2026-04-06**: Created by TaskEngine Phase 4.
+    , .{
+        id, title, priority, hours,
+        id, title,
+        id,
+        project_name,
+    });
+    defer allocator.free(task_doc);
+
+    try fs.writeFile(filepath, task_doc);
+    return true;
 }
 
 fn reviewRoleForPhase(phase: project_mod.Phase) review_mod.ReviewRole {
@@ -335,4 +450,70 @@ test "phaseTemplate produces non-empty strings" {
         const tmpl = phaseTemplate(phase);
         try std.testing.expect(tmpl.len > 0);
     }
+}
+
+test "parseTaskRowAndWrite generates correct task file" {
+    const allocator = std.testing.allocator;
+    const tmp_dir = "/tmp/kimiz_phase_test_tasks";
+    try fs.makeDirRecursive(tmp_dir);
+    defer fs.deleteTree(tmp_dir) catch {};
+
+    const row = "| T-999 | Test Task Title | p1 | 8 |";
+    const ok = try parseTaskRowAndWrite(allocator, row, tmp_dir, "TestProject");
+    try std.testing.expect(ok);
+
+    const filepath = try std.fs.path.join(allocator, &.{ tmp_dir, "T-999.md" });
+    defer allocator.free(filepath);
+    const content = try fs.readFileAlloc(allocator, filepath, 64 * 1024);
+    defer allocator.free(content);
+
+    try std.testing.expect(std.mem.indexOf(u8, content, "id: T-999") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "title: \"Test Task Title\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "priority: p1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "estimated_hours: 8") != null);
+}
+
+test "generateTasksFromBreakdown parses markdown table" {
+    const allocator = std.testing.allocator;
+    const tmp_project_dir = "/tmp/kimiz_phase_test_proj";
+    try fs.makeDirRecursive(tmp_project_dir);
+    defer fs.deleteTree(tmp_project_dir) catch {};
+    defer fs.deleteTree("tasks/active/sprint-current") catch {};
+
+    var project = try project_mod.Project.init(allocator, "proj-001", "Demo", tmp_project_dir);
+    defer project.deinit();
+
+    const breakdown =
+        \\---
+        \\name: Demo
+        \\phase: task_breakdown
+        \\status: in_progress
+        \\---
+        \\n        \\# Task Breakdown
+        \\n        \\## Tasks
+        \\n        \\| ID | Title | Priority | Estimated Hours |
+        \\|---|---|---|---|
+        \\| T-001 | First task | p0 | 4 |
+        \\| T-002 | Second task | p1 | 8 |
+        \\n        \\## Dependencies
+        \\n        \\-
+    ;
+
+    const doc_path = try std.fs.path.join(allocator, &.{ project.dir_path, "04-task-breakdown.md" });
+    defer allocator.free(doc_path);
+    try fs.writeFile(doc_path, breakdown);
+
+    try generateTasksFromBreakdown(allocator, &project);
+
+    const task1 = try std.fs.path.join(allocator, &.{ "tasks/active/sprint-current", "T-001.md" });
+    defer allocator.free(task1);
+    const t1 = try fs.readFileAlloc(allocator, task1, 64 * 1024);
+    defer allocator.free(t1);
+    try std.testing.expect(std.mem.indexOf(u8, t1, "id: T-001") != null);
+
+    const task2 = try std.fs.path.join(allocator, &.{ "tasks/active/sprint-current", "T-002.md" });
+    defer allocator.free(task2);
+    const t2 = try fs.readFileAlloc(allocator, task2, 64 * 1024);
+    defer allocator.free(t2);
+    try std.testing.expect(std.mem.indexOf(u8, t2, "id: T-002") != null);
 }
