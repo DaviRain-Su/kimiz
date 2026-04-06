@@ -254,6 +254,8 @@ pub const WasmSkill = wasm_skill.WasmSkill;
 pub const WasmSkillError = wasm_skill.WasmSkillError;
 pub const plugin_loader = @import("plugin_loader.zig");
 pub const PluginLoader = plugin_loader.PluginLoader;
+pub const plugin_registry = @import("plugin_registry.zig");
+pub const PluginRegistry = plugin_registry.PluginRegistry;
 
 // ============================================================================
 // Tests

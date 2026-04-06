@@ -6,84 +6,8 @@ const utils = @import("../utils/root.zig");
 const wasm_skill = @import("wasm_skill.zig");
 const WasmSkill = wasm_skill.WasmSkill;
 const WasmSkillError = wasm_skill.WasmSkillError;
-
-/// Host context passed to WASM skill imports.
-pub const HostContext = struct {
-    allocator: std.mem.Allocator,
-    module: *zwasm.WasmModule,
-    bump_offset: u32 = 1024,
-};
-
-/// Host import callbacks for WASM skills.
-pub const HostImports = struct {
-    /// Build an ImportEntry slice for zwasm.loadWithImports.
-    pub fn getImportEntry(host_ctx: *HostContext) zwasm.ImportEntry {
-        return .{
-            .module = "kimiz",
-            .source = .{ .host_fns = &[_]zwasm.HostFnEntry{
-                .{ .name = "kimiz_log", .callback = hostLog, .context = @intFromPtr(host_ctx) },
-                .{ .name = "kimiz_alloc", .callback = hostAlloc, .context = @intFromPtr(host_ctx) },
-                .{ .name = "kimiz_free", .callback = hostFree, .context = @intFromPtr(host_ctx) },
-            } },
-        };
-    }
-};
-
-fn hostLog(ctx: *anyopaque, context: usize) anyerror!void {
-    const vm: *zwasm.Vm = @ptrCast(@alignCast(ctx));
-    const host_ctx: *HostContext = @ptrFromInt(context);
-
-    const len = @as(u32, @intCast(vm.popOperand()));
-    const ptr = @as(u32, @intCast(vm.popOperand()));
-    const level = @as(i32, @intCast(vm.popOperand()));
-
-    const msg = try host_ctx.module.memoryRead(host_ctx.allocator, ptr, len);
-    defer host_ctx.allocator.free(msg);
-
-    switch (level) {
-        0 => std.log.err("{s}", .{msg}),
-        1 => std.log.warn("{s}", .{msg}),
-        2 => std.log.info("{s}", .{msg}),
-        3 => std.log.debug("{s}", .{msg}),
-        else => std.log.info("{s}", .{msg}),
-    }
-}
-
-fn hostAlloc(ctx: *anyopaque, context: usize) anyerror!void {
-    const vm: *zwasm.Vm = @ptrCast(@alignCast(ctx));
-    const host_ctx: *HostContext = @ptrFromInt(context);
-
-    const size = vm.popOperand();
-    if (size == 0) {
-        try vm.pushOperand(0);
-        return;
-    }
-
-    const size_u32: u32 = @intCast(size);
-    const result_offset = host_ctx.bump_offset;
-
-    // Probe memory boundary
-    host_ctx.module.memoryWrite(result_offset + size_u32, &[_]u8{}) catch {
-        try vm.pushOperand(@as(u64, @bitCast(@as(i32, -1))));
-        return;
-    };
-
-    host_ctx.bump_offset += size_u32;
-    try vm.pushOperand(@as(u64, result_offset));
-}
-
-fn hostFree(ctx: *anyopaque, context: usize) anyerror!void {
-    const vm: *zwasm.Vm = @ptrCast(@alignCast(ctx));
-    const host_ctx: *HostContext = @ptrFromInt(context);
-
-    const size = @as(u32, @intCast(vm.popOperand()));
-    const ptr = @as(u32, @intCast(vm.popOperand()));
-
-    // Simple bump allocator free: if freeing the most recent allocation, roll back bump.
-    if (ptr + size == host_ctx.bump_offset) {
-        host_ctx.bump_offset -= size;
-    }
-}
+const HostContext = wasm_skill.HostContext;
+const HostImports = wasm_skill.HostImports;
 
 pub const PluginLoader = struct {
     allocator: std.mem.Allocator,
@@ -118,7 +42,9 @@ pub const PluginLoader = struct {
 
         host_ctx.module = module;
 
-        return try WasmSkill.init(self.allocator, module);
+        var skill = try WasmSkill.init(self.allocator, module);
+        skill.host_ctx = host_ctx;
+        return skill;
     }
 };
 
@@ -158,13 +84,10 @@ const base_wat =
 
 test "PluginLoader.loadFromFile with valid .wat skill" {
     const allocator = std.testing.allocator;
-    const cwd = std.fs.cwd();
 
     const wat_path = ".zig-cache/tmp_test_skill.wat";
-    var file = try cwd.createFile(wat_path, .{});
-    try file.writeAll(base_wat);
-    file.close();
-    defer cwd.deleteFile(wat_path) catch {};
+    try utils.writeFile(wat_path, base_wat);
+    defer utils.deleteFile(wat_path) catch {};
 
     var loader = PluginLoader.init(allocator);
 
@@ -178,7 +101,6 @@ test "PluginLoader.loadFromFile with valid .wat skill" {
 
 test "PluginLoader.loadFromFile with missing function export" {
     const allocator = std.testing.allocator;
-    const cwd = std.fs.cwd();
 
     const bad_wat =
         \\(module
@@ -194,10 +116,8 @@ test "PluginLoader.loadFromFile with missing function export" {
     ;
 
     const wat_path = ".zig-cache/tmp_bad_skill.wat";
-    var file = try cwd.createFile(wat_path, .{});
-    try file.writeAll(bad_wat);
-    file.close();
-    defer cwd.deleteFile(wat_path) catch {};
+    try utils.writeFile(wat_path, bad_wat);
+    defer utils.deleteFile(wat_path) catch {};
 
     var loader = PluginLoader.init(allocator);
 
@@ -207,13 +127,10 @@ test "PluginLoader.loadFromFile with missing function export" {
 
 test "PluginLoader.loadFromFile with invalid binary" {
     const allocator = std.testing.allocator;
-    const cwd = std.fs.cwd();
 
     const wasm_path = ".zig-cache/tmp_invalid.wasm";
-    var file = try cwd.createFile(wasm_path, .{});
-    try file.writeAll("not wasm");
-    file.close();
-    defer cwd.deleteFile(wasm_path) catch {};
+    try utils.writeFile(wasm_path, "not wasm");
+    defer utils.deleteFile(wasm_path) catch {};
 
     var loader = PluginLoader.init(allocator);
 
@@ -223,13 +140,10 @@ test "PluginLoader.loadFromFile with invalid binary" {
 
 test "host import kimiz_log is callable" {
     const allocator = std.testing.allocator;
-    const cwd = std.fs.cwd();
 
     const wat_path = ".zig-cache/tmp_log_skill.wat";
-    var file = try cwd.createFile(wat_path, .{});
-    try file.writeAll(base_wat);
-    file.close();
-    defer cwd.deleteFile(wat_path) catch {};
+    try utils.writeFile(wat_path, base_wat);
+    defer utils.deleteFile(wat_path) catch {};
 
     var loader = PluginLoader.init(allocator);
     var skill = try loader.loadFromFile(wat_path);
@@ -243,13 +157,10 @@ test "host import kimiz_log is callable" {
 
 test "host import kimiz_alloc returns bump offset" {
     const allocator = std.testing.allocator;
-    const cwd = std.fs.cwd();
 
     const wat_path = ".zig-cache/tmp_alloc_skill.wat";
-    var file = try cwd.createFile(wat_path, .{});
-    try file.writeAll(base_wat);
-    file.close();
-    defer cwd.deleteFile(wat_path) catch {};
+    try utils.writeFile(wat_path, base_wat);
+    defer utils.deleteFile(wat_path) catch {};
 
     var loader = PluginLoader.init(allocator);
     var skill = try loader.loadFromFile(wat_path);

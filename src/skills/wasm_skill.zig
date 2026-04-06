@@ -18,6 +18,84 @@ pub const WasmSkillError = error{
     OutputTooLarge,
 };
 
+/// Host context passed to WASM skill imports.
+pub const HostContext = struct {
+    allocator: std.mem.Allocator,
+    module: *zwasm.WasmModule,
+    bump_offset: u32 = 1024,
+};
+
+/// Host import callbacks for WASM skills.
+pub const HostImports = struct {
+    /// Build an ImportEntry slice for zwasm.loadWithImports.
+    pub fn getImportEntry(host_ctx: *HostContext) zwasm.ImportEntry {
+        return .{
+            .module = "kimiz",
+            .source = .{ .host_fns = &[_]zwasm.HostFnEntry{
+                .{ .name = "kimiz_log", .callback = hostLog, .context = @intFromPtr(host_ctx) },
+                .{ .name = "kimiz_alloc", .callback = hostAlloc, .context = @intFromPtr(host_ctx) },
+                .{ .name = "kimiz_free", .callback = hostFree, .context = @intFromPtr(host_ctx) },
+            } },
+        };
+    }
+};
+
+fn hostLog(ctx: *anyopaque, context: usize) anyerror!void {
+    const vm: *zwasm.Vm = @ptrCast(@alignCast(ctx));
+    const host_ctx: *HostContext = @ptrFromInt(context);
+
+    const len = @as(u32, @intCast(vm.popOperand()));
+    const ptr = @as(u32, @intCast(vm.popOperand()));
+    const level = @as(i32, @intCast(vm.popOperand()));
+
+    const msg = try host_ctx.module.memoryRead(host_ctx.allocator, ptr, len);
+    defer host_ctx.allocator.free(msg);
+
+    switch (level) {
+        0 => std.log.err("{s}", .{msg}),
+        1 => std.log.warn("{s}", .{msg}),
+        2 => std.log.info("{s}", .{msg}),
+        3 => std.log.debug("{s}", .{msg}),
+        else => std.log.info("{s}", .{msg}),
+    }
+}
+
+fn hostAlloc(ctx: *anyopaque, context: usize) anyerror!void {
+    const vm: *zwasm.Vm = @ptrCast(@alignCast(ctx));
+    const host_ctx: *HostContext = @ptrFromInt(context);
+
+    const size = vm.popOperand();
+    if (size == 0) {
+        try vm.pushOperand(0);
+        return;
+    }
+
+    const size_u32: u32 = @intCast(size);
+    const result_offset = host_ctx.bump_offset;
+
+    // Probe memory boundary
+    host_ctx.module.memoryWrite(result_offset + size_u32, &[_]u8{}) catch {
+        try vm.pushOperand(@as(u64, @bitCast(@as(i32, -1))));
+        return;
+    };
+
+    host_ctx.bump_offset += size_u32;
+    try vm.pushOperand(@as(u64, result_offset));
+}
+
+fn hostFree(ctx: *anyopaque, context: usize) anyerror!void {
+    const vm: *zwasm.Vm = @ptrCast(@alignCast(ctx));
+    const host_ctx: *HostContext = @ptrFromInt(context);
+
+    const size = @as(u32, @intCast(vm.popOperand()));
+    const ptr = @as(u32, @intCast(vm.popOperand()));
+
+    // Simple bump allocator free: if freeing the most recent allocation, roll back bump.
+    if (ptr + size == host_ctx.bump_offset) {
+        host_ctx.bump_offset -= size;
+    }
+}
+
 /// A loaded WASM skill instance.
 /// Wraps a zwasm module and provides JSON-in/JSON-out execution.
 pub const WasmSkill = struct {
@@ -25,6 +103,7 @@ pub const WasmSkill = struct {
     inner: *zwasm.WasmModule,
     name: []const u8,
     description: []const u8,
+    host_ctx: ?*HostContext = null,
 
     const Self = @This();
 
@@ -63,6 +142,9 @@ pub const WasmSkill = struct {
     pub fn deinit(self: *Self) void {
         self.allocator.free(self.name);
         self.allocator.free(self.description);
+        if (self.host_ctx) |hc| {
+            self.allocator.destroy(hc);
+        }
         // Note: we do NOT deinit inner here because ownership is held externally
     }
 
