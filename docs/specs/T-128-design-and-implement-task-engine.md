@@ -403,6 +403,94 @@ pub fn getReviewAgentPrompt(loader: *PromptLoader, role: []const u8) ![]const u8
 
 **结论**：KimiZ 不是重复发明 gstack 的角色 prompt，而是**在 gstack 之上加一个自动编排层（TaskEngine）+ 一个用户可扩展的 Prompt 加载系统**，让 gstack 式的专家 review 在正确的时机自动发生，并且完全由用户控制。
 
+### 2.8 编译型 Skills vs 运行时 Prompts：工程现实与设计应对
+
+这里有一个**必须正视的约束**：KimiZ 是 Zig 编译的二进制，而 `defineSkill` DSL 生成的是 **comptime Zig 类型**。这意味着：
+
+- **Review Agent Prompts** → 纯文本，运行时加载 ✅ 完全动态
+- **用户自定义 Zig Skills** (`defineSkill`) → 必须重新编译 ⚠️ 不是运行时动态
+
+这和 gstack 有本质区别：gstack 的 skill 全部是 LLM prompt，Claude Code 是解释执行的；KimiZ 的 skill 是编译到机器码中的。
+
+#### 三种技能类型的动态能力对比
+
+| 类型 | 示例 | 是否需要编译 | 用户自定义方式 | T-128 支持 |
+|------|------|-------------|---------------|-----------|
+| **Prompt Skill** | Review Agent | ❌ 否 | 放 `.md` 文件到 `.kimiz/prompts/` | ✅ PromptLoader |
+| **Compiled Skill** | `defineSkill` 生成的 Zig skill | ✅ 是 | LLM 生成代码 → 自动 `zig build` | ✅ T-100 generator 集成 |
+| **Plugin Skill** | WASM/Lua 脚本 | ❌ 否 | 写插件文件到插件目录 | 🔮 未来扩展 |
+
+#### 设计应对 1：把"重新编译"自动化
+
+T-100 的 `generator.zig` 已经实现了自动编译循环：
+
+```zig
+1. LLM 生成 `auto_{name}.zig`
+2. 更新 `src/skills/auto/registry.zig`
+3. 运行 `zig build test`
+4. 失败 → 读取编译错误 → 反馈给 LLM → 重新生成
+5. 成功 → Skill 可用
+```
+
+T-128 的 TaskEngine 将这个流程封装为 `compileAndReload()`：
+
+```zig
+pub fn compileAndReload(project: *Project) !CompileResult {
+    // 1. 如果有 pending auto-generated skills, 先生成代码
+    try generator.generatePendingSkills();
+    
+    // 2. 触发编译
+    const compile_ok = try runZigBuildTest();
+    if (!compile_ok) {
+        const errors = try readCompileErrors();
+        return .{ .status = .compile_failed, .errors = errors };
+    }
+    
+    // 3. 编译成功后的处理
+    // 方案 A: 当前是 --autonomous 模式，直接继续（新 skill 已链接到当前二进制）
+    // 方案 B: 如果当前进程本身需要新 skill，启动新的 kimiz 子进程
+    return .{ .status = .success };
+}
+```
+
+#### 设计应对 2：Orchestrator-Worker 模式（处理运行时 skill 注入）
+
+当 TaskEngine 在运行中（如 Phase 6 正在执行），如果需要生成一个新 skill，当前进程无法"热加载"它。解决方案：
+
+```
+Orchestrator kimiz process (不直接执行 skill)
+    ↓ 检测到需要新 skill
+    调用 generator → 生成 auto_{name}.zig
+    运行 zig build → 生成新的 kimiz 二进制
+    ↓
+    启动 Worker kimiz process (带有新 skill 的新二进制)
+    Worker 完成任务
+    ↓
+    Orchestrator 读取结果，继续调度
+```
+
+这和 T-092 (delegate subagent) + T-119 (git worktree) 的架构完全一致。TaskEngine 本身就是 Orchestrator。
+
+#### 设计应对 3：解释型 Plugin 层（未来）
+
+KimiZ 已经依赖了 `zwasm`（`build.zig.zon` 中有）。未来可以支持 WASM-based skills：
+
+```zig
+pub const WasmSkill = struct {
+    module: wasm.Module,
+    execute: fn(input: []const u8) ![]const u8,
+};
+```
+
+这样用户可以用任何语言编译成 WASM，然后 KimiZ 在运行时加载。这真正实现了"零编译"的技能扩展。
+
+#### 当前 T-128 的范围
+
+- **Phase 1-5 的 Review Agents**：纯 Prompt，完全运行时动态 ✅
+- **Phase 6 的 Compiled Skills**：通过 generator + `zig build` 自动处理 ✅
+- **运行时热加载**：通过 Orchestrator-Worker 模式解决 ✅
+- **WASM Plugin**：超出 T-128 范围，作为 backlog 项目标记 🔮
+
 ### 3. Phase 4 → Task 自动拆解
 
 Phase 4 完成后，TaskEngine 解析 `04-task-breakdown.md` 中的任务表格，自动生成：
