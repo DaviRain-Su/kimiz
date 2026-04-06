@@ -32,6 +32,7 @@
 | 10 | `T-122-prompt-document-driven-loop.md` | 改造 System Prompt 强制文档前置读取 | `done` | `docs/specs/T-122-prompt-document-driven-loop.md` |
 | 11 | `T-123-lessons-learned-and-consistency.md` | 建立 lessons-learned 和多 Agent 一致性 | `done` | `docs/specs/T-123-lessons-learned-and-consistency.md` |
 | **12** | **`T-124-observability-metrics-phase1.md`** | **Observability Metrics - Phase 1** | `done` | **`docs/specs/T-124-observability-metrics-phase1.md`** |
+| **13** | **`T-127-integrate-zig-to-yul-as-contract-skill.md`** | **将 zig-to-yul 集成为 KimiZ 的合约生成 skill** | `todo` | **`docs/specs/T-127-integrate-zig-to-yul-as-contract-skill.md`** |
 
 ---
 

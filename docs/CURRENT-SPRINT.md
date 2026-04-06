@@ -124,6 +124,17 @@
   - [ ] `DocumentLock` 通过并发测试
   - [ ] Agent 启动时自动读取最新 lessons
 
+#### T-127: 将 zig-to-yul 集成为 KimiZ 的合约生成 skill
+- **状态**: `todo`
+- **Spec**: `docs/specs/T-127-integrate-zig-to-yul-as-contract-skill.md`
+- **背景**: 创始人已有 `zig-to-yul` 编译器，可将 Zig 直接编译为 Yul → EVM Bytecode。T-103 验证 comptime DSL 可行后，下一个战略里程碑是将该编译器与 KimiZ Agent 整合，实现"需求 → Zig 合约 → 字节码 → 部署"的完整 Hardness Engineering 闭环。
+- **影响文件**: `src/skills/contract.zig`, `src/skills/dsl.zig`, `tests/contract_skill_e2e.zig`
+- **验收**:
+  - [ ] Agent 能根据自然语言生成有效的 Zig 合约文件
+  - [ ] `defineContract` comptime DSL 能验证至少 3 条安全规则
+  - [ ] 自动调用 `zig-to-yul` 生成 EVM Bytecode
+  - [ ] 通过 `forge test` 端到端验证
+
 ---
 
 ## 执行顺序
@@ -131,7 +142,7 @@
 ```
 FIX-ZIG-015(cancelled) → T-092-VERIFY → T-119-VERIFY → T-009-E2E
 → T-103-SPIKE → (go/no-go decision)
-    ├── go  → T-100 → T-101 → (T-103 full implementation)
+    ├── go  → T-100 → T-101 → T-124-METRICS → T-127 (zig-to-yul integration)
     └── parallel → T-120-DESIGN → T-121-IMPLEMENT → T-122-PROMPT → T-123-LESSONS
 ```
 
