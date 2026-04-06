@@ -256,6 +256,9 @@ fn runInteractive(allocator: std.mem.Allocator) !void {
     var git_status_ctx = agent.git.GitStatusContext{};
     var git_diff_ctx = agent.git.GitDiffContext{};
     var git_log_ctx = agent.git.GitLogContext{};
+    var read_task_ctx = agent.doc_tools.ReadActiveTaskContext{};
+    var update_log_ctx = agent.doc_tools.UpdateTaskLogContext{};
+    var sync_spec_ctx = agent.doc_tools.SyncSpecWithCodeContext{};
 
     const tools = [_]agent.AgentTool{
         agent.read_file.createAgentTool(&read_file_ctx),
@@ -267,6 +270,9 @@ fn runInteractive(allocator: std.mem.Allocator) !void {
         agent.git.createGitStatusTool(&git_status_ctx),
         agent.git.createGitDiffTool(&git_diff_ctx),
         agent.git.createGitLogTool(&git_log_ctx),
+        agent.doc_tools.createReadActiveTaskTool(&read_task_ctx),
+        agent.doc_tools.createUpdateTaskLogTool(&update_log_ctx),
+        agent.doc_tools.createSyncSpecWithCodeTool(&sync_spec_ctx),
     };
 
     // Initialize Agent

@@ -53,7 +53,7 @@ pub fn writeFile(
 pub fn fileExists(path: []const u8) bool {
     const io = getIo() catch return false;
     const dir = cwd();
-    dir.access(&io.interface, path, .{}) catch return false;
+    dir.access(io, path, .{}) catch return false;
     return true;
 }
 
@@ -97,25 +97,26 @@ pub fn openDir(path: []const u8, opts: std.Io.Dir.OpenOptions) !std.Io.Dir {
     return try dir.openDir(io, path, opts);
 }
 
-/// Rename file
+/// Rename file (uses C rename syscall in Zig 0.16)
 pub fn rename(old_path: []const u8, new_path: []const u8) !void {
-    const io = try getIo();
-    const dir = cwd();
-    try dir.rename(&io.interface, old_path, new_path);
+    const c = @cImport({ @cInclude("stdio.h"); });
+    const old_c = try std.posix.toPosixPath(old_path);
+    const new_c = try std.posix.toPosixPath(new_path);
+    if (c.rename(&old_c, &new_c) != 0) return error.RenameFailed;
 }
 
 /// Remove file
 pub fn deleteFile(path: []const u8) !void {
     const io = try getIo();
     const dir = cwd();
-    try dir.deleteFile(&io.interface, path);
+    try dir.deleteFile(io, path);
 }
 
 /// Remove directory and all contents
 pub fn deleteTree(path: []const u8) !void {
     const io = try getIo();
     const dir = cwd();
-    try dir.deleteTree(&io.interface, path);
+    try dir.deleteTree(io, path);
 }
 
 /// Get realpath
@@ -124,7 +125,7 @@ pub fn realpath(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
     
     const io = try getIo();
     const dir = cwd();
-    const result = try dir.realpath(&io.interface, path, &buf);
+    const result = try dir.realpath(io, path, &buf);
     
     return try allocator.dupe(u8, result);
 }
@@ -133,21 +134,21 @@ pub fn realpath(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
 pub fn access(path: []const u8, opts: std.Io.Dir.AccessOptions) !void {
     const io = try getIo();
     const dir = cwd();
-    try dir.access(&io.interface, path, opts);
+    try dir.access(io, path, opts);
 }
 
 /// Open a file
 pub fn openFile(path: []const u8, opts: std.Io.Dir.OpenOptions) !std.Io.File {
     const io = try getIo();
     const dir = cwd();
-    return try dir.openFile(&io.interface, path, opts);
+    return try dir.openFile(io, path, opts);
 }
 
 /// Create a file
 pub fn createFile(path: []const u8, opts: std.Io.Dir.CreateOptions) !std.Io.File {
     const io = try getIo();
     const dir = cwd();
-    return try dir.createFile(&io.interface, path, opts);
+    return try dir.createFile(io, path, opts);
 }
 
 // ============================================================================
