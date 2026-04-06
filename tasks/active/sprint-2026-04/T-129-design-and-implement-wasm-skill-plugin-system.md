@@ -387,3 +387,18 @@ pub fn executeWithTimeout(skill: *WasmSkill, input: []const u8, timeout_ms: u64)
 - [ ] 一个 WASM skill 能被 TaskEngine 作为普通任务步骤调用（从 JSON 输入到 JSON 输出）
 - [ ] `zig build test` 全部通过，包括新的 `tests/plugin_tests.zig`
 - [ ] 更新 `AGENT-ENTRYPOINT.md` 和 `docs/FEATURES.md`，记录 WASM Plugin 能力
+
+---
+
+## 子任务拆解
+
+T-129 已拆分为以下 6 个顺序执行的子任务：
+
+1. **T-129-01** [`wasm-skill-abi-and-skeleton`](T-129-01-wasm-skill-abi-and-skeleton.md) — WASM Skill ABI 设计与最小骨架 (2h)
+2. **T-129-02** [`plugin-loader`](T-129-02-plugin-loader.md) — PluginLoader 文件加载与 ABI 验证 (3h)
+3. **T-129-03** [`host-imports`](T-129-03-host-imports.md) — Host Imports 实现（log, alloc, free）(3h)
+4. **T-129-04** [`plugin-registry`](T-129-04-plugin-registry.md) — PluginRegistry 扫描、注册与热重载 (3h)
+5. **T-129-05** [`skillregistry-integration`](T-129-05-skillregistry-integration.md) — 与 SkillRegistry / TaskEngine 集成 (2h)
+6. **T-129-06** [`prompt-to-wasm-autogen`](T-129-06-prompt-to-wasm-autogen.md) — Prompt-to-WASM 自动生成 + CLI (3h)
+
+> **执行顺序**：严格 01 → 02 → 03 → 04 → 05 → 06，后面的依赖前面的。
