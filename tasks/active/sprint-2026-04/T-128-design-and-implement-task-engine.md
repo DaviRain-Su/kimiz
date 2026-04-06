@@ -650,6 +650,8 @@ kimiz run -- repl
 - **2026-04-06** (rspace): 实现 `src/engine/phase.zig`：新增 LLM 驱动的 `executePhase()`，包括 author prompt 构建、`ai_client.complete()` 调用、文档落盘、`validatePhaseDocument()` 结构验收、`ReviewAgent.review()` 集成、以及 `NEEDS_REVISION` 时的一次重试机制。
 - **2026-04-06** (rspace): 升级 `runAutonomousProject()` 为真实 LLM 驱动：加载 config、初始化 Agent、顺序执行 Phase 1→3 的文档生成。
 - **2026-04-06** (rspace): `make test` 通过（70/70 tests passed）。
+- **2026-04-06** (rspace): 实现 `ReviewAgent.review()` 的真实 LLM 集成：加载 `prompts/review/{role}.md`，拼接待审文档，调用 `agent.ai_client.complete()`，解析 `VERDICT: PASS/NEEDS_REVISION/BLOCKED`。
+- **2026-04-06** (rspace): `make test` 通过（71/71 tests passed）。
 
 ## Lessons Learned
 
@@ -673,8 +675,8 @@ kimiz run -- repl
 - [x] `ReviewAgent` 支持 7 种角色：`product_manager`, `system_architect`, `tech_lead`, `project_manager`, `qa_engineer`, `code_reviewer`, `release_engineer`
 - [x] Review 输出能解析为 `PASS` / `NEEDS_REVISION` / `BLOCKED` 三种状态
 - [x] `prompts/review/` 目录下至少存在 4 个角色 prompt 文件（product-manager, system-architect, tech-lead, code-reviewer）
-- [ ] `ReviewAgent.review()` 能加载对应角色的 prompt，对 Phase 产出文档进行评审（目前是 stub，返回 `PASS`；真实 LLM prompt 加载待后续）
-- [x] `executePhase()` 在形式验收后自动调用 Review Agent；`PASS` 才能进入下一阶段（框架已打通，ReviewAgent 目前为 stub）
+- [x] `ReviewAgent.review()` 能加载对应角色的 prompt，对 Phase 产出文档进行评审（真实 LLM 集成已完成）
+- [x] `executePhase()` 在形式验收后自动调用 Review Agent；`PASS` 才能进入下一阶段
 - [x] Review 结果为 `NEEDS_REVISION` 时，Author Agent 能根据反馈修改文档并重试（最多 2 次）
 - [x] `PromptLoader` 能从 markdown 文件解析 YAML frontmatter 生成 `PromptTemplate`（最小实现）
 - [x] `PromptLoader.loadAll()` 按 `.kimiz/` > `~/.kimiz/` > `prompts/` 的优先级正确加载和覆盖（搜索路径已实现，`fileExists` 待完善）
