@@ -1,12 +1,27 @@
-//! TUI Main - Terminal User Interface Application
-//! Integrates with Agent for interactive AI chat
+//! TUI Main - Terminal User Interface Application using libvaxis
 
 const std = @import("std");
-const utils = @import("../utils/root.zig");
-const terminal = @import("terminal.zig");
+const vaxis = @import("vaxis");
 const core = @import("../core/root.zig");
 const ai = @import("../ai/root.zig");
 const agent = @import("../agent/root.zig");
+
+// ============================================================================
+// Event Type for Vaxis Event Loop
+// ============================================================================
+
+pub const Event = union(enum) {
+    key_press: vaxis.Key,
+    mouse: vaxis.Mouse,
+    winsize: vaxis.Winsize,
+    focus_in,
+    focus_out,
+    paste_start,
+    paste_end,
+    paste: []const u8,
+    color_scheme: vaxis.Color.Scheme,
+    file_monitor: vaxis.FileMonitor.Event,
+};
 
 // ============================================================================
 // Message Types
@@ -32,6 +47,7 @@ pub const DisplayMessage = struct {
 // ============================================================================
 
 pub const TuiState = struct {
+    allocator: std.mem.Allocator,
     messages: std.ArrayList(DisplayMessage),
     input_buffer: std.ArrayList(u8),
     input_cursor: usize = 0,
@@ -46,8 +62,9 @@ pub const TuiState = struct {
 
     pub fn init(allocator: std.mem.Allocator) Self {
         return .{
-            .messages = std.ArrayList(DisplayMessage).init(allocator),
-            .input_buffer = std.ArrayList(u8).init(allocator),
+            .allocator = allocator,
+            .messages = .empty,
+            .input_buffer = .empty,
             .input_history = InputHistory.init(allocator),
         };
     }
@@ -62,41 +79,9 @@ pub const TuiState = struct {
         try self.messages.append(.{
             .msg_type = msg_type,
             .content = content,
-            .timestamp = utils.milliTimestamp(),
+            .timestamp = std.time.milliTimestamp(),
         });
-        // Auto-scroll to bottom on new message
         self.scroll_offset = 0;
-    }
-
-    pub fn addStreamingMessage(self: *Self, msg_type: MessageType) !void {
-        try self.messages.append(.{
-            .msg_type = msg_type,
-            .content = "",
-            .timestamp = utils.milliTimestamp(),
-            .is_streaming = true,
-        });
-        self.is_streaming = true;
-    }
-
-    pub fn appendToLastMessage(self: *Self, chunk: []const u8) !void {
-        if (self.messages.items.len == 0) return;
-        const last = &self.messages.items[self.messages.items.len - 1];
-        try self.appendToBuffer(&last.content, chunk);
-    }
-
-    fn appendToBuffer(self: *Self, buffer: *[]const u8, chunk: []const u8) !void {
-        // This is a workaround since we can't easily append to a []const u8
-        // In a real implementation, we'd use a different data structure
-        _ = self;
-        _ = buffer;
-        _ = chunk;
-    }
-
-    pub fn finishStreaming(self: *Self) void {
-        if (self.messages.items.len == 0) return;
-        const last = &self.messages.items[self.messages.items.len - 1];
-        last.is_streaming = false;
-        self.is_streaming = false;
     }
 
     pub fn addUserMessage(self: *Self, content: []const u8) !void {
@@ -117,13 +102,13 @@ pub const InputHistory = struct {
     allocator: std.mem.Allocator,
     max_history: usize = 100,
     current_index: ?usize = null,
-    temp_input: ?[]const u8 = null, // Store current input when navigating
+    temp_input: ?[]const u8 = null,
 
     const Self = @This();
 
     pub fn init(allocator: std.mem.Allocator) Self {
         return .{
-            .items = std.ArrayList([]const u8).init(allocator),
+            .items = .empty,
             .allocator = allocator,
         };
     }
@@ -138,58 +123,41 @@ pub const InputHistory = struct {
         self.items.deinit();
     }
 
-    /// Add input to history
     pub fn add(self: *Self, input: []const u8) !void {
-        // Don't add empty input
         if (input.len == 0) return;
-        
-        // Don't add duplicate of last entry
         if (self.items.items.len > 0) {
             const last = self.items.items[self.items.items.len - 1];
             if (std.mem.eql(u8, last, input)) return;
         }
-
-        // Remove oldest if at capacity
         if (self.items.items.len >= self.max_history) {
             const oldest = self.items.orderedRemove(0);
             self.allocator.free(oldest);
         }
-
         const copy = try self.allocator.dupe(u8, input);
         try self.items.append(copy);
         self.reset();
     }
 
-    /// Navigate up in history (older entries)
     pub fn navigateUp(self: *Self, current_input: []const u8) ?[]const u8 {
         if (self.items.items.len == 0) return null;
-
-        // Save current input if starting navigation
         if (self.current_index == null) {
-            if (self.temp_input) |temp| {
-                self.allocator.free(temp);
-            }
+            if (self.temp_input) |temp| self.allocator.free(temp);
             self.temp_input = self.allocator.dupe(u8, current_input) catch null;
         }
-
-        // Move to older entry
         const new_index = if (self.current_index) |idx|
             if (idx > 0) idx - 1 else 0
         else
             self.items.items.len - 1;
-
         self.current_index = new_index;
         return self.items.items[new_index];
     }
 
-    /// Navigate down in history (newer entries)
     pub fn navigateDown(self: *Self) ?[]const u8 {
         if (self.current_index) |idx| {
             if (idx + 1 < self.items.items.len) {
                 self.current_index = idx + 1;
                 return self.items.items[self.current_index.?];
             } else {
-                // Return to current input (before navigation started)
                 self.current_index = null;
                 return self.temp_input;
             }
@@ -197,7 +165,6 @@ pub const InputHistory = struct {
         return null;
     }
 
-    /// Reset navigation state
     pub fn reset(self: *Self) void {
         self.current_index = null;
         if (self.temp_input) |temp| {
@@ -208,623 +175,416 @@ pub const InputHistory = struct {
 };
 
 // ============================================================================
-// TUI Application
+// Draw Helpers
+// ============================================================================
+
+fn drawText(win: *vaxis.Window, text: []const u8, style: vaxis.Style, wrap_width: u16) void {
+    if (text.len == 0) return;
+    var row: u16 = 0;
+    var col: u16 = 0;
+    var i: usize = 0;
+    while (i < text.len) {
+        const ch = text[i];
+        if (ch == '\n') {
+            row += 1;
+            col = 0;
+            i += 1;
+            continue;
+        }
+        if (col >= wrap_width) {
+            row += 1;
+            col = 0;
+        }
+        if (row >= win.height) break;
+        win.cell[col][row] = .{
+            .char = .{ .grapheme = &.{ch} },
+            .style = style,
+        };
+        col += 1;
+        i += 1;
+    }
+}
+
+fn drawCenteredText(win: *vaxis.Window, text: []const u8, row: u16, style: vaxis.Style) void {
+    const pad = (win.width -| @as(u16, @intCast(text.len))) / 2;
+    var col = pad;
+    for (text) |ch| {
+        if (col >= win.width) break;
+        win.cell[col][row] = .{
+            .char = .{ .grapheme = &.{ch} },
+            .style = style,
+        };
+        col += 1;
+    }
+}
+
+// ============================================================================
+// TUI Application (Vaxis-based)
 // ============================================================================
 
 pub const TuiApp = struct {
     allocator: std.mem.Allocator,
-    term: terminal.Terminal,
+    vx: vaxis.Vaxis,
+    tty: vaxis.Tty,
     state: TuiState,
-    layout: terminal.Layout,
     ai_agent: ?agent.Agent,
     ai_client: ?ai.Ai,
+    tty_buf: [4096]u8,
 
     const Self = @This();
 
     pub fn init(allocator: std.mem.Allocator) !Self {
-        return .{
+        var self: Self = .{
             .allocator = allocator,
-            .term = try terminal.Terminal.init(),
+            .vx = try vaxis.init(allocator, .{}),
+            .tty = undefined,
+            .tty_buf = undefined,
             .state = TuiState.init(allocator),
-            .layout = .{},
             .ai_agent = null,
             .ai_client = null,
         };
+        self.tty = try vaxis.Tty.init(&self.tty_buf);
+        return self;
     }
 
     pub fn deinit(self: *Self) void {
         self.state.deinit();
-        self.term.deinit();
+        self.vx.deinit(self.allocator, self.tty.writer());
+        self.tty.deinit();
         if (self.ai_agent) |*a| a.deinit();
         if (self.ai_client) |*c| c.deinit();
     }
 
-    /// Initialize with Agent
     pub fn setupAgent(self: *Self, _: core.Model, options: agent.AgentOptions) !void {
         self.ai_agent = try agent.Agent.init(self.allocator, options);
-
-        // Set up event callback
-        self.ai_agent.?.setEventCallback(struct {
-            var app_ptr: *Self = undefined;
-
-            pub fn setAppPtr(ptr: *Self) void {
-                app_ptr = ptr;
-            }
-
-            pub fn callback(evt: agent.AgentEvent) void {
-                handleAgentEvent(app_ptr, evt) catch {};
-            }
-        }.callback);
-
-        // Store the app pointer for the callback
-        const CallbackSetter = struct {
-            var app_ptr: *Self = undefined;
-            pub fn set(ptr: *Self) void {
-                app_ptr = ptr;
-            }
-        };
-        CallbackSetter.set(self);
     }
 
-    fn handleAgentEvent(self: *Self, evt: agent.AgentEvent) !void {
-        switch (evt) {
-            .message_start => {
-                try self.state.addStreamingMessage(.assistant);
-            },
-            .message_delta => |delta| {
-                try self.state.appendToLastMessage(delta);
-                try self.render();
-            },
-            .message_complete => |msg| {
-                self.state.finishStreaming();
-                // Convert AssistantMessage to string
-                var content = std.ArrayList(u8).init(self.allocator);
-                defer content.deinit();
-                for (msg.content) |block| {
-                    switch (block) {
-                        .text => |t| try content.appendSlice(t.text),
-                        .thinking => {},
-                        .tool_call => |tc| {
-                            try std.fmt.format(content.writer(), "\n[Tool call: {s}]\n", .{tc.tool_call.name});
-                        },
-                    }
-                }
-                try self.state.addMessage(.assistant, try content.toOwnedSlice());
-            },
-            .tool_call_start => |info| {
-                try self.state.addMessage(.tool_call, info.name);
-            },
-            .tool_result => |result| {
-                const status = if (result.result.is_error) "Error" else "Success";
-                try self.state.addSystemMessage(try std.fmt.allocPrint(self.allocator, "Tool {s}: {s}", .{
-                    result.tool_name,
-                    status,
-                }));
-            },
-            .err => |err| {
-                try self.state.addSystemMessage(try std.fmt.allocPrint(self.allocator, "Error: {s}", .{err}));
-            },
-            .done => {
-                self.state.is_streaming = false;
-            },
-            else => {},
-        }
-        try self.render();
-    }
-
-    /// Main run loop
+    /// Main run loop using Vaxis
     pub fn run(self: *Self) !void {
-        try self.term.enableRawMode();
-        try terminal.Terminal.hideCursor();
-        try terminal.Terminal.clearScreen();
+        try self.vx.enterAltScreen(self.tty.writer());
+        try self.vx.setBracketedPaste(self.tty.writer(), true);
+        try self.vx.setMouseMode(self.tty.writer(), true);
 
-        // Add welcome message
-        try self.state.addSystemMessage("Welcome to kimiz TUI! Press Ctrl+C to exit.");
+        var loop = vaxis.Loop(Event){ .vaxis = &self.vx, .tty = self.tty };
+        try loop.init();
+        try loop.start();
+        defer loop.stop();
 
-        try self.render();
+        try self.vx.queryTerminal(self.tty.writer(), 1_000_000_000);
+
+        try self.state.addSystemMessage("Welcome to KimiZ TUI! Press Ctrl+C or :q to exit.");
 
         while (self.state.is_running) {
-            const key = try terminal.readKey();
-            try self.handleInput(key);
-
-            if (self.state.is_running) {
-                try self.render();
+            loop.pollEvent();
+            while (loop.tryEvent()) |evt| {
+                try self.handleEvent(evt);
+                if (!self.state.is_running) break;
             }
+
+            const winsize = try self.tty.getWinsize();
+            try self.vx.resize(self.allocator, self.tty.writer(), winsize);
+
+            try self.drawFrame(winsize);
+
+            try self.vx.render(self.tty.writer());
+
+            std.time.sleep(16_000_000);
         }
 
-        try terminal.Terminal.showCursor();
-        try terminal.Terminal.clearScreen();
+        try self.tty.writer().writeAll(vaxis.ctlseqs.rmcup);
+        try self.tty.writer().flush();
     }
 
-    fn handleInput(self: *Self, key: terminal.Key) !void {
-        switch (key) {
-            .ctrl_c => {
-                self.state.is_running = false;
-            },
-            .ctrl_l => {
-                try terminal.Terminal.clearScreen();
-            },
-            .enter => {
-                // Check if Shift is held (for multi-line input)
-                // For now, we use a simple heuristic: if the line starts with whitespace or previous char is newline, insert newline
-                const insert_newline = self.state.input_buffer.items.len > 0 and 
-                    (self.state.input_cursor == 0 or 
-                     self.state.input_buffer.items[self.state.input_cursor - 1] == '\n' or
-                     (self.state.input_cursor < self.state.input_buffer.items.len and 
-                      self.state.input_buffer.items[self.state.input_cursor] == ' '));
-                
-                if (insert_newline and !std.mem.eql(u8, self.state.input_buffer.items, "")) {
-                    // Insert newline for multi-line input
-                    try self.state.input_buffer.insert(self.state.input_cursor, '\n');
-                    self.state.input_cursor += 1;
-                } else if (self.state.input_buffer.items.len > 0 and !self.state.is_streaming) {
-                    // Submit message
-                    const input = try self.allocator.dupe(u8, self.state.input_buffer.items);
-                    
-                    // Add to history before clearing
-                    try self.state.input_history.add(input);
-                    
-                    try self.state.addUserMessage(input);
+    fn handleEvent(self: *Self, evt: Event) !void {
+        switch (evt) {
+            .key_press => |key| {
+                // Ctrl+C or :q -> exit
+                if (key.codepoint == 'c' and key.mods.ctrl) {
+                    self.state.is_running = false;
+                    return;
+                }
 
-                    // Clear input
-                    self.state.input_buffer.clearAndFree();
-                    self.state.input_cursor = 0;
+                if (key.codepoint == 27) { // ESC
+                    // Could be part of :q or standalone ESC
+                    return;
+                }
 
-                    // Send to agent
-                    if (self.ai_agent) |*a| {
-                        a.prompt(input) catch |err| {
-                            try self.state.addSystemMessage(try std.fmt.allocPrint(
-                                self.allocator,
-                                "Agent error: {s}",
-                                .{@errorName(err)},
-                            ));
-                        };
-                    } else {
-                        try self.state.addSystemMessage("No agent connected.");
+                if (key.codepoint == '\r' or key.codepoint == '\n') {
+                    // Enter - submit message
+                    if (self.state.input_buffer.items.len > 0 and !self.state.is_streaming) {
+                        const input = try self.allocator.dupe(u8, self.state.input_buffer.items);
+                        try self.state.input_history.add(input);
+                        try self.state.addUserMessage(input);
+                        self.state.input_buffer.clearAndFree();
+                        self.state.input_cursor = 0;
+                        // TODO: send to agent
                     }
+                    return;
                 }
-            },
-            .backspace => {
-                if (self.state.input_cursor > 0) {
-                    _ = self.state.input_buffer.orderedRemove(self.state.input_cursor - 1);
-                    self.state.input_cursor -= 1;
+
+                if (key.codepoint == 127 or key.codepoint == 8) { // Backspace
+                    if (self.state.input_cursor > 0) {
+                        _ = self.state.input_buffer.orderedRemove(self.state.input_cursor - 1);
+                        self.state.input_cursor -= 1;
+                    }
+                    return;
                 }
-            },
-            .delete => {
-                if (self.state.input_cursor < self.state.input_buffer.items.len) {
-                    _ = self.state.input_buffer.orderedRemove(self.state.input_cursor);
+
+                if (key.codepoint == 0x7F) { // Delete
+                    if (self.state.input_cursor < self.state.input_buffer.items.len) {
+                        _ = self.state.input_buffer.orderedRemove(self.state.input_cursor);
+                    }
+                    return;
                 }
-            },
-            .left => {
-                if (self.state.input_cursor > 0) {
-                    self.state.input_cursor -= 1;
+
+                // Arrow keys / navigation (CSI sequence codepoints)
+                if (key.codepoint == 'A' and key.mods.ctrl == false) {
+                    // Up - history or scroll
+                    if (self.state.input_history.navigateUp(self.state.input_buffer.items)) |history_input| {
+                        self.state.input_buffer.clearRetainingCapacity();
+                        try self.state.input_buffer.appendSlice(history_input);
+                        self.state.input_cursor = self.state.input_buffer.items.len;
+                    }
+                    return;
                 }
-            },
-            .right => {
-                if (self.state.input_cursor < self.state.input_buffer.items.len) {
+
+                if (key.codepoint == 'B' and key.mods.ctrl == false) {
+                    // Down
+                    if (self.state.input_history.navigateDown()) |history_input| {
+                        self.state.input_buffer.clearRetainingCapacity();
+                        try self.state.input_buffer.appendSlice(history_input);
+                        self.state.input_cursor = self.state.input_buffer.items.len;
+                    }
+                    return;
+                }
+
+                if (key.codepoint == 'D' and key.mods.ctrl == false) {
+                    // Left
+                    if (self.state.input_cursor > 0) self.state.input_cursor -= 1;
+                    return;
+                }
+
+                if (key.codepoint == 'C' and key.mods.ctrl == false) {
+                    // Right
+                    if (self.state.input_cursor < self.state.input_buffer.items.len) self.state.input_cursor += 1;
+                    return;
+                }
+
+                if (key.codepoint == 'l' and key.mods.ctrl) {
+                    // Ctrl+L - clear screen (handled by next render)
+                    return;
+                }
+
+                // Printable characters - add to input buffer
+                if (key.codepoint >= 32 and key.codepoint < 127) {
+                    try self.state.input_buffer.insert(self.state.input_cursor, @as(u8, @intCast(key.codepoint)));
                     self.state.input_cursor += 1;
+                    self.state.input_history.reset();
                 }
             },
-            .up => {
-                // History navigation
-                if (self.state.input_history.navigateUp(self.state.input_buffer.items)) |history_input| {
-                    self.state.input_buffer.clearRetainingCapacity();
-                    try self.state.input_buffer.appendSlice(history_input);
-                    self.state.input_cursor = self.state.input_buffer.items.len;
-                } else if (self.state.scroll_offset > 0) {
-                    self.state.scroll_offset -= 1;
-                }
+            .winsize => |ws| {
+                _ = ws; // Handled in main loop
             },
-            .down => {
-                // History navigation
-                if (self.state.input_history.navigateDown()) |history_input| {
-                    self.state.input_buffer.clearRetainingCapacity();
-                    try self.state.input_buffer.appendSlice(history_input);
-                    self.state.input_cursor = self.state.input_buffer.items.len;
-                } else {
-                    self.state.scroll_offset += 1;
-                }
+            .mouse => |mouse| {
+                _ = mouse; // TODO: handle mouse clicks for scrolling
             },
-            .char => |c| {
-                try self.state.input_buffer.insert(self.state.input_cursor, c);
-                self.state.input_cursor += 1;
-                // Reset history navigation when typing
-                self.state.input_history.reset();
+            .paste_start => {
+                // TODO: handle bracketed paste
             },
-            else => {},
+            .paste_end => {},
+            .paste => |text| {
+                _ = text;
+                // TODO: handle paste
+            },
+            .focus_in => {},
+            .focus_out => {},
+            .color_scheme => {},
+            .file_monitor => {},
         }
     }
 
-    fn render(self: *Self) !void {
-        const size = try terminal.Terminal.getSize();
+    fn drawFrame(self: *Self, winsize: vaxis.Winsize) !void {
+        const cols = winsize.cols;
+        const rows = winsize.rows;
+        var main_win = self.vx.window();
+        main_win.fill(' ');
 
-        // Clear screen
-        try terminal.Terminal.clearScreen();
+        const sidebar_width: u16 = 20;
+        const input_height: u16 = 3;
 
-        // Render sidebar
-        try self.renderSidebar(size.rows, size.cols);
+        // --- Sidebar ---
+        if (cols > sidebar_width + 10) {
+            var sidebar = main_win.child(.{ .x_off = 0, .y_off = 0, .width = sidebar_width, .height = rows });
 
-        // Render chat area
-        try self.renderChatArea(size.rows, size.cols);
-
-        // Render input area
-        try self.renderInputArea(size.rows, size.cols);
-
-        // Render status bar
-        try self.renderStatusBar(size.rows, size.cols);
-    }
-
-    fn renderSidebar(self: *Self, rows: usize, cols: usize) !void {
-        _ = cols;
-        const area = self.layout.getSidebarArea(0, rows);
-        const stdout = std.io.getStdOut().writer();
-
-        // Draw sidebar border
-        for (area.y..area.y + area.height) |row| {
-            try terminal.Terminal.moveCursor(row + 1, area.width);
-            try stdout.print("│", .{});
-        }
-
-        // Title
-        try terminal.Terminal.moveCursor(1, 1);
-        try terminal.applyStyle(.{ .fg = .cyan, .bold = true });
-        try stdout.print(" kimiz ", .{});
-        try terminal.resetStyle();
-
-        // Session info
-        try terminal.Terminal.moveCursor(3, 1);
-        try terminal.applyStyle(.{ .fg = .yellow });
-        try stdout.print("Session:", .{});
-        try terminal.resetStyle();
-        try terminal.Terminal.moveCursor(4, 1);
-        try stdout.print(" {s}", .{self.state.current_session});
-
-        // Model info
-        try terminal.Terminal.moveCursor(6, 1);
-        try terminal.applyStyle(.{ .fg = .yellow });
-        try stdout.print("Model:", .{});
-        try terminal.resetStyle();
-        try terminal.Terminal.moveCursor(7, 1);
-        try stdout.print(" {s}", .{self.state.current_model});
-
-        // Shortcuts
-        try terminal.Terminal.moveCursor(area.height - 5, 1);
-        try terminal.applyStyle(.{ .fg = .magenta });
-        try stdout.print("Shortcuts:", .{});
-        try terminal.resetStyle();
-        try terminal.Terminal.moveCursor(area.height - 4, 1);
-        try stdout.print(" ^C Exit", .{});
-        try terminal.Terminal.moveCursor(area.height - 3, 1);
-        try stdout.print(" ^L Clear", .{});
-    }
-
-    fn renderChatArea(self: *Self, rows: usize, cols: usize) !void {
-        const area = self.layout.getChatArea(cols, rows);
-        const stdout = std.io.getStdOut().writer();
-
-        // Calculate visible messages
-        const visible_rows = area.height - 2;
-        
-        // First pass: calculate how many rows each message needs
-        var message_rows = std.ArrayList(usize).init(self.allocator);
-        defer message_rows.deinit();
-        
-        var total_rows: usize = 0;
-        for (self.state.messages.items) |msg| {
-            const prefix_len = switch (msg.msg_type) {
-                .user => 5, // "You: "
-                .assistant => 4, // "AI: "
-                .system => 2, // "! "
-                .tool_call => 0, // "[Tool: xxx]" - handled separately
-                .tool_result => 0, // "[Result: xxx]" - handled separately
+            // Sidebar background
+            const sidebar_style: vaxis.Style = .{
+                .bg = .{ .index = 235 }, // dark gray
+                .fg = .{ .index = 248 }, // light gray
             };
-            const content_width = area.width - prefix_len - 2; // -2 for margins
-            const rows_needed = calculateWrappedRows(msg.content, content_width);
-            try message_rows.append(rows_needed);
-            total_rows += rows_needed;
+            sidebar.fillStyle(' ', sidebar_style);
+
+            const border_style: vaxis.Style = .{ .fg = .{ .index = 240 } };
+            for (0..rows) |r| {
+                if (r < sidebar.height) {
+                    sidebar.cell[sidebar_width - 1][r] = .{
+                        .char = .{ .grapheme = "│" },
+                        .style = border_style,
+                    };
+                }
+            }
+
+            // Title
+            const title_style: vaxis.Style = .{ .fg = .{ .index = 75 }, .bold = true };
+            drawCenteredText(&sidebar, "KimiZ", 1, title_style);
+
+            // Session info
+            const label_style: vaxis.Style = .{ .fg = .{ .index = 220 }, .bold = true };
+            drawText(&sidebar, "Session:", label_style, sidebar_width - 2);
+            const session_style: vaxis.Style = .{ .fg = .{ .index = 248 } };
+            drawText(&sidebar, self.state.current_session, session_style, sidebar_width - 2);
+            drawText(&sidebar, "Model:", label_style, sidebar_width - 2);
+            drawText(&sidebar, self.state.current_model, session_style, sidebar_width - 2);
+
+            // Shortcuts
+            const shortcut_style: vaxis.Style = .{ .fg = .{ .index = 177 } };
+            drawText(&sidebar, "Shortcuts:", shortcut_style, sidebar_width - 2);
+            drawText(&sidebar, " ^C Exit", session_style, sidebar_width - 2);
         }
-        
-        // Calculate start index based on scroll and total rows
-        var start_idx: usize = 0;
-        if (total_rows > visible_rows and self.state.scroll_offset > 0) {
-            var rows_to_skip = self.state.scroll_offset;
-            for (message_rows.items, 0..) |rows_needed, i| {
-                if (rows_to_skip >= rows_needed) {
-                    rows_to_skip -= rows_needed;
-                    start_idx = i + 1;
-                } else {
-                    break;
+
+        // --- Chat Area ---
+        const chat_x: u16 = if (cols > sidebar_width + 10) sidebar_width + 1 else 0;
+        const chat_width = cols - chat_x;
+        const chat_height = rows -| input_height -| 1;
+        if (chat_height > 0) {
+            var chat_area = main_win.child(.{ .x_off = chat_x, .y_off = 0, .width = chat_width, .height = chat_height });
+            chat_area.fill(' ');
+
+            // Render messages
+            var current_row: u16 = 0;
+            for (self.state.messages.items) |msg| {
+                if (current_row >= chat_height - 1) break;
+
+                const prefix_style: vaxis.Style = switch (msg.msg_type) {
+                    .user => .{ .fg = .{ .index = 82 }, .bold = true },
+                    .assistant => .{ .fg = .{ .index = 75 }, .bold = true },
+                    .system => .{ .fg = .{ .index = 220 }, .bold = true },
+                    .tool_call => .{ .fg = .{ .index = 177 }, .bold = true },
+                    .tool_result => .{ .fg = .{ .index = 80 }, .bold = true },
+                };
+
+                const content_style: vaxis.Style = .{ .fg = .{ .index = 248 } };
+
+                const prefix = switch (msg.msg_type) {
+                    .user => "You: ",
+                    .assistant => "AI: ",
+                    .system => "! ",
+                    .tool_call => "[Tool] ",
+                    .tool_result => "[Result] ",
+                };
+
+                if (current_row < chat_area.height) {
+                    drawText(&chat_area, prefix, prefix_style, chat_width - 1);
+                }
+                current_row += 1;
+
+                if (current_row < chat_area.height and msg.content.len > 0) {
+                    // Simple word-wrap content
+                    drawText(&chat_area, msg.content, content_style, chat_width - 1);
+                    const content_width: u16 = if (chat_width > 2) chat_width - 2 else 1;
+                    const lines_needed: u16 = @as(u16, @intCast(msg.content.len)) / content_width + 1;
+                    current_row += @min(lines_needed, chat_height -| current_row);
+                }
+
+                // Separator
+                if (current_row < chat_area.height) {
+                    const sep_style: vaxis.Style = .{ .fg = .{ .index = 240 } };
+                    var sep_col: u16 = 0;
+                    while (sep_col < chat_width and current_row < chat_area.height) : (sep_col += 1) {
+                        chat_area.cell[sep_col][current_row] = .{
+                            .char = .{ .grapheme = "·" },
+                            .style = sep_style,
+                        };
+                    }
+                    current_row += 1;
                 }
             }
         }
 
-        var row: usize = area.y + 1;
-        var msg_idx = start_idx;
-        while (msg_idx < self.state.messages.items.len and row < area.y + area.height - 1) {
-            const msg = self.state.messages.items[msg_idx];
-            
-            // Message type indicator and style
-            const prefix = switch (msg.msg_type) {
-                .user => "You: ",
-                .assistant => "AI: ",
-                .system => "! ",
-                .tool_call => "[Tool: ",
-                .tool_result => "[Result: ",
+        // --- Separator Line ---
+        const sep_y = rows -| input_height -| 1;
+        if (sep_y < rows) {
+            const sep_style: vaxis.Style = .{ .fg = .{ .index = 240 } };
+            var c: u16 = chat_x;
+            while (c < cols) : (c += 1) {
+                main_win.cell[c][sep_y] = .{
+                    .char = .{ .grapheme = "─" },
+                    .style = sep_style,
+                };
+            }
+        }
+
+        // --- Input Area ---
+        const input_y = rows -| input_height;
+        if (input_y < rows) {
+            var input_win = main_win.child(.{ .x_off = chat_x, .y_off = input_y, .width = chat_width, .height = input_height });
+
+            // Input background
+            const input_bg_style: vaxis.Style = .{
+                .bg = .{ .index = 236 },
+                .fg = .{ .index = 248 },
             };
-            const prefix_len = prefix.len;
-            
-            try terminal.Terminal.moveCursor(row, area.x + 1);
-            
-            // Format timestamp
-            const timestamp_str = try formatTimestamp(self.allocator, msg.timestamp);
-            defer self.allocator.free(timestamp_str);
-            
-            switch (msg.msg_type) {
-                .user => {
-                    try terminal.applyStyle(.{ .fg = .bright_black });
-                    try stdout.print("[{s}] ", .{timestamp_str});
-                    try terminal.resetStyle();
-                    try terminal.applyStyle(.{ .fg = .green, .bold = true });
-                    try stdout.print("{s}", .{prefix});
-                    try terminal.resetStyle();
-                    
-                    // Wrap and print content
-                    const content_width = area.width - prefix_len - 11; // -11 for timestamp
-                    row = try self.printWrappedText(msg.content, content_width, row, area.x + 11 + prefix_len, area);
-                },
-                .assistant => {
-                    try terminal.applyStyle(.{ .fg = .bright_black });
-                    try stdout.print("[{s}] ", .{timestamp_str});
-                    try terminal.resetStyle();
-                    try terminal.applyStyle(.{ .fg = .blue, .bold = true });
-                    try stdout.print("{s}", .{prefix});
-                    try terminal.resetStyle();
-                    
-                    // Wrap and print content
-                    const content_width = area.width - prefix_len - 11; // -11 for timestamp
-                    const display_content = if (msg.is_streaming)
-                        try std.fmt.allocPrint(self.allocator, "{s}▊", .{msg.content})
-                    else
-                        msg.content;
-                    defer if (msg.is_streaming) self.allocator.free(display_content);
-                    
-                    row = try self.printWrappedText(display_content, content_width, row, area.x + 11 + prefix_len, area);
-                },
-                .system => {
-                    try terminal.applyStyle(.{ .fg = .bright_black });
-                    try stdout.print("[{s}] ", .{timestamp_str});
-                    try terminal.resetStyle();
-                    try terminal.applyStyle(.{ .fg = .yellow });
-                    try stdout.print("{s}", .{prefix});
-                    try terminal.resetStyle();
-                    
-                    const content_width = area.width - prefix_len - 11;
-                    row = try self.printWrappedText(msg.content, content_width, row, area.x + 11 + prefix_len, area);
-                },
-                .tool_call => {
-                    try terminal.applyStyle(.{ .fg = .magenta });
-                    try stdout.print("{s}{s}]", .{ prefix, msg.content });
-                    try terminal.resetStyle();
-                    row += 1;
-                },
-                .tool_result => {
-                    try terminal.applyStyle(.{ .fg = .cyan });
-                    try stdout.print("{s}{s}]", .{ prefix, msg.content });
-                    try terminal.resetStyle();
-                    row += 1;
-                },
-            }
-            
-            msg_idx += 1;
-        }
-    }
-    
-    /// Calculate how many rows needed to display text with given width
-    fn calculateWrappedRows(text: []const u8, width: usize) usize {
-        if (width == 0) return text.len;
-        var rows: usize = 1;
-        var col: usize = 0;
-        for (text) |byte| {
-            if (byte == '\n') {
-                rows += 1;
-                col = 0;
-            } else {
-                col += 1;
-                if (col >= width) {
-                    rows += 1;
-                    col = 0;
-                }
-            }
-        }
-        return rows;
-    }
-    
-    /// Format timestamp to HH:MM:SS
-    fn formatTimestamp(allocator: std.mem.Allocator, timestamp_ms: i64) ![]const u8 {
-        const seconds = @divTrunc(timestamp_ms, 1000);
-        const hours = @mod(@divTrunc(seconds, 3600), 24);
-        const minutes = @mod(@divTrunc(seconds, 60), 60);
-        const secs = @mod(seconds, 60);
-        return try std.fmt.allocPrint(allocator, "{d:0>2}:{d:0>2}:{d:0>2}", .{hours, minutes, secs});
-    }
-    
-    /// Print text with word wrapping, returns next row
-    fn printWrappedText(self: *Self, text: []const u8, width: usize, start_row: usize, start_col: usize, area: terminal.Rect) !usize {
-        const stdout = std.io.getStdOut().writer();
-        var row = start_row;
-        var line_start: usize = 0;
-        
-        while (line_start < text.len and row < area.y + area.height - 1) {
-            // Find the end of this line
-            var line_end = line_start;
-            var col: usize = 0;
-            
-            // Try to find a good break point (word boundary)
-            while (line_end < text.len and col < width) {
-                if (text[line_end] == '\n') {
-                    break;
-                }
-                col += 1;
-                line_end += 1;
-            }
-            
-            // If we're in the middle of a word, try to back up to a space
-            if (line_end < text.len and text[line_end] != '\n' and text[line_end] != ' ') {
-                var word_boundary = line_end;
-                while (word_boundary > line_start and text[word_boundary - 1] != ' ') {
-                    word_boundary -= 1;
-                }
-                if (word_boundary > line_start) {
-                    line_end = word_boundary;
-                }
-            }
-            
-            // Print this line
-            try terminal.Terminal.moveCursor(row, start_col);
-            try stdout.print("{s}", .{text[line_start..line_end]});
-            
-            row += 1;
-            
-            // Skip newline if present, or skip space at break
-            if (line_end < text.len and text[line_end] == '\n') {
-                line_start = line_end + 1;
-            } else if (line_end < text.len and text[line_end] == ' ') {
-                line_start = line_end + 1;
-            } else {
-                line_start = line_end;
-            }
-        }
-        
-        return row;
-    }
+            input_win.fillStyle(' ', input_bg_style);
 
-    fn renderInputArea(self: *Self, rows: usize, cols: usize) !void {
-        const area = self.layout.getInputArea(cols, rows);
-        const stdout = std.io.getStdOut().writer();
-        const max_input_lines = 5; // Maximum visible lines for input
-        
-        // Draw border line
-        try terminal.Terminal.moveCursor(area.y, area.x);
-        try stdout.print("─" ** 100, .{});
-        
-        // Calculate cursor position in multi-line buffer
-        var cursor_line: usize = 0;
-        var cursor_col: usize = 0;
-        var line_start_indices = std.ArrayList(usize).init(self.allocator);
-        defer line_start_indices.deinit();
-        try line_start_indices.append(0);
-        
-        for (self.state.input_buffer.items, 0..) |char, i| {
-            if (i == self.state.input_cursor) {
-                cursor_line = line_start_indices.items.len - 1;
-                cursor_col = i - line_start_indices.items[cursor_line];
+            // Prompt
+            const prompt_style: vaxis.Style = .{ .fg = .{ .index = 82 }, .bold = true };
+            drawText(&input_win, "> ", prompt_style, chat_width - 2);
+
+            // Input text
+            const input_style: vaxis.Style = .{ .fg = .{ .index = 248 } };
+            if (self.state.input_buffer.items.len > 0) {
+                drawText(&input_win, self.state.input_buffer.items, input_style, chat_width - 3);
             }
-            if (char == '\n') {
-                try line_start_indices.append(i + 1);
+
+            // Cursor position
+            const cursor_col: u16 = @as(u16, @intCast(self.state.input_cursor)) + 2; // +2 for "> "
+            const cursor_row: u16 = 0;
+
+            if (cursor_col < input_win.width and cursor_row < input_win.height and !self.state.is_streaming) {
+                main_win.setCell(
+                    chat_x + cursor_col,
+                    input_y + cursor_row,
+                    .{
+                        .char = .{ .grapheme = "▊" },
+                        .style = .{ .fg = .{ .index = 82 } },
+                    },
+                );
             }
         }
-        
-        // Handle cursor at end of buffer
-        if (self.state.input_cursor >= self.state.input_buffer.items.len) {
-            cursor_line = line_start_indices.items.len - 1;
-            cursor_col = self.state.input_buffer.items.len - line_start_indices.items[cursor_line];
-        }
-        
-        // Calculate which lines to show (scrolling within input area)
-        var first_visible_line: usize = 0;
-        if (line_start_indices.items.len > max_input_lines) {
-            first_visible_line = if (cursor_line >= max_input_lines)
-                cursor_line - max_input_lines + 1
+
+        // --- Status Bar ---
+        const status_y = rows - 1;
+        if (status_y < rows) {
+            const status_style: vaxis.Style = .{
+                .bg = .{ .index = 237 },
+                .fg = .{ .index = 248 },
+            };
+            var s: u16 = 0;
+            while (s < cols) : (s += 1) {
+                main_win.cell[s][status_y] = .{
+                    .char = .{ .grapheme = " " },
+                    .style = status_style,
+                };
+            }
+
+            const status_text = if (self.state.is_streaming)
+                " Streaming..."
             else
-                0;
-        }
-        
-        // Input prompt
-        try terminal.Terminal.moveCursor(area.y + 1, area.x + 1);
-        try terminal.applyStyle(.{ .fg = .green, .bold = true });
-        try stdout.print("> ", .{});
-        try terminal.resetStyle();
-        
-        // Display input content (multiple lines)
-        const content_width = area.width - 4; // -4 for "> " and margins
-        var display_line: usize = 0;
-        
-        for (first_visible_line..line_start_indices.items.len) |line_idx| {
-            if (display_line >= max_input_lines) break;
-            
-            const start_idx = line_start_indices.items[line_idx];
-            const end_idx = if (line_idx + 1 < line_start_indices.items.len)
-                line_start_indices.items[line_idx + 1] - 1
-            else
-                self.state.input_buffer.items.len;
-            
-            const line_content = self.state.input_buffer.items[start_idx..end_idx];
-            
-            // Wrap long lines
-            var col: usize = 0;
-            var line_row: usize = 0;
-            while (col < line_content.len and line_row < max_input_lines - display_line) {
-                const remaining = line_content.len - col;
-                const chunk_len = @min(remaining, content_width);
-                
-                try terminal.Terminal.moveCursor(area.y + 1 + display_line + line_row, area.x + 3 + if (line_row == 0) @as(usize, 0) else @as(usize, 0));
-                if (line_row > 0) {
-                    // Continuation line - indent slightly
-                    try terminal.Terminal.moveCursor(area.y + 1 + display_line + line_row, area.x + 5);
-                }
-                try stdout.print("{s}", .{line_content[col..col + chunk_len]});
-                
-                col += chunk_len;
-                line_row += 1;
-            }
-            
-            display_line += line_row;
-        }
-        
-        // Show hint for multi-line input
-        if (std.mem.indexOfScalar(u8, self.state.input_buffer.items, '\n') != null) {
-            try terminal.Terminal.moveCursor(area.y + area.height - 1, area.x + 1);
-            try terminal.applyStyle(.{ .fg = .bright_black });
-            try stdout.print("[Ctrl+Enter to submit]", .{});
-            try terminal.resetStyle();
-        }
-        
-        // Cursor positioning
-        if (!self.state.is_streaming) {
-            const cursor_display_line = cursor_line - first_visible_line;
-            const cursor_display_col = if (cursor_display_line == 0) 
-                cursor_col + 3  // +3 for "> "
-            else 
-                cursor_col + 5; // +5 for continuation indent
-            try terminal.Terminal.moveCursor(area.y + 1 + cursor_display_line, area.x + cursor_display_col);
-            try terminal.Terminal.showCursor();
-        } else {
-            try terminal.Terminal.hideCursor();
-        }
-    }
+                try std.fmt.allocPrint(self.allocator, " Ready | Messages: {d} | Ctrl+C:exit", .{self.state.messages.items.len});
+            defer if (!self.state.is_streaming) self.allocator.free(status_text);
 
-    fn renderStatusBar(self: *Self, rows: usize, cols: usize) !void {
-        const area = self.layout.getStatusArea(cols, rows);
-        const stdout = std.io.getStdOut().writer();
-
-        try terminal.Terminal.moveCursor(area.y + 1, area.x + 1);
-
-        // Background style for status bar
-        try terminal.applyStyle(.{ .bg = .bright_black });
-
-        if (self.state.is_streaming) {
-            try stdout.print(" Streaming... ", .{});
-        } else {
-            try stdout.print(" Ready | Messages: {d} | Press Ctrl+C to exit ", .{self.state.messages.items.len});
+            drawText(&main_win, status_text, status_style, cols);
+            main_win.setCursorPos(chat_x, input_y);
         }
-
-        // Fill rest of status bar
-        const status_len = if (self.state.is_streaming) 15 else 50;
-        for (status_len..area.width) |_| {
-            try stdout.print(" ", .{});
-        }
-
-        try terminal.resetStyle();
     }
 };
 
@@ -832,11 +592,9 @@ pub const TuiApp = struct {
 // Public API
 // ============================================================================
 
-/// Run TUI with default configuration
 pub fn runTui(allocator: std.mem.Allocator, model: core.Model, options: agent.AgentOptions) !void {
     var app = try TuiApp.init(allocator);
     defer app.deinit();
-
     try app.setupAgent(model, options);
     try app.run();
 }
@@ -844,6 +602,22 @@ pub fn runTui(allocator: std.mem.Allocator, model: core.Model, options: agent.Ag
 // ============================================================================
 // Tests
 // ============================================================================
+
+test "InputHistory add and navigate" {
+    const allocator = std.testing.allocator;
+    var history = InputHistory.init(allocator);
+    defer history.deinit();
+
+    try history.add("hello");
+    try history.add("world");
+    try history.add("hello"); // duplicate, should be ignored
+
+    try std.testing.expectEqual(@as(usize, 2), history.items.items.len);
+
+    const nav = history.navigateUp(&.{});
+    try std.testing.expect(nav != null);
+    try std.testing.expectEqualStrings("world", nav.?);
+}
 
 test "TuiState basic operations" {
     const allocator = std.testing.allocator;

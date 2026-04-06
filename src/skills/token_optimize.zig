@@ -92,10 +92,7 @@ fn checkRTKInstalled(allocator: std.mem.Allocator) !bool {
     const io = utils.getIo() catch return false;
 
     const result = std.process.run(allocator, io, .{
-        .argv = &.{ "which", "rtk" },
-        .stdout_limit = @enumFromInt(1024),
-        .stderr_limit = @enumFromInt(1024),
-    }) catch return false;
+        .argv = &.{ "which", "rtk" },    }) catch return false;
     defer {
         allocator.free(result.stdout);
         allocator.free(result.stderr);
@@ -113,10 +110,7 @@ fn getRTKVersion(allocator: std.mem.Allocator) ![]const u8 {
     const io = utils.getIo() catch return error.RTKVersionFailed;
 
     const result = std.process.run(allocator, io, .{
-        .argv = &.{ "rtk", "--version" },
-        .stdout_limit = @enumFromInt(1024),
-        .stderr_limit = @enumFromInt(1024),
-    }) catch return error.RTKVersionFailed;
+        .argv = &.{ "rtk", "--version" },    }) catch return error.RTKVersionFailed;
     defer {
         allocator.free(result.stdout);
         allocator.free(result.stderr);
@@ -175,10 +169,7 @@ fn executeRTKCommand(
 
     // Execute using Zig 0.16 native API
     const result = std.process.run(allocator, io, .{
-        .argv = &.{ "sh", "-c", cmd_buf.items },
-        .stdout_limit = @enumFromInt(100 * 1024),
-        .stderr_limit = @enumFromInt(100 * 1024),
-    }) catch {
+        .argv = &.{ "sh", "-c", cmd_buf.items },    }) catch {
         return error.CommandExecutionFailed;
     };
 

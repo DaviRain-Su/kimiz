@@ -12,6 +12,7 @@ const workspace = @import("../workspace/root.zig");
 const config = @import("../config.zig");
 const skills = @import("../skills/root.zig");
 const daemon = @import("../daemon/supervisor.zig");
+const tui = @import("../tui/root.zig");
 pub const slash = @import("slash.zig");
 
 const c = @cImport({
@@ -123,9 +124,22 @@ pub fn initEnvVars(environ_map: *std.process.Environ.Map) void {
 
 /// Get environment variable value
 pub fn getEnvVar(allocator: std.mem.Allocator, name: []const u8) error{NotFound, OutOfMemory}![]const u8 {
-    const env_map = g_environ_map orelse return error.NotFound;
-    const value = env_map.get(name) orelse return error.NotFound;
-    return allocator.dupe(u8, value);
+    // Try the environ_map first
+    if (g_environ_map) |env_map| {
+        if (env_map.get(name)) |value| {
+            return allocator.dupe(u8, value);
+        }
+    }
+    
+    // Fallback: use libc getenv directly
+    const name_z = try allocator.dupeZ(u8, name);
+    defer allocator.free(name_z);
+    if (std.c.getenv(name_z)) |value_ptr| {
+        const value = std.mem.sliceTo(value_ptr, 0);
+        return allocator.dupe(u8, value);
+    }
+    
+    return error.NotFound;
 }
 
 pub fn run(
@@ -256,6 +270,12 @@ pub fn run(
             printLine(msg);
             return;
         }
+    }
+
+    // TUI mode
+    if (args_slice.len > 1 and (std.mem.eql(u8, args_slice[1], "--tui") or std.mem.eql(u8, args_slice[1], "-t"))) {
+        try runTuiMode(allocator);
+        return;
     }
 
     if (matches.containsArg("task")) {
@@ -483,6 +503,35 @@ fn runInteractive(allocator: std.mem.Allocator) !void {
     print("\n👋 Goodbye!\n");
 }
 
+fn runTuiMode(allocator: std.mem.Allocator) !void {
+    print("🚀 Starting KimiZ TUI...\n");
+    
+    // Initialize config and load env vars
+    var cfg = try config.Config.init(allocator);
+    defer cfg.deinit();
+    try cfg.loadFromEnv();
+    
+    if (!cfg.hasAnyApiKey()) {
+        print("⚠️  No API keys configured. Set KIMI_API_KEY.\n");
+        return;
+    }
+    
+    const model_id = cfg.default_model;
+    const model = ai.models_registry.getModelById(model_id) orelse {
+        print("❌ Model not found: ");
+        print(model_id);
+        print("\n");
+        return error.ModelNotFound;
+    };
+    
+    // Create agent options
+    const options = agent.AgentOptions{
+        .model = model,
+    };
+    
+    try tui.runTui(allocator, model, options);
+}
+
 fn runGenerateSkillCommand(allocator: std.mem.Allocator, name: []const u8, description: []const u8) !void {
     var gen = try skills.generator.Generator.init(allocator);
     defer gen.deinit();
@@ -567,10 +616,7 @@ fn executeShellCommand(allocator: std.mem.Allocator, command: []const u8) ![]u8 
 
     // Execute using Zig 0.16 native API
     const result = std.process.run(allocator, io, .{
-        .argv = &.{ "sh", "-c", command },
-        .stdout_limit = @enumFromInt(100 * 1024),
-        .stderr_limit = @enumFromInt(100 * 1024),
-    }) catch return error.ShellExecutionFailed;
+        .argv = &.{ "sh", "-c", command },    }) catch return error.ShellExecutionFailed;
     defer {
         allocator.free(result.stdout);
         allocator.free(result.stderr);

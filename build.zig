@@ -36,22 +36,41 @@ pub fn build(b: *std.Build) void {
     mod.addLibraryPath(b.path("ffi"));
     mod.linkSystemLibrary("fff_c", .{});
 
+    // TUI support
+    const vaxis_dep = b.dependency("vaxis", .{ .target = target, .optimize = optimize });
+
+    // Single module — all src/ files come in via relative imports from main.zig
     const exe = b.addExecutable(.{
         .name = "kimiz",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/main.zig"),
             .target = target,
             .optimize = optimize,
+            .link_libc = true,
             .imports = &.{
-                .{ .name = "kimiz", .module = mod },
+                .{ .name = "vaxis", .module = vaxis_dep.module("vaxis") },
+                .{ .name = "zwasm", .module = zwasm_dep.module("zwasm") },
             },
         }),
     });
 
-    exe.root_module.addIncludePath(b.path("ffi"));
-    exe.root_module.addLibraryPath(b.path("ffi"));
-    exe.root_module.linkSystemLibrary("fff_c", .{});
-
+    // FFF-C
+    const build_fff = b.option(bool, "build-fff", "Build fff-c (requires cargo)") orelse true;
+    if (build_fff) {
+        const cargo = b.addSystemCommand(&.{ "cargo", "build", "--release", "-p", "fff-c" });
+        cargo.setCwd(b.path("vendor/fff.nvim"));
+        cargo.has_side_effects = true;
+        exe.step.dependOn(&cargo.step);
+        exe.root_module.addIncludePath(b.path("ffi"));
+        exe.root_module.addLibraryPath(b.path("vendor/fff.nvim/target/release"));
+        const inst = b.addInstallBinFile(b.path("vendor/fff.nvim/target/release/libfff_c.so"), "libfff_c.so");
+        inst.step.dependOn(&cargo.step);
+        b.getInstallStep().dependOn(&inst.step);
+    } else {
+        exe.root_module.addIncludePath(b.path("ffi"));
+        exe.root_module.addLibraryPath(b.path("ffi"));
+    }
+    exe.root_module.linkSystemLibrary("fff_c", .{ .preferred_link_mode = .dynamic });
     b.installArtifact(exe);
 
     const run_step = b.step("run", "Run the app");
@@ -148,4 +167,3 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_orchestrator_tests.step);
     // Fuzz tests (disabled - needs fix for SkillContext API change)
     // test_step.dependOn(&run_fuzz_tests.step);
-}

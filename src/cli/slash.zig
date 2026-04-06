@@ -328,10 +328,7 @@ fn cmdSessions(ctx: *SlashContext, _: []const u8) !void {
 
     // Execute using Zig 0.16 native API
     const result = std.process.run(ctx.allocator, io, .{
-        .argv = &.{ "sh", "-c", cmd },
-        .stdout_limit = @enumFromInt(1024 * 1024),
-        .stderr_limit = @enumFromInt(1024 * 1024),
-    }) catch {
+        .argv = &.{ "sh", "-c", cmd },    }) catch {
         ctx.printLine("No sessions found.");
         return;
     };

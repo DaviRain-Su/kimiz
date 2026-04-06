@@ -180,10 +180,7 @@ pub const WorktreeManager = struct {
 
         // Execute using Zig 0.16 native API with arena allocator
         const result = std.process.run(arena_alloc, io, .{
-            .argv = &.{ "sh", "-c", command },
-            .stdout_limit = @enumFromInt(1024 * 1024),
-            .stderr_limit = @enumFromInt(1024 * 1024),
-        }) catch |err| {
+            .argv = &.{ "sh", "-c", command },        }) catch |err| {
             std.log.warn("execShell failed for command '{s}': {s}", .{ command, @errorName(err) });
             return error.CommandFailed;
         };
