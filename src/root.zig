@@ -49,6 +49,8 @@ pub const observability = @import("observability/root.zig");
 // DB module - LMDB storage (TASK-INFRA-001)
 pub const db = @import("db/root.zig");
 
+// Engine module - TaskEngine & SubAgent budget (T-128)
+pub const engine = @import("engine/root.zig");
 pub fn bufferedPrint() !void {
     // Stdout is for the actual output of your application
     var stdout_buffer: [1024]u8 = undefined;

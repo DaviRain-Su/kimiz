@@ -92,6 +92,27 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_mod_tests.step);
     test_step.dependOn(&run_exe_tests.step);
     test_step.dependOn(&run_integration_tests.step);
+
+    // Engine module tests (T-128)
+    const engine_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/engine/task.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    const run_engine_tests = b.addRunArtifact(engine_tests);
+    test_step.dependOn(&run_engine_tests.step);
+
+    const project_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/engine/project.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    const run_project_tests = b.addRunArtifact(project_tests);
+    test_step.dependOn(&run_project_tests.step);
     // Fuzz tests (disabled - needs fix for SkillContext API change)
     // test_step.dependOn(&run_fuzz_tests.step);
 }
