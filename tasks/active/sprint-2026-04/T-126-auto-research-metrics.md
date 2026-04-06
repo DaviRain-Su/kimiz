@@ -1,6 +1,6 @@
 # T-126: Auto Research & Learning Metrics
 
-**Status**: `research`  
+**Status**: `spec`  
 **Priority**: P1  
 **Estimated effort**: 2.5h  
 **Created**: 2026-04-06  
@@ -49,28 +49,52 @@ Research Metrics → Pattern Analysis → Strategy Optimization → Better Resea
 
 ### Phase 2: 关键设计问题
 
-- [ ] 研究过程的哪些点最值得记录？
-  - 任务创建时的research起点
-  - 文档阅读过程（读了什么、花了多长时间、提取了什么insights）
-  - 状态转换点（research→spec→implement）
-  - 设计决策和权衡
-  - 遇到的阻塞和解决方式
+- [x] 研究过程的哪些点最值得记录？
+  - ✅ **任务创建时的research起点** - 记录topic和trigger，建立研究起点
+  - ✅ **文档阅读过程** - 读了什么、花了多长时间、提取了什么insights
+  - ✅ **研究发现** - 记录pattern/constraint/opportunity，建立知识库
+  - ✅ **状态转换点** - research→spec→implement，量化每阶段耗时
+  - ✅ **设计决策和权衡** - 记录"为什么选A不选B"，形成决策历史
+  - ✅ **学习事件** - 从成功/失败中提取actionable patterns
+  - **关键洞察**：Document-Driven Workflow的4个状态转换是天然插入点
   
-- [ ] 如何与T-124的metrics系统集成？
-  - 共用MetricsCollector还是独立组件？
-  - 数据格式兼容性
-  - 查询API设计
+- [x] 如何与T-124的metrics系统集成？
+  - ✅ **共用MetricsCollector实例** - 统一收集器，单一JSON Lines存储
+  - ✅ **扩展EventType枚举** - 添加6个新事件类型（research_*）
+  - ✅ **扩展MetricsData union** - 添加对应的6个数据结构
+  - ✅ **复用批量刷新机制** - 500ms/4KB触发flush，无需改动
+  - ✅ **数据格式兼容** - JSON Lines天然支持扩展，旧版本可忽略新字段
+  - **关键决策**：不创建独立组件，扩展现有系统更简洁
   
-- [ ] 如何实现"推荐文档"功能？
-  - 基于历史相似度匹配
-  - 文档价值评分算法
-  - 实时还是离线分析？
+- [x] 如何实现"推荐文档"功能？
+  - ✅ **Phase 1策略（简单版）**：基于topic关键词匹配历史task
+  - ✅ **Phase 2策略（中级）**：根据document_read的relevance评分排序
+  - ✅ **Phase 3策略（高级）**：基于learning_event构建"topic→best_docs"知识图谱
+  - ✅ **实时vs离线**：Phase 1实时查询JSON Lines，Phase 2/3离线预处理索引
+  - ✅ **文档价值评分**：`score = avg(relevance) * read_count / avg(duration_ms)`
+  - **关键洞察**：从简单开始，逐步优化，避免过度设计
 
 ### Phase 3: 参考实现
 
-- [ ] TigerBeetle的tracer机制 — 低开销的事件记录
-- [ ] Anthropic的Chain-of-Thought analysis — 如何分析推理过程
-- [ ] `docs/research/NULLCLAW-LESSONS-QUICKREF.md` — 学习提取经验教训的模式
+- [x] TigerBeetle的tracer机制 — 低开销的事件记录
+  - ✅ **StaticAllocator模式** - KimiZ不适用（需要动态分配），但可借鉴边界清晰思想
+  - ✅ **Arena分配器** - 每个research session使用arena，完成后一次性释放
+  - ✅ **侵入式链表** - 不适用于metrics（简单append即可）
+  - ✅ **断言密度** - 每个metrics.record()调用前检查session_id非空等
+  - **关键借鉴**：批量刷新（T-124已实现），append-only存储（JSON Lines）
+  
+- [x] Anthropic的Chain-of-Thought analysis — 如何分析推理过程
+  - ✅ **思维链记录** - research_finding记录推理步骤
+  - ✅ **多阶段分析** - research→spec→implement对应thinking→planning→acting
+  - ✅ **confidence评分** - 每个finding记录置信度（0-1）
+  - ✅ **引用溯源** - references字段记录证据来源
+  - **关键借鉴**：把研究过程当作"思维链"，每个finding是一个推理节点
+  
+- [x] `docs/research/NULLCLAW-LESSONS-QUICKREF.md` — 学习提取经验教训的模式
+  - ✅ **JSON Mini Parser** - 不直接相关，但可用于查询metrics时快速提取字段
+  - ✅ **Provider模式** - 未来可抽象MetricsProvider支持多后端（SQLite/Redis）
+  - ✅ **Registry模式** - 可用于learning_event的pattern注册
+  - **关键借鉴**：工程实现的清晰抽象，而非prompt-based技巧
 
 ---
 
@@ -167,18 +191,50 @@ pub const EventType = enum {
 - 基于用户洞察：Observability Metrics应该记录Auto Research过程
 - 目标：实现"边做边学"的反馈循环
 
-### 2026-04-06 08:45 - Research Phase开始
+### 2026-04-06 08:45 - Research Phase 1完成
 - 已读取DOCUMENT-DRIVEN-WORKFLOW.md
 - 已读取auto-evolution-memory-system.md  
 - 已读取T-124任务和metrics.zig实现
 - 理解了现有架构：7个EventType，JSON Lines存储，批量刷新
 - **关键发现**：T-124已建立完整的metrics基础设施，只需扩展EventType
 
-### Next Steps
-- 完成Research Phase剩余checklist
-- 创建完整的技术规格（T-126 spec）
-- 设计数据结构和插入点
-- 进入implement阶段
+### 2026-04-06 09:00 - Research Phase 2-3完成
+**Phase 2关键设计问题回答**：
+1. **记录点选择** - Document-Driven Workflow的4个状态转换是天然插入点
+   - 任务创建→research_start
+   - 文档阅读→research_document_read
+   - 研究发现→research_finding
+   - 状态转换→task_state_change
+   - 设计决策→design_decision
+   - 完成任务→learning_event
+
+2. **与T-124集成方案** - 共用MetricsCollector，扩展EventType
+   - 不创建独立组件，保持架构简洁
+   - JSON Lines格式天然支持扩展
+   - 复用批量刷新机制（500ms/4KB）
+   - 性能影响可控：research阶段本身就慢，<2%开销可接受
+
+3. **文档推荐策略** - 三阶段渐进式实现
+   - Phase 1：简单关键词匹配（立即可用）
+   - Phase 2：relevance评分排序（更精准）
+   - Phase 3：知识图谱推荐（最智能）
+
+**Phase 3参考实现分析**：
+- **TigerBeetle** - 借鉴批量刷新、append-only、断言密度
+- **Anthropic CoT** - 研究过程=思维链，finding=推理节点
+- **NullClaw** - 工程抽象清晰，未来可用Provider/Registry模式
+
+**关键架构决策**：
+- ✅ 使用Arena分配器管理research session内存（完成后释放）
+- ✅ 每个metrics.record()前断言session_id非空
+- ✅ 插入点最小化：只在关键生命周期事件记录，避免噪音
+- ✅ 数据结构设计：优先简单，避免过度设计
+
+**Next Steps**：
+- ✅ Research phase完成，进入spec阶段
+- 完善技术规格文档（T-126 spec）
+- 定义详细的数据结构和API
+- 准备进入implementation
 
 ---
 

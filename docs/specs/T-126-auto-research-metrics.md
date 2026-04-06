@@ -399,6 +399,110 @@ pub const LearningType = enum {
 
 ---
 
+## Key Design Decisions (Based on Research)
+
+### Decision 1: 与T-124集成方式
+
+**选择**：扩展现有MetricsCollector，而非创建独立ResearchCollector
+
+**理由**：
+- T-124已有完整基础设施：JSON Lines存储、批量刷新、CLI命令
+- 统一存储便于跨维度查询（如"某次session的runtime和research metrics"）
+- 避免重复代码和维护成本
+- JSON Lines格式天然支持schema扩展
+
+**权衡**：
+- EventType枚举会变长（7→13个），但影响可忽略
+- MetricsData union会变大，但仍在合理范围
+
+---
+
+### Decision 2: 记录点插入策略
+
+**选择**：最小化插入点，只在关键生命周期事件记录
+
+**插入点表**：
+
+| 插入点 | 位置 | 触发EventType | 频率估计 |
+|--------|------|---------------|----------|
+| **任务创建** | TaskManager.createTask() 或 Agent初始化 | research_start | 每任务1次 |
+| **文档阅读** | Read工具读取docs/路径时 | research_document_read | 每任务3-10次 |
+| **研究发现** | Agent完成文档阅读后手动触发 | research_finding | 每任务2-5次 |
+| **状态转换** | 任务文件Status字段更新时 | task_state_change | 每任务4次 |
+| **设计决策** | Spec编写阶段（手动触发或自动检测） | design_decision | 每任务1-3次 |
+| **学习事件** | 任务完成后的lessons_learned填写 | learning_event | 每任务1-2次 |
+
+**理由**：
+- 避免过度记录导致噪音（如每个LLM call都记research metrics）
+- 聚焦高价值事件（文档阅读、决策、学习）
+- 频率低（每任务<20次），性能影响可忽略
+
+**权衡**：
+- 粒度较粗，无法记录Agent内部的每个思考步骤
+- 但这符合"记录关键路径"而非"记录一切"的原则
+
+---
+
+### Decision 3: 文档推荐算法
+
+**Phase 1（本任务）**：简单关键词匹配
+```zig
+// 伪代码
+fn recommendDocuments(task_topic: []const u8) []DocumentRec {
+    // 1. 查询历史metrics，找topic包含关键词的task
+    // 2. 提取这些task的research_document_read事件
+    // 3. 按relevance降序排序
+    // 4. 返回top 5
+}
+```
+
+**Phase 2（后续）**：relevance评分排序
+```zig
+score = avg(relevance) * read_count / avg(duration_ms)
+```
+
+**Phase 3（后续）**：知识图谱
+- 构建"topic → best_docs → typical_decisions"三元组
+- 基于learning_event的pattern持续优化
+
+---
+
+### Decision 4: 内存管理策略
+
+**选择**：每个research session使用Arena allocator
+
+**实现**：
+```zig
+pub const ResearchSession = struct {
+    arena: std.heap.ArenaAllocator,
+    session_id: []const u8,
+    task_id: []const u8,
+    metrics_collector: *MetricsCollector,
+    
+    pub fn init(parent_allocator: Allocator, task_id: []const u8) !*ResearchSession {
+        var arena = std.heap.ArenaAllocator.init(parent_allocator);
+        const session = try arena.allocator().create(ResearchSession);
+        session.* = .{
+            .arena = arena,
+            .task_id = try arena.allocator().dupe(u8, task_id),
+            // ...
+        };
+        return session;
+    }
+    
+    pub fn deinit(self: *ResearchSession) void {
+        self.arena.deinit(); // 一次性释放所有内存
+    }
+};
+```
+
+**理由**：
+- Research阶段字符串操作多（文档内容、insights提取）
+- Arena避免碎片化和频繁free
+- 完成后一次性释放，简单高效
+
+---
+
 ## Implementation Plan
 
 ### Phase 1: 数据收集基础设施 (本任务，2.5h)
@@ -410,14 +514,123 @@ pub const LearningType = enum {
 - 添加单元测试
 
 #### Step 2: 插入记录点 (1h)
-- **Agent.zig**:
-  - `init()`: 生成session时考虑关联task
-  - `runLoop()`: 状态变化时记录
-- **TaskManager** (如果存在):
-  - `createTask()`: 记录research_start
-  - `updateTaskState()`: 记录task_state_change
-- **工具层**:
-  - Read工具读取docs/时记录document_read
+
+**2.1 Agent.zig修改** (30min)
+```zig
+// src/agent/agent.zig
+
+// 在Agent.init()中初始化research context（可选）
+pub fn init(allocator: Allocator, options: AgentOptions) !*Agent {
+    // ... existing code ...
+    
+    // 如果有task_id，记录research_start
+    if (options.task_id) |task_id| {
+        if (self.metrics_collector) |collector| {
+            try collector.recordResearchStart(task_id, options.task_topic orelse "");
+        }
+    }
+}
+
+// 在executeToolWithRecovery中添加文档阅读检测
+fn executeToolWithRecovery(self: *Self, tool_call: ToolCall) !ToolResult {
+    const start_time = utils.milliTimestamp();
+    
+    // ... existing tool execution ...
+    
+    // 如果是read_file且路径在docs/下，记录document_read
+    if (std.mem.eql(u8, tool_call.name, "read_file")) {
+        const args = try std.json.parseFromSlice(..., tool_call.arguments, ...);
+        defer args.deinit();
+        
+        if (std.mem.startsWith(u8, args.value.path, "docs/")) {
+            const duration = utils.milliTimestamp() - start_time;
+            if (self.metrics_collector) |collector| {
+                try collector.recordDocumentRead(
+                    self.task_id orelse "unknown",
+                    args.value.path,
+                    duration,
+                );
+            }
+        }
+    }
+}
+```
+
+**2.2 新增辅助API** (20min)
+```zig
+// src/observability/metrics.zig - 扩展MetricsCollector
+
+pub fn recordResearchStart(self: *Self, task_id: []const u8, topic: []const u8) !void {
+    try self.record(.{
+        .timestamp = utils.milliTimestamp(),
+        .session_id = self.session_id,
+        .event_type = .research_start,
+        .data = .{ .research_start = .{
+            .task_id = task_id,
+            .topic = topic,
+            .trigger = .new_task,
+            .initial_context = null,
+        }},
+    });
+}
+
+pub fn recordDocumentRead(
+    self: *Self,
+    task_id: []const u8,
+    document_path: []const u8,
+    duration_ms: i64,
+) !void {
+    // 简单版：relevance固定为1.0，key_insights为空
+    try self.record(.{
+        .timestamp = utils.milliTimestamp(),
+        .session_id = self.session_id,
+        .event_type = .research_document_read,
+        .data = .{ .research_document_read = .{
+            .task_id = task_id,
+            .document_path = document_path,
+            .document_type = inferDocType(document_path),
+            .relevance = 1.0, // Phase 1简化为固定值
+            .duration_ms = duration_ms,
+            .key_insights = &.{}, // Phase 1不提取insights
+            .follow_up_needed = false,
+        }},
+    });
+}
+
+fn inferDocType(path: []const u8) DocType {
+    if (std.mem.indexOf(u8, path, "/design/")) return .design_doc;
+    if (std.mem.indexOf(u8, path, "/research/")) return .research_doc;
+    if (std.mem.indexOf(u8, path, "/guides/")) return .guide;
+    if (std.mem.indexOf(u8, path, "/specs/")) return .spec;
+    return .reference;
+}
+```
+
+**2.3 CLI命令触发** (10min)
+```zig
+// src/cli/slash.zig - 添加/research_finding命令
+
+pub fn handleResearchFinding(
+    agent: *Agent,
+    allocator: Allocator,
+    args: []const u8,
+) !void {
+    // /research_finding <type> <content>
+    // 例如：/research_finding pattern "All migrations use utils wrapper"
+    
+    // 解析参数...
+    
+    if (agent.metrics_collector) |collector| {
+        try collector.recordResearchFinding(
+            agent.task_id orelse "unknown",
+            finding_type,
+            content,
+            0.8, // 默认confidence
+            &.{}, // references
+        );
+    }
+}
+```
 
 #### Step 3: 辅助函数 (30min)
 - `extractInsights()`: 从文档内容提取关键insights
