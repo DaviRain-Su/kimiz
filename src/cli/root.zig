@@ -12,6 +12,8 @@ const workspace = @import("../workspace/root.zig");
 const config = @import("../config.zig");
 const skills = @import("../skills/root.zig");
 const daemon = @import("../daemon/supervisor.zig");
+const engine = @import("../engine/root.zig");
+const utils = @import("../utils/root.zig");
 pub const slash = @import("slash.zig");
 
 const c = @cImport({
@@ -139,6 +141,7 @@ pub fn run(
     var app = yazap.App.init(allocator, "kimiz", "AI Coding Agent");
     defer app.deinit();
     try app.rootCommand().addArg(yazap.Arg.booleanOption("version", 'v', "Show version"));
+    try app.rootCommand().addArg(yazap.Arg.booleanOption("autonomous", 'a', "Run in autonomous mode (T-128)"));
 
     // kimiz skill <skill_id> [params...]
     var skill_cmd = app.createCommand("skill", "Execute a skill directly");
@@ -246,25 +249,36 @@ pub fn run(
     }
 
     if (matches.containsArg("project")) {
-        if (matches.subcommandMatches("create")) |m| {
+        const pm = matches.subcommandMatches("project").?;
+        if (pm.containsArg("create")) {
+            const m = pm.subcommandMatches("create").?;
             const name = m.getSingleValue("NAME") orelse {
                 printLine("Usage: kimiz project create <name>");
                 return;
             };
-            var buf: [256]u8 = undefined;
-            const msg = try std.fmt.bufPrint(&buf, "Project creation stub: name={s}", .{name});
-            printLine(msg);
+            var project = try engine.project.createProject(allocator, name, .{});
+            defer project.deinit();
+            print("✅ Created project ");
+            print(project.id);
+            print(" at ");
+            print(project.dir_path);
+            print("\n");
+
+            if (matches.containsArg("autonomous")) {
+                try runAutonomousProject(allocator, &project);
+            }
             return;
         }
     }
 
     if (matches.containsArg("task")) {
-        if (matches.subcommandMatches("list")) |_| {
-            printLine("Task list stub - would scan tasks/active/ and display status");
+        const tm = matches.subcommandMatches("task").?;
+        if (tm.containsArg("list")) {
+            try runTaskListCommand(allocator);
             return;
         }
-        if (matches.subcommandMatches("next")) |_| {
-            printLine("Next task stub - would call queue.getNextTask()");
+        if (tm.containsArg("next")) {
+            try runTaskNextCommand(allocator);
             return;
         }
     }
@@ -562,7 +576,6 @@ fn runSkillCommand(allocator: std.mem.Allocator, args: []const []const u8) !void
 }
 
 fn executeShellCommand(allocator: std.mem.Allocator, command: []const u8) ![]u8 {
-    const utils = @import("../utils/root.zig");
     const io = utils.getIo() catch return error.ShellExecutionFailed;
 
     // Execute using Zig 0.16 native API
@@ -760,4 +773,241 @@ fn runSessionStopCommand(allocator: std.mem.Allocator, id: []const u8) !void {
     print(id);
     print("\n");
     try mgr.supervisor.saveState();
+}
+
+// ============================================================================
+// Task Engine CLI Commands (T-128)
+// ============================================================================
+
+fn runProjectCreateCommand(allocator: std.mem.Allocator, name: []const u8) !void {
+    var project = try engine.project.createProject(allocator, name, .{});
+    defer project.deinit();
+
+    var buf: [512]u8 = undefined;
+    const msg = try std.fmt.bufPrint(&buf, "✅ Created project {s} at {s}", .{ project.id, project.dir_path });
+    printLine(msg);
+}
+
+fn runTaskListCommand(allocator: std.mem.Allocator) !void {
+    const sprint_dir = "tasks/active/sprint-2026-04";
+    var queue = engine.task.TaskQueue.init(allocator);
+    defer queue.deinit();
+
+    const io = utils.getIo() catch |err| {
+        var ebuf: [256]u8 = undefined;
+        const emsg = try std.fmt.bufPrint(&ebuf, "❌ Failed to get Io instance: {s}", .{@errorName(err)});
+        printLine(emsg);
+        return;
+    };
+    const dir = utils.openDir(sprint_dir, .{ .iterate = true }) catch |err| {
+        var ebuf: [256]u8 = undefined;
+        const emsg = try std.fmt.bufPrint(&ebuf, "❌ Failed to open task directory: {s}", .{@errorName(err)});
+        printLine(emsg);
+        return;
+    };
+
+    var it = dir.iterate();
+    while (try it.next(io)) |entry| {
+        if (entry.kind != .file) continue;
+        if (!std.mem.endsWith(u8, entry.name, ".md")) continue;
+        if (std.mem.startsWith(u8, entry.name, "README")) continue;
+
+        const path = try std.fs.path.join(allocator, &.{ sprint_dir, entry.name });
+        defer allocator.free(path);
+
+        const content = utils.readFileAlloc(allocator, path, 64 * 1024) catch |err| {
+            var ebuf: [256]u8 = undefined;
+            const emsg = try std.fmt.bufPrint(&ebuf, "  ⚠️  Failed to read {s}: {s}", .{ entry.name, @errorName(err) });
+            printLine(emsg);
+            continue;
+        };
+        defer allocator.free(content);
+
+        if (try engine.task.parseTask(allocator, content, path)) |t| {
+            var t_copy = t;
+            errdefer t_copy.deinit(allocator);
+            try queue.addTask(allocator, t_copy);
+        }
+    }
+
+    printLine("\n📋 Tasks in current sprint:");
+    printLine("---------------------------");
+    for (queue.tasks.items) |t| {
+        print("  ");
+        print(t.id);
+        print(" | ");
+        print(@tagName(t.status));
+        print(" | ");
+        print(@tagName(t.priority));
+        print(" | ");
+        print(t.title);
+        print("\n");
+    }
+    if (queue.isEmpty()) {
+        printLine("  No tasks found.");
+    }
+    printLine("");
+}
+
+fn runTaskNextCommand(allocator: std.mem.Allocator) !void {
+    const sprint_dir = "tasks/active/sprint-2026-04";
+    var queue = engine.task.TaskQueue.init(allocator);
+    defer queue.deinit();
+
+    const io = utils.getIo() catch |err| {
+        var ebuf: [256]u8 = undefined;
+        const emsg = try std.fmt.bufPrint(&ebuf, "❌ Failed to get Io instance: {s}", .{@errorName(err)});
+        printLine(emsg);
+        return;
+    };
+    const dir = utils.openDir(sprint_dir, .{ .iterate = true }) catch |err| {
+        var ebuf: [256]u8 = undefined;
+        const emsg = try std.fmt.bufPrint(&ebuf, "❌ Failed to open task directory: {s}", .{@errorName(err)});
+        printLine(emsg);
+        return;
+    };
+
+    var it = dir.iterate();
+    while (try it.next(io)) |entry| {
+        if (entry.kind != .file) continue;
+        if (!std.mem.endsWith(u8, entry.name, ".md")) continue;
+        if (std.mem.startsWith(u8, entry.name, "README")) continue;
+
+        const path = try std.fs.path.join(allocator, &.{ sprint_dir, entry.name });
+        defer allocator.free(path);
+
+        const content = utils.readFileAlloc(allocator, path, 64 * 1024) catch |err| {
+            var ebuf: [256]u8 = undefined;
+            const emsg = try std.fmt.bufPrint(&ebuf, "  ⚠️  Failed to read {s}: {s}", .{ entry.name, @errorName(err) });
+            printLine(emsg);
+            continue;
+        };
+        defer allocator.free(content);
+
+        if (try engine.task.parseTask(allocator, content, path)) |t| {
+            var t_copy = t;
+            errdefer t_copy.deinit(allocator);
+            try queue.addTask(allocator, t_copy);
+        }
+    }
+
+    if (queue.getNextTask()) |t| {
+        printLine("\n➡️  Next task:");
+        printLine("-------------");
+        print("  ID: ");
+        print(t.id);
+        print("\n  Title: ");
+        print(t.title);
+        print("\n  Priority: ");
+        print(@tagName(t.priority));
+        print("\n  Status: ");
+        print(@tagName(t.status));
+        print("\n  Path: ");
+        print(t.task_path);
+        print("\n");
+        if (t.dependencies.len > 0) {
+            print("  Dependencies: ");
+            for (t.dependencies, 0..) |dep, i| {
+                if (i > 0) print(", ");
+                print(dep);
+            }
+            print("\n");
+        }
+        printLine("");
+    } else {
+        printLine("\n✅ No executable tasks remaining.");
+    }
+}
+
+// ============================================================================
+// Autonomous Mode (T-128-D)
+// ============================================================================
+
+fn runAutonomousProject(allocator: std.mem.Allocator, project: *engine.project.Project) !void {
+    printLine("\n🤖 Starting autonomous mode...\n");
+
+    const phases = [_]engine.project.Phase{
+        .prd,
+        .architecture,
+        .technical_spec,
+    };
+
+    for (phases) |phase| {
+        const current = try engine.project.getCurrentPhase(project.dir_path);
+        if (@intFromEnum(current) > @intFromEnum(phase)) continue;
+
+        if (try engine.project.validatePhaseDocument(allocator, project.dir_path, phase)) {
+            var buf: [256]u8 = undefined;
+            const msg = try std.fmt.bufPrint(&buf, "✅ Phase {s} validated", .{@tagName(phase)});
+            printLine(msg);
+            _ = project.advancePhase();
+            continue;
+        }
+
+        // Generate stub document for missing phase
+        try generatePhaseStub(allocator, project, phase);
+
+        if (try engine.project.validatePhaseDocument(allocator, project.dir_path, phase)) {
+            var buf: [256]u8 = undefined;
+            const msg = try std.fmt.bufPrint(&buf, "✅ Phase {s} stub generated and validated", .{@tagName(phase)});
+            printLine(msg);
+            _ = project.advancePhase();
+        } else {
+            var buf: [256]u8 = undefined;
+            const msg = try std.fmt.bufPrint(&buf, "❌ Phase {s} validation failed after stub generation", .{@tagName(phase)});
+            printLine(msg);
+            break;
+        }
+    }
+
+    printLine("\n🏁 Autonomous mode finished.");
+    const final_phase = try engine.project.getCurrentPhase(project.dir_path);
+    var buf: [256]u8 = undefined;
+    const msg = try std.fmt.bufPrint(&buf, "Current phase: {s}", .{@tagName(final_phase)});
+    printLine(msg);
+}
+
+fn generatePhaseStub(allocator: std.mem.Allocator, project: *engine.project.Project, phase: engine.project.Phase) !void {
+    const doc_path = try std.fs.path.join(allocator, &.{ project.dir_path, phase.docName() });
+    defer allocator.free(doc_path);
+
+    const content = switch (phase) {
+        .architecture =>
+            \\---
+            \\name: Architecture
+            \\phase: architecture
+            \\status: in_progress
+            \\---
+            \\
+            \\# Architecture
+            \\
+            \\## Overview
+            \\
+            \\TBD
+            \\
+            \\## Components
+            \\
+            \\- TBD
+            ,
+        .technical_spec =>
+            \\---
+            \\name: Technical Specification
+            \\phase: technical_spec
+            \\status: in_progress
+            \\---
+            \\
+            \\# Technical Specification
+            \\
+            \\## Impact Files
+            \\
+            \\- TBD
+            \\
+            \\## Acceptance Criteria
+            \\
+            \\- [ ] TBD
+            ,
+        else => return,
+    };
+
+    try utils.writeFile(doc_path, content);
 }

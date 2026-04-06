@@ -30,8 +30,8 @@ pub const PromptTemplate = struct {
         allocator: std.mem.Allocator,
         values: std.StringHashMap([]const u8),
     ) ![]const u8 {
-        var result = std.ArrayList(u8).init(allocator);
-        errdefer result.deinit();
+        var result: std.ArrayList(u8) = .empty;
+        errdefer result.deinit(allocator);
 
         var i: usize = 0;
         while (i < self.template.len) {
@@ -48,26 +48,26 @@ pub const PromptTemplate = struct {
                     
                     // Look up variable value
                     if (values.get(var_name)) |value| {
-                        try result.appendSlice(value);
+                        try result.appendSlice(allocator, value);
                     } else {
                         // Variable not found - keep original placeholder and log warning
-                        try result.appendSlice(self.template[i..end + 1]);
+                        try result.appendSlice(allocator, self.template[i..end + 1]);
                         log.warn("Prompt template '{s}': variable '{s}' not provided", .{ self.id, var_name });
                     }
-                    
+
                     i = end + 1;
                 } else {
                     // No closing brace, copy as-is
-                    try result.append(self.template[i]);
+                    try result.append(allocator, self.template[i]);
                     i += 1;
                 }
             } else {
-                try result.append(self.template[i]);
+                try result.append(allocator, self.template[i]);
                 i += 1;
             }
         }
 
-        return try result.toOwnedSlice();
+        return try result.toOwnedSlice(allocator);
     }
 
     /// Render with a simple key-value pair array
@@ -241,6 +241,10 @@ pub const PromptRegistry = struct {
 // ============================================================================
 // Tests
 // ============================================================================
+
+test {
+    _ = loader;
+}
 
 test "PromptTemplate render with variables" {
     const allocator = std.testing.allocator;

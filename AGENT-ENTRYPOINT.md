@@ -53,7 +53,7 @@ Sprint 2026-04 的前期目标已全部完成：
 
 | # | 优先级 | 任务ID | 标题 | 状态 | Spec 文档 | 预计 |
 |---|--------|--------|------|------|-----------|------|
-| 1 | **P0** | **T-128** | **设计并实现 KimiZ 运行时任务状态机（TaskEngine）** | `todo` | [`docs/specs/T-128-design-and-implement-task-engine.md`](docs/specs/T-128-design-and-implement-task-engine.md) | 12h |
+| 1 | **P0** | **T-128** | **设计并实现 KimiZ 运行时任务状态机（TaskEngine）** | `in-progress` | [`docs/specs/T-128-design-and-implement-task-engine.md`](docs/specs/T-128-design-and-implement-task-engine.md) | 12h |
 | 2 | **P0** | **T-129** | **设计并实现 WASM-based Skill Plugin 系统** | `todo` | [`docs/specs/T-129-design-and-implement-wasm-skill-plugin-system.md`](docs/specs/T-129-design-and-implement-wasm-skill-plugin-system.md) | 16h |
 
 > **原则：KimiZ 核心工具未夯实前，不启动任何上层垂直领域开发（如 T-127 区块链合约生成、T-126 高级可观测性）。T-128（调度器）+ T-129（WASM 插件）是当前 Sprint 的双核心。**

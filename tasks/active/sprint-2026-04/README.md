@@ -48,7 +48,7 @@
 
 | # | 任务文件 | 标题 | 状态 | Spec |
 |---|----------|------|------|------|
-| 1 | `T-128-design-and-implement-task-engine.md` | **设计并实现 KimiZ 运行时任务状态机（TaskEngine）** | `todo` | `docs/specs/T-128-design-and-implement-task-engine.md` |
+| 1 | `T-128-design-and-implement-task-engine.md` | **设计并实现 KimiZ 运行时任务状态机（TaskEngine）** | `in-progress` | `docs/specs/T-128-design-and-implement-task-engine.md` |
 | 2 | `T-129-design-and-implement-wasm-skill-plugin-system.md` | **设计并实现 WASM-based Skill Plugin 系统** | `todo` | `docs/specs/T-129-design-and-implement-wasm-skill-plugin-system.md` |
 
 > **说明**：T-129 是 T-128 的产品化延续。T-128 解决任务自动编排，T-129 解决终端用户自定义 Skill 的动态加载问题。两者属于同一 Sprint 核心工具链。

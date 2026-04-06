@@ -1,4 +1,5 @@
 const std = @import("std");
+const utils = @import("../utils/root.zig");
 
 // ============================================================================
 // Task Model (T-128-02)
@@ -202,7 +203,7 @@ pub const TaskQueue = struct {
     }
 
     pub fn getDoneTasks(self: *const Self, out: *std.ArrayList([]const u8)) void {
-        for (self.tasks) |t| {
+        for (self.tasks.items) |t| {
             if (t.status == .done) {
                 out.append(self.allocator, t.id) catch continue;
             }
@@ -216,7 +217,7 @@ pub const TaskQueue = struct {
 
         const done_slice = done_ids.items;
         var best: ?*Task = null;
-        for (self.tasks) |*t| {
+        for (self.tasks.items) |*t| {
             if (t.status == .done or t.status == .blocked) continue;
             if (t.isBlockedBy(done_slice)) continue;
 
@@ -235,7 +236,7 @@ pub const TaskQueue = struct {
         self.getDoneTasks(&done_ids);
 
         var count: usize = 0;
-        for (self.tasks) |t| {
+        for (self.tasks.items) |t| {
             if (t.status != .done and t.status != .blocked and t.isBlockedBy(done_ids.items)) {
                 count += 1;
             }
@@ -255,7 +256,7 @@ pub const TaskQueue = struct {
     /// Check for dependency cycles
     pub fn hasCycles(self: *const Self) bool {
         // Simple cycle detection: check if any task depends (transitively) on itself
-        for (self.tasks) |root| {
+        for (self.tasks.items) |root| {
             var stack: std.ArrayList([]const u8) = .empty;
             defer stack.deinit(self.allocator);
             var seen: std.StringHashMap(void) = .init(self.allocator);
@@ -264,7 +265,7 @@ pub const TaskQueue = struct {
             while (stack.popOrNull()) |current| {
                 if (seen.get(current) != null) continue;
                 seen.put(current, {}) catch continue;
-                for (self.tasks) |t| {
+                for (self.tasks.items) |t| {
                     if (std.mem.eql(u8, t.id, current)) {
                         for (t.dependencies) |dep| {
                             if (std.mem.eql(u8, dep, root.id)) return true;
@@ -278,6 +279,114 @@ pub const TaskQueue = struct {
         return false;
     }
 };
+
+// ============================================================================
+// Task lifecycle operations
+// ============================================================================
+
+pub fn loadTasksFromDir(allocator: std.mem.Allocator, dir_path: []const u8) !TaskQueue {
+    var queue = TaskQueue.init(allocator);
+    errdefer queue.deinit();
+
+    const dir = utils.openDir(dir_path, .{ .iterate = true }) catch |err| {
+        if (err == error.FileNotFound) return queue;
+        return err;
+    };
+
+    const io = try utils.getIo();
+    var it = dir.iterate(io);
+    while (try it.next(io)) |entry| {
+        if (entry.kind != .file) continue;
+        if (!std.mem.endsWith(u8, entry.name, ".md")) continue;
+        if (std.mem.startsWith(u8, entry.name, "README")) continue;
+
+        const path = try std.fs.path.join(allocator, &.{ dir_path, entry.name });
+        defer allocator.free(path);
+
+        const content = utils.readFileAlloc(allocator, path, 64 * 1024) catch {
+            continue;
+        };
+        defer allocator.free(content);
+
+        if (try parseTask(allocator, content, path)) |t| {
+            var t_copy = t;
+            errdefer t_copy.deinit(allocator);
+            try queue.addTask(allocator, t_copy);
+        }
+    }
+
+    return queue;
+}
+
+fn replaceStatus(allocator: std.mem.Allocator, content: []const u8, old_status: []const u8, new_status: []const u8) !?[]u8 {
+    const idx = std.mem.indexOf(u8, content, old_status) orelse return null;
+    const before = content[0..idx];
+    const after = content[idx + old_status.len ..];
+    return try std.fmt.allocPrint(allocator, "{s}{s}{s}", .{ before, new_status, after });
+}
+
+pub fn startTask(allocator: std.mem.Allocator, task_path: []const u8) !void {
+    const content = try utils.readFileAlloc(allocator, task_path, 64 * 1024);
+    defer allocator.free(content);
+
+    const needle = "status: todo";
+    const replacement = "status: in_progress";
+    const new_content = try replaceStatus(allocator, content, needle, replacement) orelse {
+        return error.TaskNotInTodo;
+    };
+    defer allocator.free(new_content);
+
+    try utils.writeFile(task_path, new_content);
+}
+
+pub fn completeTask(allocator: std.mem.Allocator, task_path: []const u8) !void {
+    const content = try utils.readFileAlloc(allocator, task_path, 64 * 1024);
+    defer allocator.free(content);
+
+    // Minimal validation: at least one checklist item must be checked
+    const has_check = std.mem.indexOf(u8, content, "- [x]") != null or
+        std.mem.indexOf(u8, content, "-[x]") != null;
+    if (!has_check) {
+        return error.NoChecklistCompletion;
+    }
+
+    const needle = "status: in_progress";
+    const replacement = "status: done";
+    const new_content = try replaceStatus(allocator, content, needle, replacement) orelse {
+        return error.TaskNotInProgress;
+    };
+    defer allocator.free(new_content);
+
+    try utils.writeFile(task_path, new_content);
+}
+
+pub fn archiveCompleted(allocator: std.mem.Allocator, active_dir: []const u8, completed_dir: []const u8) !void {
+    try utils.makeDirRecursive(completed_dir);
+
+    const dir = utils.openDir(active_dir, .{ .iterate = true }) catch |err| {
+        if (err == error.FileNotFound) return;
+        return err;
+    };
+
+    const io = try utils.getIo();
+    var it = dir.iterate(io);
+    while (try it.next(io)) |entry| {
+        if (entry.kind != .file) continue;
+        if (!std.mem.endswith(u8, entry.name, ".md")) continue;
+
+        const path = try std.fs.path.join(allocator, &.{ active_dir, entry.name });
+        defer allocator.free(path);
+
+        const content = utils.readFileAlloc(allocator, path, 64 * 1024) catch continue;
+        defer allocator.free(content);
+
+        if (std.mem.indexOf(u8, content, "status: done") != null) {
+            const dest = try std.fs.path.join(allocator, &.{ completed_dir, entry.name });
+            defer allocator.free(dest);
+            try utils.rename(path, dest);
+        }
+    }
+}
 
 // ============================================================================
 // Tests

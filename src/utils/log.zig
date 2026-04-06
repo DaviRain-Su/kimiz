@@ -66,7 +66,7 @@ pub const Logger = struct {
             .log_dir = try allocator.dupe(u8, log_dir),
             .current_file = null,
             .current_date = null,
-            .use_color = std.io.getStdOut().isTty(),
+            .use_color = false,
             .mutex = .{},
         };
     }
@@ -74,7 +74,7 @@ pub const Logger = struct {
     pub fn deinit(self: *Self) void {
         if (self.current_file) |file| {
             const c = @cImport({ @cInclude("stdio.h"); });
-            _ = c.fclose(@ptrCast(file));
+            _ = c.fclose(@ptrCast(@alignCast(file)));
         }
         if (self.current_date) |date| {
             self.allocator.free(date);

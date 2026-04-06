@@ -34,6 +34,9 @@ pub const memory = @import("memory/root.zig");
 // Supervisor Daemon - Session lifecycle management (T-120)
 pub const daemon = @import("daemon/supervisor.zig");
 
+// Prompts module - prompt engineering and review agents
+pub const prompts = @import("prompts/root.zig");
+
 // Learning module - adaptive learning engine
 pub const learning = @import("learning/root.zig");
 
@@ -74,4 +77,6 @@ test "basic add functionality" {
 
 test {
     _ = observability;
+    _ = engine;
+    _ = prompts;
 }

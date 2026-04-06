@@ -1,4 +1,8 @@
 const std = @import("std");
+const fs = @import("../utils/fs_helper.zig");
+const c = @cImport({
+    @cInclude("unistd.h");
+});
 
 // ============================================================================
 // Phase (7-phase development methodology)
@@ -98,8 +102,6 @@ pub const Project = struct {
 // ============================================================================
 
 pub fn getCurrentPhase(dir_path: []const u8) !Phase {
-    const dir = try std.fs.openDirAbsolute(dir_path, .{});
-
     const phases = [_]Phase{
         .prd,
         .architecture,
@@ -110,10 +112,18 @@ pub fn getCurrentPhase(dir_path: []const u8) !Phase {
         .review_deploy,
     };
 
+    var buf: [std.fs.max_path_bytes]u8 = undefined;
     for (phases) |phase| {
-        dir.access(phase.docName(), .{}) catch {
+        const doc = phase.docName();
+        const total_len = dir_path.len + 1 + doc.len;
+        if (total_len >= buf.len) return error.NameTooLong;
+        @memcpy(buf[0..dir_path.len], dir_path);
+        buf[dir_path.len] = '/';
+        @memcpy(buf[dir_path.len + 1 .. total_len], doc);
+        buf[total_len] = 0;
+        if (c.access(@ptrCast(&buf), c.F_OK) != 0) {
             return phase;
-        };
+        }
     }
 
     // All documents exist - project is complete
@@ -146,7 +156,7 @@ pub fn createProject(
     errdefer allocator.free(full_path);
 
     // Create directory
-    try std.fs.makeDirAbsolute(full_path);
+    try fs.makeDirRecursive(full_path);
 
     // Write PRD template
     const prd_path = try std.fs.path.join(allocator, &.{ full_path, Phase.prd.docName() });
@@ -181,11 +191,39 @@ pub fn createProject(
     const prd_content = try std.fmt.allocPrint(allocator, prd_template, .{ name, name });
     defer allocator.free(prd_content);
 
-    const file = try std.fs.createFileAbsolute(prd_path, .{});
-    defer file.close();
-    try file.writeAll(prd_content);
+    try fs.writeFile(prd_path, prd_content);
 
     return try Project.init(allocator, id, name, full_path);
+}
+
+pub fn validatePhaseDocument(allocator: std.mem.Allocator, project_dir: []const u8, phase: Phase) !bool {
+    const doc_path = try std.fs.path.join(allocator, &.{ project_dir, phase.docName() });
+    defer allocator.free(doc_path);
+
+    const content = fs.readFileAlloc(allocator, doc_path, 256 * 1024) catch |err| {
+        if (err == error.FileNotFound) return false;
+        return err;
+    };
+    defer allocator.free(content);
+
+    // Check for required headings based on phase
+    const required = switch (phase) {
+        .prd => &[_][]const u8{"## Problem Statement", "## Goals"},
+        .architecture => &[_][]const u8{"## Overview", "## Components"},
+        .technical_spec => &[_][]const u8{"## Impact Files", "## Acceptance Criteria"},
+        .task_breakdown => &[_][]const u8{"## Tasks"},
+        .test_spec => &[_][]const u8{"## Test Strategy"},
+        .implementation => &[_][]const u8{},
+        .review_deploy => &[_][]const u8{"## Review Summary"},
+    };
+
+    for (required) |heading| {
+        if (std.mem.indexOf(u8, content, heading) == null) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 // ============================================================================
