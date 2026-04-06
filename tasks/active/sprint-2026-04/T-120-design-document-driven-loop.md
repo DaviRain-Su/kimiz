@@ -52,8 +52,18 @@
 
 ## 验收标准
 
-- [ ] `docs/design/document-driven-agent-loop.md` 已创建并通过 review
-- [ ] 文档中明确了 3 个新工具的 JSON Schema / Zig 函数签名
-- [ ] 文档中描述了 System Prompt 的注入点和内容
-- [ ] 文档中描述了人类通过修改文档来纠正 AI 的完整工作流
-- [ ] 设计被引用到 `docs/DESIGN-REFERENCES.md` 中
+- [x] `docs/design/document-driven-agent-loop.md` 已创建并通过 review
+- [x] 文档中明确了 3 个新工具的 JSON Schema / Zig 函数签名
+- [x] 文档中描述了 System Prompt 的注入点和内容
+- [x] 文档中描述了人类通过修改文档来纠正 AI 的完整工作流
+- [x] 设计被引用到 `docs/DESIGN-REFERENCES.md` 中
+
+---
+
+## Log
+
+- `2026-04-06` — 开始 T-120 设计任务，状态从 `todo` 改为 `implement`
+- `2026-04-06` — 创建 `docs/design/document-driven-agent-loop.md`，包含完整的三阶段 Loop 架构、3 个工具的接口定义（Zig 函数签名 + JSON Schema）、System Prompt 改造方案、人机协作工作流
+- `2026-04-06` — 创建 `docs/lessons-learned-template.md`，定义 7 种分类和标准条目格式
+- `2026-04-06` — 更新 `docs/DESIGN-REFERENCES.md` 添加新设计引用
+- `2026-04-06` — 完成设计评审，状态改为 `done`

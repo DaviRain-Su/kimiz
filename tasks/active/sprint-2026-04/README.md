@@ -27,7 +27,7 @@
 | 5 | **`T-103-spike-comptime-skill-dsl.md`** | **comptime Skill DSL 原型验证（Scale 战略关键）** | `done` | `docs/specs/T-103-spike-comptime-skill-dsl.md` |
 | 6 | `T-100-establish-auto-skill-generation-pipeline.md` | 建立 auto skill 自动生成流水线 | `done` | `docs/specs/T-100-establish-auto-skill-generation-pipeline.md` |
 | 7 | `T-101-design-autoregistry-dynamic-loading.md` | 设计 AutoRegistry 动态加载 | `done` | `docs/specs/T-101-design-autoregistry-dynamic-loading.md` |
-| 8 | `T-120-design-document-driven-loop.md` | 设计文档驱动的 Agent 工作流 | `todo` | `docs/specs/T-120-design-document-driven-loop.md` |
+| 8 | `T-120-design-document-driven-loop.md` | 设计文档驱动的 Agent 工作流 | `done` | `docs/specs/T-120-design-document-driven-loop.md` |
 | 9 | `T-121-implement-memory-tools.md` | 实现 Agent 长期记忆工具 | `todo` | `docs/specs/T-121-implement-memory-tools.md` |
 | 10 | `T-122-prompt-document-driven-loop.md` | 改造 System Prompt 强制文档前置读取 | `todo` | `docs/specs/T-122-prompt-document-driven-loop.md` |
 | 11 | `T-123-lessons-learned-and-consistency.md` | 建立 lessons-learned 和多 Agent 一致性 | `todo` | `docs/specs/T-123-lessons-learned-and-consistency.md` |

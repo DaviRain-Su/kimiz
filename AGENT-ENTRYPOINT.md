@@ -48,7 +48,7 @@ zig version  # 必须是 0.16.0-dev+
 | 5 | **P0** | **T-103-SPIKE** | **comptime Skill DSL 原型验证（Scale 战略关键）** | `done` | [`docs/specs/T-103-spike-comptime-skill-dsl.md`](docs/specs/T-103-spike-comptime-skill-dsl.md) | 4h |
 | 6 | P1 | **T-100** | 建立 auto skill 自动生成流水线 | `done` | [`docs/specs/T-100-establish-auto-skill-generation-pipeline.md`](docs/specs/T-100-establish-auto-skill-generation-pipeline.md) | 12h |
 | 7 | P1 | **T-101** | 设计 AutoRegistry 动态加载 | `done` | [`docs/specs/T-101-design-autoregistry-dynamic-loading.md`](docs/specs/T-101-design-autoregistry-dynamic-loading.md) | 10h |
-| 8 | P1 | **T-120-DESIGN** | 设计文档驱动的 Agent 工作流 | `todo` | [`docs/specs/T-120-design-document-driven-loop.md`](docs/specs/T-120-design-document-driven-loop.md) | 2h |
+| 8 | P1 | **T-120-DESIGN** | 设计文档驱动的 Agent 工作流 | `done` | [`docs/specs/T-120-design-document-driven-loop.md`](docs/specs/T-120-design-document-driven-loop.md) | 2h |
 | 9 | P1 | **T-121-IMPLEMENT** | 实现 Agent 长期记忆工具 | `todo` | [`docs/specs/T-121-implement-memory-tools.md`](docs/specs/T-121-implement-memory-tools.md) | 4h |
 | 10 | P1 | **T-122-PROMPT** | 改造 System Prompt 强制文档前置读取 | `todo` | [`docs/specs/T-122-prompt-document-driven-loop.md`](docs/specs/T-122-prompt-document-driven-loop.md) | 3h |
 | 11 | P2 | **T-123-LESSONS** | 建立 lessons-learned 和多 Agent 一致性 | `todo` | [`docs/specs/T-123-lessons-learned-and-consistency.md`](docs/specs/T-123-lessons-learned-and-consistency.md) | 3h |
