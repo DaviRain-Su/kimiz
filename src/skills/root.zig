@@ -242,6 +242,8 @@ pub const SkillEngine = struct {
 
 const builtin = @import("builtin.zig");
 const auto_registry = @import("auto/registry.zig");
+const fuzz_tests = @import("fuzz_tests.zig");
+const fuzz_tests = @import("fuzz_tests.zig");
 
 pub fn registerBuiltinSkills(registry: *SkillRegistry) !void {
     try builtin.registerAll(registry);
