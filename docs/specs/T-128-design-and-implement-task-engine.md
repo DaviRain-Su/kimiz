@@ -239,6 +239,41 @@ pub const ReviewAgent = struct {
 - T-120 建立了 Document-Driven Workflow（Agent 读文档、更新日志）
 - T-128 的 Review Agent 是该工作流的**自然延伸**——现在 Agent 不仅要读写文档，还要**评审文档**
 
+### 2.6 与 gstack 的集成：从手动 Skill 到自动 Review Agent
+
+**gstack** (garrytan/gstack) 已经证明了"专家角色即 Skill"的模式可以大规模扩展。gstack 用 23 个 `SKILL.md` 文件定义了 CEO Reviewer、Eng Reviewer、QA Lead、Security Officer 等角色，每个角色都是一个目录 + SKILL.md（YAML frontmatter + 详细指令）。
+
+**gstack 的运作方式**：
+- 人类主动输入 `/plan-ceo-review`、`/review`、`/qa` 来调用对应角色
+- 每个 `SKILL.md` 定义了角色的目标、工具权限、执行流程、检查清单
+- 通过 `agents/openai.yaml` 和主 `SKILL.md` 中的 routing rules 自动分发请求
+
+**KimiZ 的改进方向**：
+gstack 解决了"角色专业化"的问题，但**没有解决自动编排的问题**。人类仍然需要记住在什么时候调用哪个角色。KimiZ 的 TaskEngine 要做的是：
+
+1. **复用 gstack 的"角色即 Skill"设计模式**
+   - 每个 Review Agent 对应一个 KimiZ Skill（使用 `defineSkill` DSL）
+   - Prompt 文件的结构参考 gstack 的 `SKILL.md`（YAML frontmatter + 指令）
+
+2. **将 gstack 的手动触发改为 TaskEngine 自动触发**
+   - Phase 1 完成后 → 自动调用 `product-manager-review` Skill
+   - Phase 2 完成后 → 自动调用 `system-architect-review` Skill
+   - Phase 6 代码提交后 → 自动调用 `code-reviewer` Skill（类似 gstack `/review`）
+   - 不再需要人类输入 slash command
+
+3. **吸收 gstack 的最佳实践到 Prompt 中**
+   - `plan-ceo-review` 的 **4 scope modes**（扩张/选择性扩张/保持/缩减）可用于 Phase 2 的 scope 决策
+   - `review` 的 **SQL safety、LLM trust boundary、conditional side effects** 检查可融入 Phase 6 Code Reviewer
+   - `qa` 的 **real browser testing、health scores** 可融入 Phase 5/7 的验收标准
+   - `cso` (Chief Security Officer) 的 **OWASP + STRIDE** 审计可融入 Phase 7 Release Engineer
+
+4. **统一的 Prompt 模板引擎**
+   - 参考 gstack 的 `SKILL.md.tmpl` + `bun run gen:skill-docs`
+   - KimiZ 可以在 `prompts/review/TEMPLATE.md` 中定义共享结构
+   - 各角色 prompt 从模板生成，确保一致性和可维护性
+
+**结论**：KimiZ 不是重复发明 gstack 的角色 prompt，而是**在 gstack 之上加一个自动编排层（TaskEngine）**，让 gstack 式的专家 review 在正确的时机自动发生。
+
 ### 3. Phase 4 → Task 自动拆解
 
 Phase 4 完成后，TaskEngine 解析 `04-task-breakdown.md` 中的任务表格，自动生成：
@@ -373,7 +408,7 @@ kimiz run -- repl
 - [ ] Review 输出能解析为 `PASS` / `NEEDS_REVISION` / `BLOCKED` 三种状态
 - [ ] `executePhase()` 在形式验收后自动调用 Review Agent；`PASS` 才能进入下一阶段
 - [ ] Review 结果为 `NEEDS_REVISION` 时，Author Agent 能根据反馈修改文档并重试（最多 2 次）
-- [ ] `prompts/review/` 目录下至少存在 3 个角色 prompt 文件
+- [ ] `prompts/review/` 目录下至少存在 4 个角色 prompt 文件（product-manager, system-architect, tech-lead, code-reviewer）
 
 ### Task 层（任务队列执行）
 
