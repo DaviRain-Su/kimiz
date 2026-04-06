@@ -58,12 +58,18 @@ pub fn build(b: *std.Build) void {
         cargo.setCwd(b.path("vendor/fff.nvim"));
         cargo.has_side_effects = true;
         exe.step.dependOn(&cargo.step);
+        mod.addIncludePath(b.path("ffi"));
+        mod.addLibraryPath(b.path("vendor/fff.nvim/target/release"));
         exe.root_module.addIncludePath(b.path("ffi"));
         exe.root_module.addLibraryPath(b.path("vendor/fff.nvim/target/release"));
-        const inst = b.addInstallBinFile(b.path("vendor/fff.nvim/target/release/libfff_c.so"), "libfff_c.so");
+        const lib_ext = if (exe.root_module.resolved_target.?.result.os.tag == .macos) ".dylib" else ".so";
+        const lib_name = b.fmt("vendor/fff.nvim/target/release/libfff_c{s}", .{lib_ext});
+        const inst = b.addInstallBinFile(b.path(lib_name), b.fmt("libfff_c{s}", .{lib_ext}));
         inst.step.dependOn(&cargo.step);
         b.getInstallStep().dependOn(&inst.step);
     } else {
+        mod.addIncludePath(b.path("ffi"));
+        mod.addLibraryPath(b.path("ffi"));
         exe.root_module.addIncludePath(b.path("ffi"));
         exe.root_module.addLibraryPath(b.path("ffi"));
     }

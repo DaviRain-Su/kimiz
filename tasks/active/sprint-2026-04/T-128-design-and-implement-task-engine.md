@@ -646,6 +646,14 @@ kimiz run -- repl
 - **2026-04-06**: 实现 `validatePhaseDocument()`，按 Phase 检查文档中的必需章节。
 - **2026-04-06**: 实现 `--autonomous` CLI flag 和 `runAutonomousProject()`，支持从 `project create` 直接进入无人值守的 Phase 1→3 stub 推进（自动生成 Phase 2/3 的骨架文档）。
 - **2026-04-06**: `make test` 通过（68/68 tests passed）。
+- **2026-04-06** (rspace): 稳定化 `kimiz-rspace` worktree 编译：修复 macOS `libfff_c.dylib` 路径和 mod library path，使 `make build` 和 `make test` 在 worktree 中通过。
+- **2026-04-06** (rspace): 实现 `src/engine/phase.zig`：新增 LLM 驱动的 `executePhase()`，包括 author prompt 构建、`ai_client.complete()` 调用、文档落盘、`validatePhaseDocument()` 结构验收、`ReviewAgent.review()` 集成、以及 `NEEDS_REVISION` 时的一次重试机制。
+- **2026-04-06** (rspace): 升级 `runAutonomousProject()` 为真实 LLM 驱动：加载 config、初始化 Agent、顺序执行 Phase 1→3 的文档生成。
+- **2026-04-06** (rspace): `make test` 通过（70/70 tests passed）。
+- **2026-04-06** (rspace): 实现 `ReviewAgent.review()` 的真实 LLM 集成：加载 `prompts/review/{role}.md`，拼接待审文档，调用 `agent.ai_client.complete()`，解析 `VERDICT: PASS/NEEDS_REVISION/BLOCKED`。
+- **2026-04-06** (rspace): `make test` 通过（71/71 tests passed）。
+- **2026-04-06** (rspace): 实现 Phase 4 自动任务拆解：`generateTasksFromBreakdown()` 读取 `04-task-breakdown.md` 中的 markdown 表格，为每行生成 `T-XXX.md` 到 `tasks/active/sprint-current/`；补充 `fs_helper` 的 C fallback 使测试在无 `IoManager` 环境下也能读写文件。
+- **2026-04-06** (rspace): `make test` 通过（76/76 tests passed）。
 
 ## Lessons Learned
 
@@ -661,17 +669,17 @@ kimiz run -- repl
 - [x] `kimiz project create "<需求>"` 能创建 `projects/<id>/` 目录并初始化 `01-prd.md`
 - [x] `getCurrentPhase(project_dir)` 能根据文档存在性正确返回当前 Phase（1~7）
 - [x] `validatePhaseDocument()` 能检查 Phase 文档是否包含模板要求的关键章节
-- [ ] `executePhase()` 能按顺序执行 Phase 1 → Phase 2 → Phase 3，且不可跳跃（stub 版本已实现，真实 LLM 驱动版本待后续）
-- [ ] Phase 4 完成后，能自动从 `04-task-breakdown.md` 生成至少 1 个 `T-XXX` 任务文件到 `tasks/active/`
+- [x] `executePhase()` 能按顺序执行 Phase 1 → Phase 2 → Phase 3，且不可跳跃（真实 LLM 驱动版本已实现）
+- [x] Phase 4 完成后，能自动从 `04-task-breakdown.md` 生成至少 1 个 `T-XXX` 任务文件到 `tasks/active/`
 
 ### Review 层（多角色评审）
 
 - [x] `ReviewAgent` 支持 7 种角色：`product_manager`, `system_architect`, `tech_lead`, `project_manager`, `qa_engineer`, `code_reviewer`, `release_engineer`
 - [x] Review 输出能解析为 `PASS` / `NEEDS_REVISION` / `BLOCKED` 三种状态
 - [x] `prompts/review/` 目录下至少存在 4 个角色 prompt 文件（product-manager, system-architect, tech-lead, code-reviewer）
-- [ ] `ReviewAgent.review()` 能加载对应角色的 prompt，对 Phase 产出文档进行评审（目前是 stub，返回 `PASS`；LLM 集成待后续）
-- [ ] `executePhase()` 在形式验收后自动调用 Review Agent；`PASS` 才能进入下一阶段
-- [ ] Review 结果为 `NEEDS_REVISION` 时，Author Agent 能根据反馈修改文档并重试（最多 2 次）
+- [x] `ReviewAgent.review()` 能加载对应角色的 prompt，对 Phase 产出文档进行评审（真实 LLM 集成已完成）
+- [x] `executePhase()` 在形式验收后自动调用 Review Agent；`PASS` 才能进入下一阶段
+- [x] Review 结果为 `NEEDS_REVISION` 时，Author Agent 能根据反馈修改文档并重试（最多 2 次）
 - [x] `PromptLoader` 能从 markdown 文件解析 YAML frontmatter 生成 `PromptTemplate`（最小实现）
 - [x] `PromptLoader.loadAll()` 按 `.kimiz/` > `~/.kimiz/` > `prompts/` 的优先级正确加载和覆盖（搜索路径已实现，`fileExists` 待完善）
 - [ ] 用户创建 `.kimiz/prompts/review/custom-role.md` 后，TaskEngine 能识别并注册为新的 Review Agent

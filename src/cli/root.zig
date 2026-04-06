@@ -1007,6 +1007,35 @@ fn runTaskNextCommand(allocator: std.mem.Allocator) !void {
 fn runAutonomousProject(allocator: std.mem.Allocator, project: *engine.project.Project) !void {
     printLine("\n🤖 Starting autonomous mode...\n");
 
+    // Initialize configuration and agent
+    var cfg = try config.Config.init(allocator);
+    defer cfg.deinit();
+    try cfg.loadFromEnv();
+
+    if (!cfg.hasAnyApiKey()) {
+        printLine("⚠️ No API keys configured. Set at least one of: OPENAI_API_KEY, ANTHROPIC_API_KEY, KIMI_API_KEY, etc.");
+        return error.NoApiKey;
+    }
+
+    const model_id = cfg.default_model;
+    const model = ai.models_registry.getModelById(model_id) orelse {
+        printLine("❌ Model not found");
+        return error.ModelNotFound;
+    };
+
+    var ai_agent = agent.Agent.init(allocator, .{
+        .model = model,
+        .temperature = cfg.default_temperature,
+        .max_tokens = cfg.default_max_tokens,
+        .thinking_level = .medium,
+        .max_iterations = 50,
+        .project_path = project.dir_path,
+    }) catch |err| {
+        printLine("❌ Failed to initialize Agent");
+        return err;
+    };
+    defer ai_agent.deinit();
+
     const phases = [_]engine.project.Phase{
         .prd,
         .architecture,
@@ -1015,7 +1044,10 @@ fn runAutonomousProject(allocator: std.mem.Allocator, project: *engine.project.P
 
     for (phases) |phase| {
         const current = try engine.project.getCurrentPhase(project.dir_path);
-        if (@intFromEnum(current) > @intFromEnum(phase)) continue;
+        if (@intFromEnum(current) > @intFromEnum(phase)) {
+            _ = project.advancePhase();
+            continue;
+        }
 
         if (try engine.project.validatePhaseDocument(allocator, project.dir_path, phase)) {
             var buf: [256]u8 = undefined;
@@ -1025,19 +1057,32 @@ fn runAutonomousProject(allocator: std.mem.Allocator, project: *engine.project.P
             continue;
         }
 
-        // Generate stub document for missing phase
-        try generatePhaseStub(allocator, project, phase);
+        var buf: [256]u8 = undefined;
+        const msg = try std.fmt.bufPrint(&buf, "📝 Executing Phase {s}...", .{@tagName(phase)});
+        printLine(msg);
 
-        if (try engine.project.validatePhaseDocument(allocator, project.dir_path, phase)) {
-            var buf: [256]u8 = undefined;
-            const msg = try std.fmt.bufPrint(&buf, "✅ Phase {s} stub generated and validated", .{@tagName(phase)});
-            printLine(msg);
-            _ = project.advancePhase();
-        } else {
-            var buf: [256]u8 = undefined;
-            const msg = try std.fmt.bufPrint(&buf, "❌ Phase {s} validation failed after stub generation", .{@tagName(phase)});
-            printLine(msg);
-            break;
+        var result = try engine.phase.executePhase(allocator, &ai_agent, project, phase);
+        defer result.deinit(allocator);
+
+        switch (result.status) {
+            .done => {
+                var done_buf: [256]u8 = undefined;
+                const done_msg = try std.fmt.bufPrint(&done_buf, "✅ Phase {s} completed", .{@tagName(phase)});
+                printLine(done_msg);
+                _ = project.advancePhase();
+            },
+            .needs_revision => {
+                var warn_buf: [512]u8 = undefined;
+                const warn_msg = try std.fmt.bufPrint(&warn_buf, "❌ Phase {s} needs revision: {s}", .{ @tagName(phase), result.feedback });
+                printLine(warn_msg);
+                break;
+            },
+            .blocked => {
+                var err_buf: [512]u8 = undefined;
+                const err_msg = try std.fmt.bufPrint(&err_buf, "🚫 Phase {s} blocked: {s}", .{ @tagName(phase), result.feedback });
+                printLine(err_msg);
+                break;
+            },
         }
     }
 

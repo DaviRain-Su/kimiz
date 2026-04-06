@@ -15,38 +15,79 @@ fn getIo() !std.Io {
     return io_manager.getIo();
 }
 
+fn toNullTerminated(path: []const u8) ![:0]const u8 {
+    var buf: [std.fs.max_path_bytes]u8 = undefined;
+    if (path.len >= buf.len) return error.NameTooLong;
+    @memcpy(buf[0..path.len], path);
+    buf[path.len] = 0;
+    return buf[0..path.len :0];
+}
+
 /// Read file contents into allocated memory
-/// Uses Zig 0.16 native API
+/// Uses Zig 0.16 native API with C fallback for test environments
 pub fn readFileAlloc(
     allocator: std.mem.Allocator,
     path: []const u8,
     max_size: usize,
 ) ![]u8 {
-    const io = try getIo();
-    const dir = cwd();
-    return try dir.readFileAlloc(io, path, allocator, @enumFromInt(max_size));
+    if (getIo()) |io| {
+        const dir = cwd();
+        return try dir.readFileAlloc(io, path, allocator, @enumFromInt(max_size));
+    } else |_| {
+        const c = @cImport({ @cInclude("stdio.h"); });
+        const nt_path = try toNullTerminated(path);
+        const file = c.fopen(nt_path.ptr, "rb") orelse return error.FileNotFound;
+        defer _ = c.fclose(file);
+
+        if (c.fseek(file, 0, c.SEEK_END) != 0) return error.Unexpected;
+        const size_i64 = c.ftell(file);
+        if (size_i64 < 0) return error.Unexpected;
+        const size = @as(usize, @intCast(size_i64));
+        if (c.fseek(file, 0, c.SEEK_SET) != 0) return error.Unexpected;
+
+        if (size > max_size) return error.FileTooBig;
+        const buf = try allocator.alloc(u8, size);
+        errdefer allocator.free(buf);
+        if (size > 0) {
+            const read_count = c.fread(buf.ptr, 1, size, file);
+            if (read_count != size) return error.Unexpected;
+        }
+        return buf;
+    }
 }
 
 /// Write contents to file
-/// Uses Zig 0.16 native API
+/// Uses Zig 0.16 native API with C fallback for test environments
 pub fn writeFile(
     path: []const u8,
     contents: []const u8,
 ) !void {
-    const io = try getIo();
-    const dir = cwd();
-    
-    // Ensure parent directory exists
-    if (std.fs.path.dirname(path)) |parent_dir| {
-        dir.createDirPath(io, parent_dir) catch |err| {
-            if (err != error.PathAlreadyExists) return err;
-        };
+    if (getIo()) |io| {
+        const dir = cwd();
+        if (std.fs.path.dirname(path)) |parent_dir| {
+            dir.createDirPath(io, parent_dir) catch |err| {
+                if (err != error.PathAlreadyExists) return err;
+            };
+        }
+        try dir.writeFile(io, .{
+            .sub_path = path,
+            .data = contents,
+        });
+    } else |_| {
+        const c = @cImport({ @cInclude("stdio.h"); });
+        if (std.fs.path.dirname(path)) |parent_dir| {
+            makeDirRecursive(parent_dir) catch |err| {
+                if (err != error.PathAlreadyExists) return err;
+            };
+        }
+        const nt_path = try toNullTerminated(path);
+        const file = c.fopen(nt_path.ptr, "wb") orelse return error.FileNotFound;
+        defer _ = c.fclose(file);
+        if (contents.len > 0) {
+            const written = c.fwrite(contents.ptr, 1, contents.len, file);
+            if (written != contents.len) return error.Unexpected;
+        }
     }
-    
-    try dir.writeFile(io, .{
-        .sub_path = path,
-        .data = contents,
-    });
 }
 
 /// Check if file exists
