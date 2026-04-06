@@ -3,6 +3,7 @@
 
 const std = @import("std");
 const log = @import("../utils/log.zig");
+const utils = @import("../utils/root.zig");
 
 /// Workspace information structure
 pub const WorkspaceInfo = struct {
@@ -187,7 +188,7 @@ test "findGitRoot" {
         defer allocator.free(r);
         // Should contain .git
         try std.testing.expect(std.mem.indexOf(u8, r, ".git") != null or 
-                              std.fs.cwd().access(".git", .{}) == {});
+                              utils.fileExists(".git"));
     }
 }
 

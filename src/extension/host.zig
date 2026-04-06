@@ -144,7 +144,7 @@ pub const StandardHostFunctions = struct {
         const path = ctx.memory_buffer[path_ptr..path_ptr + path_len];
         
         // Read file
-        const content = std.fs.cwd().readFileAlloc(ctx.allocator, path, out_max) catch |err| {
+        const content = utils.readFileAlloc(ctx.allocator, path, out_max) catch |err| {
             std.debug.print("Failed to read file '{s}': {s}\n", .{ path, @errorName(err) });
             return @intFromEnum(err);
         };
@@ -176,7 +176,7 @@ pub const StandardHostFunctions = struct {
         const content = ctx.memory_buffer[content_ptr..content_ptr + content_len];
         
         // Write file
-        std.fs.cwd().writeFile(.{ .sub_path = path, .data = content }) catch |err| {
+        utils.writeFile(path, content) catch |err| {
             std.debug.print("Failed to write file '{s}': {s}\n", .{ path, @errorName(err) });
             return @intFromEnum(err);
         };

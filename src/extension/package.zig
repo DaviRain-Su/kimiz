@@ -2,6 +2,7 @@
 //! Install, remove, list, and publish extensions
 
 const std = @import("std");
+const utils = @import("../utils/root.zig");
 
 /// Package manifest (kimiz.toml)
 pub const PackageManifest = struct {
@@ -144,7 +145,7 @@ pub const PackageManager = struct {
         const meta_path = try std.fs.path.join(self.allocator, &.{ self.install_dir, "installed.json" });
         defer self.allocator.free(meta_path);
         
-        const content = std.fs.cwd().readFileAlloc(self.allocator, meta_path, 1024 * 1024) catch |err| switch (err) {
+        const content = utils.readFileAlloc(self.allocator, meta_path, 1024 * 1024) catch |err| switch (err) {
             error.FileNotFound => return, // No packages installed yet
             else => return err,
         };
@@ -156,7 +157,7 @@ pub const PackageManager = struct {
     /// Save installed packages to metadata file
     fn saveInstalled(self: *Self) !void {
         // Ensure install directory exists
-        try std.fs.cwd().makePath(self.install_dir);
+        try utils.makeDirRecursive(self.install_dir);
         
         const meta_path = try std.fs.path.join(self.allocator, &.{ self.install_dir, "installed.json" });
         defer self.allocator.free(meta_path);
@@ -202,7 +203,7 @@ pub const PackageManager = struct {
         const manifest_path = try std.fs.path.join(self.allocator, &.{ path, "kimiz.toml" });
         defer self.allocator.free(manifest_path);
         
-        const content = try std.fs.cwd().readFileAlloc(self.allocator, manifest_path, 1024 * 1024);
+        const content = try utils.readFileAlloc(self.allocator, manifest_path, 1024 * 1024);
         defer self.allocator.free(content);
         
         // TODO: Parse TOML manifest
@@ -237,7 +238,7 @@ pub const PackageManager = struct {
         };
         
         // Remove directory
-        try std.fs.cwd().deleteTree(pkg.value.path);
+        try utils.deleteTree(pkg.value.path);
         
         // Free memory
         pkg.value.deinit(self.allocator);

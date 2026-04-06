@@ -2,6 +2,7 @@
 //! WASM-based extension runtime for custom tools and skills
 
 const std = @import("std");
+const utils = @import("../utils/root.zig");
 
 // WASM runtime
 pub const wasm = @import("wasm.zig");
@@ -209,14 +210,15 @@ pub const ExtensionManager = struct {
     
     /// Load all extensions from extension directory
     pub fn loadAll(self: *Self) !void {
-        var dir = std.fs.cwd().openDir(self.extension_dir, .{ .iterate = true }) catch |err| {
+        const io = try utils.getIo();
+        var dir = utils.openDir(self.extension_dir, .{ .iterate = true }) catch |err| {
             if (err == error.FileNotFound) return;
             return err;
         };
-        defer dir.close();
+        defer dir.close(io);
         
         var iter = dir.iterate();
-        while (try iter.next()) |entry| {
+        while (try iter.next(io)) |entry| {
             if (entry.kind == .directory) {
                 const manifest_path = try std.fs.path.join(self.allocator, &.{ 
                     self.extension_dir, entry.name, "kimiz.toml" 

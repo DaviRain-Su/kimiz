@@ -3,6 +3,7 @@
 
 const std = @import("std");
 const zwasm = @import("zwasm");
+const utils = @import("../utils/root.zig");
 
 /// WASM module wrapper for extensions
 pub const WasmModule = struct {
@@ -81,7 +82,7 @@ pub const WasmRuntime = struct {
     
     /// Load a WASM module from file
     pub fn loadModuleFromFile(self: *Self, name: []const u8, path: []const u8) !void {
-        const wasm_bytes = try std.fs.cwd().readFileAlloc(self.allocator, path, 10 * 1024 * 1024);
+        const wasm_bytes = try utils.readFileAlloc(self.allocator, path, 10 * 1024 * 1024);
         defer self.allocator.free(wasm_bytes);
         
         try self.loadModule(name, wasm_bytes);

@@ -2,6 +2,7 @@
 //! Integrates zwasm with Host Function API
 
 const std = @import("std");
+const utils = @import("../utils/root.zig");
 const zwasm = @import("zwasm");
 const host = @import("host.zig");
 
@@ -133,7 +134,7 @@ pub const ExtensionLoader = struct {
         id: []const u8,
         path: []const u8,
     ) !void {
-        const wasm_bytes = try std.fs.cwd().readFileAlloc(
+        const wasm_bytes = try utils.readFileAlloc(
             self.allocator,
             path,
             10 * 1024 * 1024,
@@ -194,7 +195,7 @@ test "ExtensionInstance basic operations" {
     
     // Use the example extension if available
     const wasm_path = "examples/extension-hello/zig-out/bin/extension-hello.wasm";
-    const wasm_bytes = std.fs.cwd().readFileAlloc(allocator, wasm_path, 10 * 1024 * 1024) catch {
+    const wasm_bytes = utils.readFileAlloc(allocator, wasm_path, 10 * 1024 * 1024) catch {
         // Skip test if example not built
         return;
     };

@@ -62,6 +62,7 @@
 | [Harness Four Pillars](research/harness-four-pillars-nyk-analysis.md) | WorkspaceContext、PromptCache、ContextTruncation、SessionPersistence | **Harness 全部实现** |
 | [Claude Code Prompt Analysis](research/CLAUDE-CODE-PROMPT-ANALYSIS.md) | Prompt 分层、Stable Prefix、System Prompt 工程 | **PromptCache、Agent 提示** |
 | [06-agent-harness-upgrade.md](lifecycle/06-agent-harness-upgrade.md) | 项目自身的 Harness 升级计划 | **Harness 优先级排序** |
+| [Document-Driven Agent Loop](design/document-driven-agent-loop.md) | 文档作为长期记忆、三阶段 Loop、任务日志管理 | **Agent Loop 改造、文档驱动工作流** |
 
 **关键原则**:
 - PromptCache 的核心是"Stable Prefix"：不重复发送静态上下文
