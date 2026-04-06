@@ -4,6 +4,8 @@
 const std = @import("std");
 const log = @import("../utils/log.zig");
 
+pub const loader = @import("loader.zig");
+
 pub const PromptTemplate = struct {
     id: []const u8,
     name: []const u8,

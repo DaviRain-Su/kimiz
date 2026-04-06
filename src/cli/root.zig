@@ -168,6 +168,21 @@ pub fn run(
     try sess_cmd.addSubcommand(sess_list);
     try sess_cmd.addSubcommand(sess_stop);
 
+    // kimiz project create <name>
+    var proj_cmd = app.createCommand("project", "Project management");
+    var proj_create = app.createCommand("create", "Create a new project with 7-phase structure");
+    try proj_create.addArg(yazap.Arg.positional("NAME", "Project name", null));
+    try app.rootCommand().addSubcommand(proj_cmd);
+    try proj_cmd.addSubcommand(proj_create);
+
+    // kimiz task list / next
+    var task_cmd = app.createCommand("task", "Task management");
+    const task_list = app.createCommand("list", "List all tasks in current sprint");
+    const task_next = app.createCommand("next", "Show the next executable task");
+    try app.rootCommand().addSubcommand(task_cmd);
+    try task_cmd.addSubcommand(task_list);
+    try task_cmd.addSubcommand(task_next);
+
     // Parse arguments
     const matches = app.parseProcess(io, args) catch |err| {
         return err;
@@ -226,6 +241,30 @@ pub fn run(
                 return;
             };
             try runSessionStopCommand(allocator, id);
+            return;
+        }
+    }
+
+    if (matches.containsArg("project")) {
+        if (matches.subcommandMatches("create")) |m| {
+            const name = m.getSingleValue("NAME") orelse {
+                printLine("Usage: kimiz project create <name>");
+                return;
+            };
+            var buf: [256]u8 = undefined;
+            const msg = try std.fmt.bufPrint(&buf, "Project creation stub: name={s}", .{name});
+            printLine(msg);
+            return;
+        }
+    }
+
+    if (matches.containsArg("task")) {
+        if (matches.subcommandMatches("list")) |_| {
+            printLine("Task list stub - would scan tasks/active/ and display status");
+            return;
+        }
+        if (matches.subcommandMatches("next")) |_| {
+            printLine("Next task stub - would call queue.getNextTask()");
             return;
         }
     }
