@@ -5,8 +5,7 @@
     .minimum_zig_version = "0.16.0-dev",
     .dependencies = .{
         .uucode = .{
-            .url = "git+https://github.com/DaviRain-Su/uucode#1712f78e6d3aa7fb07394106f519605a4ff2a6be",
-            .hash = "uucode-0.2.0-ZZjBPihjVABSfndt6Y-WFnr57CXez37hNJMqVcVy4RvG",
+            .path = "../uucode",
         },
     },
     .paths = .{
