@@ -184,13 +184,13 @@ pub const TaskQueue = struct {
     pub fn init(allocator: std.mem.Allocator) Self {
         return .{
             .allocator = allocator,
-            .tasks = std.ArrayList(Task).init(allocator),
+            .tasks = .empty,
         };
     }
 
     pub fn deinit(self: *Self) void {
         for (self.tasks.items) |*t| t.deinit(self.allocator);
-        self.tasks.deinit();
+        self.tasks.deinit(self.allocator);
     }
 
     pub fn isEmpty(self: *const Self) bool {

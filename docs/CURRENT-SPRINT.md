@@ -49,6 +49,17 @@
   - [ ] `startTask/completeTask/archiveCompleted` 闭环
   - [ ] CLI `kimiz run --autonomous` 最小可行版本
 
+### T-129: 设计并实现 WASM-based Skill Plugin 系统
+- **状态**: `todo`
+- **Spec**: `docs/specs/T-129-design-and-implement-wasm-skill-plugin-system.md`
+- **说明**: T-128 解决自动编排，但终端用户无法在不重新编译 Zig 的情况下自定义 Skill。WASM Plugin 是唯一能让 KimiZ 作为二进制产品支持用户自定义 Skill 的路径。基于已有的 `zwasm` 依赖，实现运行时加载、执行、热重载和安全沙箱。
+- **验收要点**:
+  - [ ] `PluginLoader` 能加载并执行 `.wasm` skill
+  - [ ] `PluginRegistry` 支持扫描目录和热重载
+  - [ ] CLI `kimiz skill create <desc> --wasm` 自动生成并编译 WASM
+  - [ ] WASM skill 能被 TaskEngine 无差别调度
+  - [ ] 沙箱限制（内存、超时、权限）生效
+
 ---
 
 ## 已冻结的上层任务（KimiZ 核心夯实前不做）
