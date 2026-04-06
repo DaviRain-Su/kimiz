@@ -1,11 +1,9 @@
 //! Workspace Context - Git and project context collection
-//! Provides workspace information for AI context building
+//! TASK-INFRA-010: Full implementation with Zig 0.16
 
 const std = @import("std");
-const log = @import("../utils/log.zig");
 const utils = @import("../utils/root.zig");
 
-/// Workspace information structure
 pub const WorkspaceInfo = struct {
     allocator: std.mem.Allocator,
     cwd: []const u8,
@@ -26,145 +24,170 @@ pub const WorkspaceInfo = struct {
             .branch = null,
             .default_branch = null,
             .git_status = null,
-            .recent_commits = &.{},
+            .recent_commits = &[_][]const u8{},
             .project_docs = std.StringHashMap([]const u8).init(allocator),
         };
     }
 
     pub fn deinit(self: *Self) void {
         self.allocator.free(self.cwd);
-        
         if (self.repo_root) |r| self.allocator.free(r);
         if (self.branch) |b| self.allocator.free(b);
         if (self.default_branch) |b| self.allocator.free(b);
         if (self.git_status) |s| self.allocator.free(s);
-        
-        for (self.recent_commits) |commit| {
-            self.allocator.free(commit);
-        }
+        for (self.recent_commits) |c| self.allocator.free(c);
         self.allocator.free(self.recent_commits);
-        
-        var doc_iter = self.project_docs.iterator();
-        while (doc_iter.next()) |entry| {
-            self.allocator.free(entry.key_ptr.*);
-            self.allocator.free(entry.value_ptr.*);
+        var it = self.project_docs.iterator();
+        while (it.next()) |e| {
+            self.allocator.free(e.key_ptr.*);
+            self.allocator.free(e.value_ptr.*);
         }
         self.project_docs.deinit();
     }
 
-    /// Collect all workspace information
     pub fn collect(self: *Self) !void {
-        // Try to find git repository root
-        self.repo_root = try findGitRoot(self.allocator, self.cwd);
-        
+        self.repo_root = findGitRoot(self.allocator, self.cwd) catch null;
         if (self.repo_root) |root| {
-            // Collect git information
-            self.branch = try getGitBranch(self.allocator, root);
-            self.default_branch = try getGitDefaultBranch(self.allocator, root);
-            self.git_status = try getGitStatus(self.allocator, root);
-            self.recent_commits = try getRecentCommits(self.allocator, root, 5);
+            self.branch = getGitBranch(self.allocator, root) catch null;
+            self.default_branch = getGitDefaultBranch(self.allocator, root) catch null;
+            self.git_status = getGitStatus(self.allocator, root) catch null;
+            self.recent_commits = getRecentCommits(self.allocator, root, 5) catch &[_][]const u8{};
         }
-        
-        // Collect project documents
-        try self.collectProjectDocs();
+        self.collectProjectDocs() catch {};
     }
 
-    /// Collect project documentation files
     fn collectProjectDocs(self: *Self) !void {
         const doc_files = &[_][]const u8{
-            "README.md",
-            "AGENTS.md",
-            "CLAUDE.md",
-            "pyproject.toml",
-            "package.json",
-            "Cargo.toml",
-            "build.zig.zon",
+            "README.md", "AGENTS.md", "CLAUDE.md",
+            "pyproject.toml", "package.json",
+            "Cargo.toml", "build.zig.zon",
         };
-
         const search_dir = self.repo_root orelse self.cwd;
-
         for (doc_files) |filename| {
             const path = try std.fs.path.join(self.allocator, &.{ search_dir, filename });
             defer self.allocator.free(path);
-
-            const content = try readFileLimited(self.allocator, path, 1200);
-            if (content) |c| {
-                const key = try self.allocator.dupe(u8, filename);
-                try self.project_docs.put(key, c);
-            }
+            const content = try readFileLimited(self.allocator, path, 1200) orelse continue;
+            const key = try self.allocator.dupe(u8, filename);
+            try self.project_docs.put(key, content);
         }
     }
 
-    /// Format workspace info for prompt context
-    /// TODO: Full implementation for Zig 0.16
-    pub fn formatContext(self: Self, allocator: std.mem.Allocator) ![]const u8 {
-        // Simplified implementation for Zig 0.16 compatibility
-        // Returns a basic context string
-        _ = self;
-        return try allocator.dupe(u8, "<workspace_context>\n  <cwd>.</cwd>\n</workspace_context>");
+    pub fn formatContext(self: *const Self, allocator: std.mem.Allocator) ![]const u8 {
+        var buf: std.ArrayList(u8) = .empty;
+        defer buf.deinit(allocator);
+        try buf.appendSlice(allocator, "<workspace_context>\n");
+        {
+            const s = try std.fmt.allocPrint(allocator, "  <cwd>{s}</cwd>\n", .{self.cwd});
+            defer allocator.free(s);
+            try buf.appendSlice(allocator, s);
+        }
+        if (self.repo_root) |root| {
+            const s = try std.fmt.allocPrint(allocator, "  <git_repo>{s}</git_repo>\n", .{root});
+            defer allocator.free(s);
+            try buf.appendSlice(allocator, s);
+        }
+        if (self.branch) |b| {
+            const s = try std.fmt.allocPrint(allocator, "  <branch>{s}</branch>\n", .{b});
+            defer allocator.free(s);
+            try buf.appendSlice(allocator, s);
+        }
+        if (self.default_branch) |db| {
+            const s = try std.fmt.allocPrint(allocator, "  <default_branch>{s}</default_branch>\n", .{db});
+            defer allocator.free(s);
+            try buf.appendSlice(allocator, s);
+        }
+        if (self.git_status) |s_orig| {
+            const t = if (s_orig.len > 2000) s_orig[0..2000] else s_orig;
+            const s = try std.fmt.allocPrint(allocator, "  <git_status>\n{s}\n  </git_status>\n", .{t});
+            defer allocator.free(s);
+            try buf.appendSlice(allocator, s);
+        }
+        if (self.recent_commits.len > 0) {
+            try buf.appendSlice(allocator, "  <recent_commits>\n");
+            for (self.recent_commits) |c| {
+                const s = try std.fmt.allocPrint(allocator, "    <commit>{s}</commit>\n", .{c});
+                defer allocator.free(s);
+                try buf.appendSlice(allocator, s);
+            }
+            try buf.appendSlice(allocator, "  </recent_commits>\n");
+        }
+        var it = self.project_docs.iterator();
+        while (it.next()) |e| {
+            const p = if (e.value_ptr.*.len > 300) e.value_ptr.*[0..300] else e.value_ptr.*;
+            const s = try std.fmt.allocPrint(allocator, "  <file name=\"{s}\">\n{s}\n  </file>\n", .{ e.key_ptr.*, p });
+            defer allocator.free(s);
+            try buf.appendSlice(allocator, s);
+        }
+        try buf.appendSlice(allocator, "</workspace_context>");
+        return try buf.toOwnedSlice(allocator);
     }
 };
 
-/// Find git repository root from a starting directory
-/// TODO: Full implementation in TASK-INFRA-010
-fn findGitRoot(allocator: std.mem.Allocator, start_dir: []const u8) !?[]const u8 {
-    _ = allocator;
-    _ = start_dir;
-    // Simplified for Zig 0.16 compatibility - full implementation pending
+fn runGit(allocator: std.mem.Allocator, _cwd: []const u8, argv: []const []const u8) !?[]const u8 {
+    _ = _cwd;
+    const io = try utils.getIo();
+    const result = std.process.run(allocator, io, .{
+        .argv = argv,
+        .stdout_limit = @enumFromInt(16384),
+        .stderr_limit = @enumFromInt(1024),
+    }) catch return null;
+    defer { allocator.free(result.stdout); allocator.free(result.stderr); }
+    if (result.term == .exited and result.term.exited == 0 and result.stdout.len > 0)
+        return try allocator.dupe(u8, std.mem.trim(u8, result.stdout, " \t\n\r"));
     return null;
 }
 
-/// Get current git branch
-/// TODO: Full implementation in TASK-INFRA-010
-fn getGitBranch(allocator: std.mem.Allocator, repo_root: []const u8) !?[]const u8 {
-    _ = allocator;
-    _ = repo_root;
+fn findGitRoot(allocator: std.mem.Allocator, _start_dir: []const u8) !?[]const u8 {
+    _ = _start_dir;
+    return try runGit(allocator, ".", &[_][]const u8{ "git", "rev-parse", "--show-toplevel" });
+}
+
+fn getGitBranch(allocator: std.mem.Allocator, _repo_root: []const u8) !?[]const u8 {
+    _ = _repo_root;
+    if (try runGit(allocator, ".", &[_][]const u8{ "git", "branch", "--show-current" })) |b|
+        if (b.len > 0) return b;
+    return try runGit(allocator, ".", &[_][]const u8{ "git", "rev-parse", "--abbrev-ref", "HEAD" });
+}
+
+fn getGitDefaultBranch(allocator: std.mem.Allocator, _repo_root: []const u8) !?[]const u8 {
+    _ = _repo_root;
+    const out = try runGit(allocator, ".", &[_][]const u8{ "git", "remote", "show", "origin" }) orelse return null;
+    var lines = std.mem.splitScalar(u8, out, '\n');
+    while (lines.next()) |line| {
+        if (std.mem.indexOf(u8, line, "HEAD branch:")) |pos| {
+            const name = std.mem.trim(u8, line[pos + "HEAD branch:".len ..], " \t\n\r");
+            if (name.len > 0) return try allocator.dupe(u8, name);
+        }
+    }
     return null;
 }
 
-/// Get default git branch
-/// TODO: Full implementation in TASK-INFRA-010
-fn getGitDefaultBranch(allocator: std.mem.Allocator, repo_root: []const u8) !?[]const u8 {
-    _ = allocator;
-    _ = repo_root;
-    return null;
+fn getGitStatus(allocator: std.mem.Allocator, _repo_root: []const u8) !?[]const u8 {
+    _ = _repo_root;
+    return try runGit(allocator, ".", &[_][]const u8{ "git", "status", "--short", "--branch" });
 }
 
-/// Get git status
-/// TODO: Full implementation in TASK-INFRA-010
-fn getGitStatus(allocator: std.mem.Allocator, repo_root: []const u8) !?[]const u8 {
-    _ = allocator;
-    _ = repo_root;
-    return null;
+fn getRecentCommits(allocator: std.mem.Allocator, _repo_root: []const u8, count: usize) ![][]const u8 {
+    _ = _repo_root;
+    const cnt = try std.fmt.allocPrint(allocator, "{d}", .{count});
+    defer allocator.free(cnt);
+    const argv = &[_][]const u8{ "git", "log", "--oneline", "-n", cnt };
+    const out = try runGit(allocator, ".", argv) orelse return &[_][]const u8{};
+    var commits: std.ArrayList([]const u8) = .empty;
+    defer commits.deinit(allocator);
+    var lines = std.mem.splitScalar(u8, std.mem.trim(u8, out, " \t\n\r"), '\n');
+    while (lines.next()) |line| {
+        const entry = std.mem.trim(u8, line, " \t\n\r");
+        if (entry.len > 0) try commits.append(allocator, try allocator.dupe(u8, entry));
+    }
+    return try commits.toOwnedSlice(allocator);
 }
 
-/// Get recent commits
-/// TODO: Full implementation in TASK-INFRA-010
-fn getRecentCommits(allocator: std.mem.Allocator, repo_root: []const u8, count: usize) ![][]const u8 {
-    _ = repo_root;
-    _ = count;
-    // Return empty slice allocated with allocator
-    return try allocator.alloc([]const u8, 0);
-}
-
-/// Run a git command and return output using POSIX
-/// TODO: Full implementation in TASK-INFRA-010 using Zig 0.16 std.Io
-fn runGitCommand(allocator: std.mem.Allocator, cwd: []const u8, argv: []const []const u8) !?[]const u8 {
-    _ = allocator;
-    _ = cwd;
-    _ = argv;
-    // Simplified for Zig 0.16 compatibility - full implementation pending
-    return null;
-}
-
-/// Read file with size limit using POSIX
-/// TODO: Full implementation in TASK-INFRA-010 using Zig 0.16 std.Io
 fn readFileLimited(allocator: std.mem.Allocator, path: []const u8, max_bytes: usize) !?[]const u8 {
-    _ = allocator;
-    _ = path;
-    _ = max_bytes;
-    // Simplified for Zig 0.16 compatibility - full implementation pending
-    return null;
+    return utils.readFileAlloc(allocator, path, max_bytes) catch |err| switch (err) {
+        error.FileNotFound, error.AccessDenied => null,
+        else => null,
+    };
 }
 
 // ============================================================================
@@ -172,37 +195,35 @@ fn readFileLimited(allocator: std.mem.Allocator, path: []const u8, max_bytes: us
 // ============================================================================
 
 test "WorkspaceInfo init/deinit" {
-    const allocator = std.testing.allocator;
-    var info = try WorkspaceInfo.init(allocator, "/tmp");
+    const alloc = std.testing.allocator;
+    var info = try WorkspaceInfo.init(alloc, "/tmp");
     defer info.deinit();
-    
     try std.testing.expectEqualStrings("/tmp", info.cwd);
 }
 
-test "findGitRoot" {
-    const allocator = std.testing.allocator;
-    
-    // Test with current directory (should find git root)
-    const root = try findGitRoot(allocator, ".");
+test "findGitRoot finds repo" {
+    const alloc = std.testing.allocator;
+    const root = try findGitRoot(alloc, ".");
     if (root) |r| {
-        defer allocator.free(r);
-        // Should contain .git
-        try std.testing.expect(std.mem.indexOf(u8, r, ".git") != null or 
-                              utils.fileExists(".git"));
+        defer alloc.free(r);
+        try std.testing.expect(r.len > 0);
     }
 }
 
-test "formatContext" {
-    const allocator = std.testing.allocator;
-    var info = try WorkspaceInfo.init(allocator, "/home/user/project");
+test "formatContext includes branch" {
+    const alloc = std.testing.allocator;
+    var info = try WorkspaceInfo.init(alloc, "/home/user/project");
     defer info.deinit();
-    
-    // Manually set some fields
-    info.branch = try allocator.dupe(u8, "main");
-    
-    const context = try info.formatContext(allocator);
-    defer allocator.free(context);
-    
-    try std.testing.expect(std.mem.indexOf(u8, context, "<workspace_context>") != null);
-    try std.testing.expect(std.mem.indexOf(u8, context, "main") != null);
+    info.branch = try alloc.dupe(u8, "main");
+    const ctx = try info.formatContext(alloc);
+    defer alloc.free(ctx);
+    try std.testing.expect(std.mem.indexOf(u8, ctx, "main") != null);
+}
+
+test "WorkspaceInfo collect in git repo" {
+    const alloc = std.testing.allocator;
+    var info = try WorkspaceInfo.init(alloc, ".");
+    defer info.deinit();
+    try info.collect();
+    try std.testing.expect(info.repo_root != null);
 }

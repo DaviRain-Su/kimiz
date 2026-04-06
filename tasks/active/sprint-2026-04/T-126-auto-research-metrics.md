@@ -199,6 +199,7 @@ pub const EventType = enum {
 - **关键发现**：T-124已建立完整的metrics基础设施，只需扩展EventType
 
 ### 2026-04-06 09:00 - Research Phase 2-3完成
+### 2026-04-06 09:10 - Spec细节完善完成
 **Phase 2关键设计问题回答**：
 1. **记录点选择** - Document-Driven Workflow的4个状态转换是天然插入点
    - 任务创建→research_start
@@ -230,11 +231,39 @@ pub const EventType = enum {
 - ✅ 插入点最小化：只在关键生命周期事件记录，避免噪音
 - ✅ 数据结构设计：优先简单，避免过度设计
 
+**Spec细节完善**：
+1. **测试策略**（20min）
+   - 5个测试用例组（Unit + Integration + Performance）
+   - 覆盖序列化、边界情况、并发、性能benchmark
+   - 明确验收标准：record<0.5ms, flush<10ms, JSON<1KB
+
+2. **错误处理策略**（10min）
+   - 5类错误的处理方式（文件创建、序列化、写入、无效输入、环境）
+   - Graceful degradation：metrics失败不影响核心功能
+   - 重试机制：写入失败重试1次
+
+3. **性能优化细节**（10min）
+   - 4个优化策略（批量刷新、惰性序列化、简化提取、异步可选）
+   - 性能监控内置：自动统计avg record/flush时间
+   - CLI命令：`kimiz metrics stats`
+
+4. **向后兼容性**（5min）
+   - JSON Lines天然支持schema扩展
+   - 旧版本跳过未知event_type
+   - 新版本完全兼容T-124的7个EventType
+
+5. **验收标准细化**（5min）
+   - 功能性、质量性、文档性三维度
+   - 手动验证步骤（repl命令序列）
+   - 性能验证命令
+
+**Total: 50min完成Spec细节完善**
+
 **Next Steps**：
-- ✅ Research phase完成，进入spec阶段
-- 完善技术规格文档（T-126 spec）
-- 定义详细的数据结构和API
-- 准备进入implementation
+- ✅ Spec阶段完成，准备进入implementation
+- 开始编写代码：扩展metrics.zig
+- 实现插入点：Agent.zig、工具层
+- 编写单元测试和集成测试
 
 ---
 
