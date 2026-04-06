@@ -122,6 +122,12 @@ pub const registry = &[_]SlashCommand{
         .usage = "/plan [on|off]",
         .handler = cmdPlan,
     },
+    .{
+        .name = "resync",
+        .description = "Re-sync spec with code: read active task, check inconsistencies, propose fixes",
+        .usage = "/resync",
+        .handler = cmdResync,
+    },
 };
 
 /// Look up a slash command by name
@@ -397,6 +403,87 @@ fn cmdPlan(ctx: *SlashContext, args: []const u8) !void {
     const msg = try std.fmt.allocPrint(ctx.allocator, "✅ Plan mode {s}", .{if (ctx.agent.options.plan_mode) "enabled" else "disabled"});
     defer ctx.allocator.free(msg);
     ctx.printLine(msg);
+}
+
+fn cmdResync(ctx: *SlashContext, _: []const u8) !void {
+    const utils = @import("../utils/root.zig");
+    const sprint_dir = "tasks/active/sprint-2026-04";
+    const io = try utils.getIo();
+
+    const dir = try utils.openDir(sprint_dir, .{ .iterate = true });
+    defer dir.close(io);
+
+    var task_file: []const u8 = "";
+    var it = dir.iterate();
+    while (try it.next(io)) |entry| {
+        if (entry.kind != .file) continue;
+        if (!std.mem.startsWith(u8, entry.name, "T-")) continue;
+        if (!std.mem.endsWith(u8, entry.name, ".md")) continue;
+
+        // Skip README or non-task files
+        const full_path = try std.fmt.allocPrint(ctx.allocator, "{s}/{s}", .{ sprint_dir, entry.name });
+        defer ctx.allocator.free(full_path);
+
+        const content = utils.readFileAlloc(ctx.allocator, full_path, 256 * 1024) catch continue;
+        defer ctx.allocator.free(content);
+
+        // Check if task is not done
+        if (std.mem.indexOf(u8, content, "`done`") == null) {
+            task_file = try ctx.allocator.dupe(u8, entry.name);
+            break;
+        }
+    }
+
+    if (task_file.len == 0) {
+        ctx.printLine("✅ No active tasks found to resync.");
+        return;
+    }
+    defer ctx.allocator.free(task_file);
+
+    const task_path = try std.fmt.allocPrint(ctx.allocator, "{s}/{s}", .{ sprint_dir, task_file });
+    defer ctx.allocator.free(task_path);
+
+    ctx.printLine("");
+    ctx.printLine("🔄 Resyncing task: ");
+    ctx.print(task_file);
+    ctx.printLine("");
+    ctx.printLine("Reading task file...");
+
+    const content = try utils.readFileAlloc(ctx.allocator, task_path, 256 * 1024);
+    defer ctx.allocator.free(content);
+
+    // Find spec path from task file
+    var lines = std.mem.splitScalar(u8, content, '\n');
+    var spec_path: ?[]const u8 = null;
+    while (lines.next()) |line| {
+        if (std.mem.startsWith(u8, std.mem.trim(u8, line, " \t"), "**Spec**")) {
+            // Format: **Spec**: `docs/specs/T-XXX-*.md`
+            const backtick = std.mem.indexOfScalar(u8, line, '`') orelse continue;
+            const after = line[backtick + 1 ..];
+            const end_tick = std.mem.indexOfScalar(u8, after, '`') orelse continue;
+            spec_path = try ctx.allocator.dupe(u8, after[0..end_tick]);
+            break;
+        }
+    }
+    defer if (spec_path) |s| ctx.allocator.free(s);
+
+    if (spec_path) |sp| {
+        ctx.printLine("Checking spec: ");
+        ctx.printLine(sp);
+
+        if (!utils.fileExists(sp)) {
+            ctx.printLine("⚠️  Spec file not found: ");
+            ctx.printLine(sp);
+        } else {
+            ctx.printLine("✅ Spec file exists. Use sync_spec_with_code tool for detailed diff.");
+        }
+    } else {
+        ctx.printLine("⚠️  No Spec linked in task file.");
+    }
+
+    ctx.printLine("");
+    ctx.printLine("📋 To proceed with full resync, type your next request to the agent.");
+    ctx.printLine("   The agent will use the document-driven workflow to align with this task.");
 }
 
 // ============================================================================

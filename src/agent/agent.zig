@@ -391,25 +391,43 @@ pub const Agent = struct {
 
     /// Send a user prompt and run the agent loop
     pub fn prompt(self: *Self, user_content: []const u8) !void {
+        const doc_prefix =
+            \\=== DOCUMENT-DRIVEN PROTOCOL ===
+            \\You follow a document-driven workflow. Your long-term memory is in the project's task and spec documents, NOT in the context window.
+            \\
+            \\Before each round of work:
+            \\1. Call `read_active_task` to get the current active task and its context.
+            \\2. Follow the workflow described in the task file.
+            \\3. After each meaningful step, call `update_task_log` to append a log entry.
+            \\4. If you find inconsistencies between the spec and code, call `sync_spec_with_code` to report them.
+            \\
+            \\If you discover your behavior deviates from the active task scope, STOP and ask for confirmation.
+            \\=== END PROTOCOL ===
+        ;
+
         // Inject system prompt on first message
         if (self.messages.items.len == 0) {
             const system_text = if (self.options.plan_mode)
                 try std.fmt.allocPrint(self.allocator,
+                    \\{s}
+                    \\
                     \\You are Kimiz in PLAN MODE. Your job is to EXPLORE the codebase using ONLY read-only tools.
                     \\Allowed tools: read_file, fff_grep, fff_file_search, git_status, git_diff, git_log.
                     \\You MUST NOT use write_file, edit, or bash.
                     \\After exploring, provide a detailed step-by-step Markdown plan.
                     \\Working directory: {s}
                     \\\n\nUser request: {s}
-                , .{ self.options.project_path orelse ".", user_content })
+                , .{ doc_prefix, self.options.project_path orelse ".", user_content })
             else
                 try std.fmt.allocPrint(self.allocator,
+                    \\{s}
+                    \\
                     \\You are Kimiz, an AI coding assistant. You have access to tools for reading, writing, and editing files, running shell commands, and searching code.
                     \\When asked to modify code, use the edit tool with exact old_string/new_string matches.
                     \\When asked to read files, use absolute paths.
                     \\Working directory: {s}
                     \\\n\n{s}
-                , .{ self.options.project_path orelse ".", user_content });
+                , .{ doc_prefix, self.options.project_path orelse ".", user_content });
             const content = try self.allocator.alloc(core.UserContentBlock, 1);
             content[0] = .{ .text = system_text };
             const user_msg = Message{

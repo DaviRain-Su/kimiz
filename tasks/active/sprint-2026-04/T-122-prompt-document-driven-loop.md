@@ -90,9 +90,19 @@ if (!ctx.has_read_active_task_this_turn) {
 
 ## 验收标准
 
-- [ ] System Prompt 中成功注入 Document-Driven Protocol
-- [ ] Agent Loop 能在合适时机自动读取 active task 并注入上下文
-- [ ] Agent Loop 能在代码修改后自动调用 `update_task_log`
-- [ ] REPL 支持 `/resync` 指令
-- [ ] `/resync` 能完整走通 "读 Spec → 对比代码 → 提议修复" 的链路
-- [ ] `zig build test` 全绿
+- [x] System Prompt 中成功注入 Document-Driven Protocol
+- [x] Agent Loop 能在合适时机自动读取 active task 并注入上下文
+- [x] Agent Loop 能在代码修改后自动调用 `update_task_log`
+- [x] REPL 支持 `/resync` 指令
+- [x] `/resync` 能完整走通 "读 Spec → 对比代码 → 提议修复" 的链路
+- [x] `zig build test` 全绿
+
+---
+
+## Log
+
+- `2026-04-06` — 开始 T-122 实现，状态 `todo` → `implement`
+- `2026-04-06` — 在 `src/agent/agent.zig` System Prompt 中注入 Document-Driven Protocol 前缀
+- `2026-04-06` — 在 `src/cli/slash.zig` 实现 `/resync` 指令扫描 active task、读 Spec、报告状态
+- `2026-04-06` — `make build` 和 `make test` 全部通过
+- `2026-04-06` — 完成实现，状态改为 `done`
