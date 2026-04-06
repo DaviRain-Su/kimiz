@@ -684,7 +684,9 @@ fn runSessionListCommand(allocator: std.mem.Allocator) !void {
     printLine("\n📋 Active Sessions:");
     printLine("-------------------");
     for (sessions) |s| {
-        printLine("  ID: " ++ s.id);
+        printLine("  ID:");
+        print(s.id);
+        print("\n");
         print("  State: ");
         print(@tagName(s.state));
         print("\n  Created: ");
