@@ -316,8 +316,6 @@ fn runGitCommandArgv(
     // Execute git command using Zig 0.16 native API
     const run_result = std.process.run(arena, io, .{
         .argv = argv,
-        .stdout_limit = @enumFromInt(100 * 1024),
-        .stderr_limit = @enumFromInt(100 * 1024),
     }) catch {
         return tool.errorResult(arena, "Failed to execute git command");
     };

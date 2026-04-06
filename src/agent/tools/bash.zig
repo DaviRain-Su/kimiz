@@ -186,6 +186,7 @@ fn executeCommand(
     working_dir: ?[]const u8,
     timeout_ms: u32,
 ) !CommandResult {
+    _ = timeout_ms; // Timeout not supported in std.process.run
     const io = utils.getIo() catch {
         return CommandResult{ .stdout = "", .stderr = "IoManager not initialized", .exit_code = null };
     };
@@ -197,12 +198,8 @@ fn executeCommand(
     }
 
     // Execute using Zig 0.16 native API
-    const timeout_ns: i96 = @as(i96, timeout_ms) * std.time.ns_per_ms;
     const result = std.process.run(arena, io, .{
         .argv = &.{ "sh", "-c", full_cmd },
-        .stdout_limit = @enumFromInt(100 * 1024),
-        .stderr_limit = @enumFromInt(100 * 1024),
-        .timeout = .{ .duration = .{ .raw = std.Io.Duration.fromNanoseconds(timeout_ns), .clock = undefined } },
     }) catch {
         return CommandResult{ .stdout = "", .stderr = "Failed to execute command", .exit_code = null };
     };

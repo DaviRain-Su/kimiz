@@ -12,10 +12,11 @@ pub fn build(b: *std.Build) void {
     });
 
     // TASK-INFRA-007: Add yazap CLI parser dependency
-    const yazap_dep = b.dependency("yazap", .{
-        .target = target,
-        .optimize = optimize,
-    });
+    // NOTE: yazap 暂时禁用，等待 Zig 0.16 兼容更新
+    // const yazap_dep = b.dependency("yazap", .{
+    //     .target = target,
+    //     .optimize = optimize,
+    // });
 
     // TASK-INFRA-001: Add LMDB dependency
     const lmdb_dep = b.dependency("lmdb", .{
@@ -28,7 +29,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .imports = &.{
             .{ .name = "zwasm", .module = zwasm_dep.module("zwasm") },
-            .{ .name = "yazap", .module = yazap_dep.module("yazap") },
+            // .{ .name = "yazap", .module = yazap_dep.module("yazap") },
             .{ .name = "lmdb", .module = lmdb_dep.module("lmdb") },
         },
     });
@@ -36,22 +37,41 @@ pub fn build(b: *std.Build) void {
     mod.addLibraryPath(b.path("ffi"));
     mod.linkSystemLibrary("fff_c", .{});
 
+    // TUI support
+    const vaxis_dep = b.dependency("vaxis", .{ .target = target, .optimize = optimize });
+
+    // Single module — all src/ files come in via relative imports from main.zig
     const exe = b.addExecutable(.{
         .name = "kimiz",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/main.zig"),
             .target = target,
             .optimize = optimize,
+            .link_libc = true,
             .imports = &.{
-                .{ .name = "kimiz", .module = mod },
+                .{ .name = "vaxis", .module = vaxis_dep.module("vaxis") },
+                .{ .name = "zwasm", .module = zwasm_dep.module("zwasm") },
             },
         }),
     });
 
-    exe.root_module.addIncludePath(b.path("ffi"));
-    exe.root_module.addLibraryPath(b.path("ffi"));
-    exe.root_module.linkSystemLibrary("fff_c", .{});
-
+    // FFF-C
+    const build_fff = b.option(bool, "build-fff", "Build fff-c (requires cargo)") orelse true;
+    if (build_fff) {
+        const cargo = b.addSystemCommand(&.{ "cargo", "build", "--release", "-p", "fff-c" });
+        cargo.setCwd(b.path("vendor/fff.nvim"));
+        cargo.has_side_effects = true;
+        exe.step.dependOn(&cargo.step);
+        exe.root_module.addIncludePath(b.path("ffi"));
+        exe.root_module.addLibraryPath(b.path("vendor/fff.nvim/target/release"));
+        const inst = b.addInstallBinFile(b.path("vendor/fff.nvim/target/release/libfff_c.so"), "libfff_c.so");
+        inst.step.dependOn(&cargo.step);
+        b.getInstallStep().dependOn(&inst.step);
+    } else {
+        exe.root_module.addIncludePath(b.path("ffi"));
+        exe.root_module.addLibraryPath(b.path("ffi"));
+    }
+    exe.root_module.linkSystemLibrary("fff_c", .{ .preferred_link_mode = .dynamic });
     b.installArtifact(exe);
 
     const run_step = b.step("run", "Run the app");

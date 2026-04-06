@@ -141,10 +141,7 @@ pub const Generator = struct {
     fn compileTest(_: *Self) !bool {
         const io = @import("../utils/root.zig").getIo() catch return false;
         const result = std.process.run(std.heap.page_allocator, io, .{
-            .argv = &.{ "zig", "build", "test" },
-            .stdout_limit = @enumFromInt(256 * 1024),
-            .stderr_limit = @enumFromInt(256 * 1024),
-        }) catch return false;
+            .argv = &.{ "zig", "build", "test" },        }) catch return false;
         defer {
             std.heap.page_allocator.free(result.stdout);
             std.heap.page_allocator.free(result.stderr);

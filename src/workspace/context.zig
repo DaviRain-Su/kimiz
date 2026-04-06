@@ -127,10 +127,7 @@ fn runGit(allocator: std.mem.Allocator, _cwd: []const u8, argv: []const []const 
     _ = _cwd;
     const io = try utils.getIo();
     const result = std.process.run(allocator, io, .{
-        .argv = argv,
-        .stdout_limit = @enumFromInt(16384),
-        .stderr_limit = @enumFromInt(1024),
-    }) catch return null;
+        .argv = argv,    }) catch return null;
     defer { allocator.free(result.stdout); allocator.free(result.stderr); }
     if (result.term == .exited and result.term.exited == 0 and result.stdout.len > 0)
         return try allocator.dupe(u8, std.mem.trim(u8, result.stdout, " \t\n\r"));

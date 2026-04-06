@@ -28,3 +28,10 @@ Thumbs.db
 zig-pkg
 .cache-*
 .zig-cache-*
+.pi
+.factory
+.crush
+.claude
+.agents
+skills
+skills-lock.json
