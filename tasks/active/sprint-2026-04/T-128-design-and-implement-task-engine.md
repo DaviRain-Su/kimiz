@@ -652,6 +652,8 @@ kimiz run -- repl
 - **2026-04-06** (rspace): `make test` 通过（70/70 tests passed）。
 - **2026-04-06** (rspace): 实现 `ReviewAgent.review()` 的真实 LLM 集成：加载 `prompts/review/{role}.md`，拼接待审文档，调用 `agent.ai_client.complete()`，解析 `VERDICT: PASS/NEEDS_REVISION/BLOCKED`。
 - **2026-04-06** (rspace): `make test` 通过（71/71 tests passed）。
+- **2026-04-06** (rspace): 实现 Phase 4 自动任务拆解：`generateTasksFromBreakdown()` 读取 `04-task-breakdown.md` 中的 markdown 表格，为每行生成 `T-XXX.md` 到 `tasks/active/sprint-current/`；补充 `fs_helper` 的 C fallback 使测试在无 `IoManager` 环境下也能读写文件。
+- **2026-04-06** (rspace): `make test` 通过（76/76 tests passed）。
 
 ## Lessons Learned
 
@@ -668,7 +670,7 @@ kimiz run -- repl
 - [x] `getCurrentPhase(project_dir)` 能根据文档存在性正确返回当前 Phase（1~7）
 - [x] `validatePhaseDocument()` 能检查 Phase 文档是否包含模板要求的关键章节
 - [x] `executePhase()` 能按顺序执行 Phase 1 → Phase 2 → Phase 3，且不可跳跃（真实 LLM 驱动版本已实现）
-- [ ] Phase 4 完成后，能自动从 `04-task-breakdown.md` 生成至少 1 个 `T-XXX` 任务文件到 `tasks/active/`
+- [x] Phase 4 完成后，能自动从 `04-task-breakdown.md` 生成至少 1 个 `T-XXX` 任务文件到 `tasks/active/`
 
 ### Review 层（多角色评审）
 
