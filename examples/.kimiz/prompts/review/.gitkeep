@@ -1,0 +1,18 @@
+# Place your custom review agent prompts here.
+#
+# Example: create `tech-lead.md` to override the system default for Phase 3.
+# Example: create `security-auditor.md` to add a new role, then map it in config.yaml:
+#
+#   review_agents:
+#     phase_7: security-auditor
+#
+# Each prompt file must have YAML frontmatter:
+#
+#   ---
+#   role: "security-auditor"
+#   phase: 7
+#   name: "Security Auditor"
+#   version: "1.0.0"
+#   ---
+#
+#   You are a security auditor. Review the deployment for...

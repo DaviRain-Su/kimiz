@@ -14,6 +14,9 @@ zig-out/
 *.swo
 *~
 
+# Local config (user-specific)
+/.kimiz/
+
 # OS
 .DS_Store
 Thumbs.db
@@ -22,7 +25,6 @@ Thumbs.db
 *.db
 *.log
 .env
-.kimiz/
 zig-pkg
 .cache-*
 .zig-cache-*

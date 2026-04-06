@@ -272,7 +272,136 @@ gstack 解决了"角色专业化"的问题，但**没有解决自动编排的问
    - KimiZ 可以在 `prompts/review/TEMPLATE.md` 中定义共享结构
    - 各角色 prompt 从模板生成，确保一致性和可维护性
 
-**结论**：KimiZ 不是重复发明 gstack 的角色 prompt，而是**在 gstack 之上加一个自动编排层（TaskEngine）**，让 gstack 式的专家 review 在正确的时机自动发生。
+### 2.7 Prompt 加载与自定义系统（用户可扩展角色）
+
+这是 KimiZ 相比 gstack 的关键差异化能力：**不仅内置角色，还允许用户完全自定义和扩展角色**。
+
+#### 层级覆盖机制（Cascade Loading）
+
+Prompt 加载器按优先级从三个层级搜索 prompt 文件，**高优先级覆盖低优先级**：
+
+```
+1. 项目级: .kimiz/prompts/review/ROLE.md   (当前工作目录)
+2. 用户级: ~/.kimiz/prompts/review/ROLE.md (用户 home)
+3. 系统级: prompts/review/ROLE.md          (KimiZ 仓库自带)
+```
+
+示例配置见 `examples/.kimiz/config.yaml`。
+
+**行为**：
+- 如果项目级存在 `custom-auditor.md`，TaskEngine 会注册一个名为 `custom-auditor` 的新 Review Agent
+- 如果用户级存在 `tech-lead.md`，它会完全覆盖系统内置的 Tech Lead prompt
+- 如果只有系统级存在，使用默认内置 prompt
+
+#### PromptLoader 数据结构
+
+```zig
+pub const PromptLoader = struct {
+    allocator: std.mem.Allocator,
+    
+    /// Search paths in priority order
+    search_paths: []const []const u8,
+    
+    /// Load all prompts from search paths
+    pub fn loadAll(self: *PromptLoader, registry: *PromptRegistry) !void {
+        // 1. Load system defaults
+        try self.loadFromDir("prompts/review", registry);
+        
+        // 2. Load user overrides
+        try self.loadFromDir("~/.kimiz/prompts/review", registry);
+        
+        // 3. Load project overrides (highest priority)
+        try self.loadFromDir(".kimiz/prompts/review", registry);
+    }
+    
+    /// Parse a markdown file with YAML frontmatter into PromptTemplate
+    pub fn loadPromptFile(self: *PromptLoader, path: []const u8) !PromptTemplate {
+        // Read file
+        // Parse YAML frontmatter (between --- lines)
+        // Extract: role, phase, name, version, allowed_tools, description
+        // Body = markdown content after frontmatter
+        // Return PromptTemplate
+    }
+};
+```
+
+#### 自定义角色的两种模式
+
+**模式 A：覆盖现有角色**
+
+用户创建 `~/.kimiz/prompts/review/tech-lead.md`：
+```yaml
+---
+role: tech-lead
+phase: 3
+name: "My Company's Tech Lead"
+version: "1.0.0"
+---
+
+You are a tech lead at ACME Corp. In addition to standard checks,
+ALWAYS verify that:
+- All new code uses our internal `acme_alloc` allocator
+- No `std.debug.print` remains in production code
+- Every public function has a corresponding benchmark
+```
+
+**模式 B：创建全新角色**
+
+用户创建 `.kimiz/prompts/review/rust-specialist.md`：
+```yaml
+---
+role: rust-specialist
+phase: 6
+name: "Rust Safety Specialist"
+version: "1.0.0"
+---
+
+You are a Rust safety specialist. Review the code for:
+- Unsafe blocks are minimized and justified
+- No `.unwrap()` in production paths
+- Proper lifetime annotations on public APIs
+```
+
+然后用户可以在 `.kimiz/config.yaml` 中配置 Phase 映射：
+
+```yaml
+review_agents:
+  phase_6: rust-specialist  # 覆盖默认的 code-reviewer
+```
+
+或者 TaskEngine 自动识别：只要在 `prompts/review/` 里有的 `.md` 文件，自动注册为可用 Review Agent。
+
+#### 动态 Prompt 注入流程
+
+```zig
+pub fn getReviewAgentPrompt(loader: *PromptLoader, role: []const u8) ![]const u8 {
+    // 1. Search cascade
+    for (loader.search_paths) |search_dir| {
+        const path = try std.fs.path.join(allocator, &.{ search_dir, role ++ ".md" });
+        if (fileExists(path)) {
+            const template = try loader.loadPromptFile(path);
+            return try template.render(allocator, context_values);
+        }
+    }
+    return error.RoleNotFound;
+}
+```
+
+#### 与 KimiZ 现有系统的集成
+
+- `src/prompts/root.zig` 已有 `PromptTemplate` 和 `PromptRegistry`
+- 当前 `registerBuiltin()` 是硬编码字符串
+- **T-128 需要重构 `PromptRegistry`**，让它支持从文件系统加载和层级覆盖
+- Review Agent 的 `review()` 函数通过 `PromptLoader` 动态获取 prompt，而不是 compile-time 硬编码
+
+#### 为什么这很重要
+
+1. **用户主权**：每个团队/项目可以调教 Review Agent 符合自己的规范
+2. **无需改代码就能扩展**：新增角色只需要创建一个 markdown 文件
+3. **渐进式采用**：先用内置角色，不满意再覆盖，不需要 fork KimiZ
+4. **Scale 友好**：gstack 的 23 个 skill 是仓库级维护的；KimiZ 的 prompt 可以在组织内共享（把 `~/.kimiz/prompts/` 做成 git repo 即可）
+
+**结论**：KimiZ 不是重复发明 gstack 的角色 prompt，而是**在 gstack 之上加一个自动编排层（TaskEngine）+ 一个用户可扩展的 Prompt 加载系统**，让 gstack 式的专家 review 在正确的时机自动发生，并且完全由用户控制。
 
 ### 3. Phase 4 → Task 自动拆解
 
@@ -382,11 +511,13 @@ kimiz run -- repl
 | `src/engine/project.zig` | 新增：Project 和 Phase 状态机 |
 | `src/engine/task.zig` | 新增：TaskEngine 核心实现（任务队列、依赖解析、归档） |
 | `src/engine/review.zig` | 新增：ReviewAgent 多角色评审系统 |
+| `src/prompts/loader.zig` | 新增：PromptLoader，支持 cascade 加载和 YAML frontmatter 解析 |
 | `src/cli/root.zig` | 新增：`kimiz project create` 和 `--autonomous` 子命令；保留 REPL 调试命令 |
 | `src/agent/agent.zig` | 新增：`executePhase(project, phase)` 和 `executeTask(task)` 接口 |
 | `src/agent/tools/task_tools.zig` | 新增/扩展：`create_project`, `read_phase_template`, `validate_phase_doc`, `read_task`, `update_task_status`, `archive_task` |
 | `prompts/review/` | 新增：7 个 Review Agent prompt 文件（product-manager.md 等） |
-| `tests/task_engine_tests.zig` | 新增：Project/Phase/Task/Review 四层状态机单元测试 |
+| `examples/.kimiz/` | 新增：示例 config.yaml + prompts 自定义目录结构 |
+| `tests/task_engine_tests.zig` | 新增：Project/Phase/Task/Review/PromptLoader 五层测试 |
 | `docs/guides/TASK-LIFECYCLE.md` | 更新：加入 TaskEngine 自动归档和 7-phase 流转规则 |
 
 ---
@@ -409,6 +540,10 @@ kimiz run -- repl
 - [ ] `executePhase()` 在形式验收后自动调用 Review Agent；`PASS` 才能进入下一阶段
 - [ ] Review 结果为 `NEEDS_REVISION` 时，Author Agent 能根据反馈修改文档并重试（最多 2 次）
 - [ ] `prompts/review/` 目录下至少存在 4 个角色 prompt 文件（product-manager, system-architect, tech-lead, code-reviewer）
+- [ ] `PromptLoader` 能从 markdown 文件解析 YAML frontmatter 生成 `PromptTemplate`
+- [ ] `PromptLoader.loadAll()` 按 `.kimiz/` > `~/.kimiz/` > `prompts/` 的优先级正确加载和覆盖
+- [ ] 用户创建 `.kimiz/prompts/review/custom-role.md` 后，TaskEngine 能识别并注册为新的 Review Agent
+- [ ] 用户覆盖 `~/.kimiz/prompts/review/tech-lead.md` 后，Phase 3 的 Review Agent 使用用户自定义 prompt
 
 ### Task 层（任务队列执行）
 

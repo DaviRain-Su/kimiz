@@ -1,0 +1,24 @@
+# KimiZ Project Configuration
+# This file lives at .kimiz/config.yaml and overrides user-level ~/.kimiz/config.yaml
+
+# Review Agent phase mapping
+# You can assign custom review agents to any phase by role name.
+# The role must correspond to a .md file in .kimiz/prompts/review/ or ~/.kimiz/prompts/review/
+review_agents:
+  phase_1: product-manager      # PRD review
+  phase_2: system-architect     # Architecture review
+  phase_3: tech-lead            # Technical Spec review
+  phase_4: project-manager      # Task Breakdown review
+  phase_5: qa-engineer          # Test Spec review
+  phase_6: code-reviewer        # Implementation review
+  phase_7: release-engineer     # Final review & deploy
+
+# Task Engine behavior
+task_engine:
+  auto_archive: true            # Automatically move completed tasks to tasks/completed/
+  max_review_retries: 2         # How many times an Author Agent retries after NEEDS_REVISION
+  require_checklist_min: 1      # Minimum number of checked items to mark a task done
+
+# Optional: custom prompt search paths (in addition to defaults)
+# prompt_paths:
+#   - ./my-prompts
