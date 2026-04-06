@@ -1,5 +1,5 @@
 ### TASK-INFRA-006: 将 Obsidian Wiki 作为 Long-Term Memory 存储层
-**状态**: pending
+**状态**: done
 **优先级**: P1
 **创建**: 2026-04-05
 **预计耗时**: 6h

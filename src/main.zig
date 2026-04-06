@@ -10,7 +10,7 @@ pub fn main(init: std.process.Init) !u8 {
     try utils.initIoManager(allocator, init.io);
     defer utils.deinitIoManager();
 
-    try cli.run(allocator, init.environ_map, init.minimal.args);
+    try cli.run(allocator, init.io, init.environ_map, init.minimal.args);
     return 0;
 }
 

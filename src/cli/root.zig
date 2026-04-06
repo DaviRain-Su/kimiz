@@ -129,63 +129,72 @@ pub fn getEnvVar(allocator: std.mem.Allocator, name: []const u8) error{NotFound,
 
 pub fn run(
     allocator: std.mem.Allocator,
+    io: std.Io,
     environ_map: *std.process.Environ.Map,
     args: std.process.Args,
 ) !void {
-    // Initialize environment variables
     initEnvVars(environ_map);
-    // Parse simple args using iterator
-    var it = args.iterate();
-    
-    // Collect args into a list for easier handling
-    var args_list: std.ArrayList([]const u8) = .empty;
-    defer args_list.deinit(allocator);
-    
-    while (it.next()) |arg| {
-        try args_list.append(allocator, arg);
-    }
-    
-    const args_slice = args_list.items;
 
-    // Check for help
-    if (args_slice.len > 1 and (std.mem.eql(u8, args_slice[1], "--help") or std.mem.eql(u8, args_slice[1], "-h") or std.mem.eql(u8, args_slice[1], "help"))) {
-        printHelp();
-        return;
-    }
+    var app = yazap.App.init(allocator, "kimiz", "AI Coding Agent");
+    defer app.deinit();
+    try app.rootCommand().addArg(yazap.Arg.booleanOption("version", 'v', "Show version"));
 
-    // Check for version
-    if (args_slice.len > 1 and (std.mem.eql(u8, args_slice[1], "--version") or std.mem.eql(u8, args_slice[1], "-v") or std.mem.eql(u8, args_slice[1], "version"))) {
-        printLine("kimiz version 0.3.0");
-        return;
-    }
+    // kimiz skill <skill_id> [params...]
+    var skill_cmd = app.createCommand("skill", "Execute a skill directly");
+    try skill_cmd.addArg(yazap.Arg.positional("SKILL_ID", "Skill identifier", null));
+    try app.rootCommand().addSubcommand(skill_cmd);
 
-    // Check for skill command
-    if (args_slice.len > 1 and std.mem.eql(u8, args_slice[1], "skill")) {
-        if (args_slice.len < 3) {
+    // kimiz generate-skill <name> <description>
+    var gen_cmd = app.createCommand("generate-skill", "Generate a new skill");
+    try gen_cmd.addArg(yazap.Arg.positional("NAME", "Skill name", null));
+    try gen_cmd.addArg(yazap.Arg.positional("DESCRIPTION", "Skill description", null));
+    try app.rootCommand().addSubcommand(gen_cmd);
+
+    // kimiz metrics [action]
+    var metrics_cmd = app.createCommand("metrics", "Observability metrics (show|list|history|export)");
+    try metrics_cmd.addArg(yazap.Arg.positional("ACTION", "Action", null));
+    try app.rootCommand().addSubcommand(metrics_cmd);
+
+    // Parse arguments
+    const matches = app.parseProcess(io, args) catch |err| {
+        return err;
+    };
+
+    // Dispatch
+    if (matches.containsArg("skill")) {
+        const m = matches.subcommandMatches("skill").?;
+        const skill_id = m.getSingleValue("SKILL_ID") orelse {
             printLine("Usage: kimiz skill <skill_id> [param=value...]");
             return;
-        }
-        try runSkillCommand(allocator, args_slice[2..]);
+        };
+        const params_arr: [1][]const u8 = .{skill_id};
+        try runSkillCommand(allocator, &params_arr);
         return;
     }
 
-    // Check for generate-skill command
-    if (args_slice.len > 1 and std.mem.eql(u8, args_slice[1], "generate-skill")) {
-        if (args_slice.len < 4) {
+    if (matches.containsArg("generate-skill")) {
+        const m = matches.subcommandMatches("generate-skill").?;
+        const name = m.getSingleValue("NAME") orelse {
             printLine("Usage: kimiz generate-skill <name> <description>");
             return;
-        }
-        try runGenerateSkillCommand(allocator, args_slice[2], args_slice[3]);
+        };
+        const desc = m.getSingleValue("DESCRIPTION") orelse {
+            printLine("Usage: kimiz generate-skill <name> <description>");
+            return;
+        };
+        try runGenerateSkillCommand(allocator, name, desc);
         return;
     }
 
-    // Check for metrics commands
-    if (args_slice.len > 1 and std.mem.eql(u8, args_slice[1], "metrics")) {
-        try runMetricsCommand(allocator, if (args_slice.len > 2) args_slice[2..] else &[_][]const u8{});
+    if (matches.containsArg("metrics")) {
+        const m = matches.subcommandMatches("metrics").?;
+        const action = m.getSingleValue("ACTION") orelse "show";
+        const metrics_args: [1][]const u8 = .{action};
+        try runMetricsCommand(allocator, &metrics_args);
         return;
     }
 
-    // Interactive mode
+    // No subcommand = interactive mode
     try runInteractive(allocator);
 }
 

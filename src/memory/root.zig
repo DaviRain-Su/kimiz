@@ -1,10 +1,14 @@
-//! kimiz-memory - Simplified Session-Based Memory
-//! MVP: Single-layer session memory only
-//! Three-tier architecture removed per MVP roadmap
+//! kimiz-memory - Simplified Session-Based Memory + Obsidian Long-Term Memory
+//! TASK-INFRA-006: Obsidian-compatible Markdown storage for long-term memory
 
 const std = @import("std");
 const session = @import("../core/session.zig");
 const utils = @import("../utils/root.zig");
+
+// Obsidian-compatible Markdown storage (TASK-INFRA-006)
+pub const obsidian = @import("obsidian_store.zig");
+pub const ObsidianStore = obsidian.ObsidianStore;
+pub const ObsidianEntry = obsidian.ObsidianEntry;
 
 // Re-export Session types
 pub const Session = session.Session;
