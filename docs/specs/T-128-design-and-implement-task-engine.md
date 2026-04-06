@@ -471,25 +471,49 @@ Orchestrator kimiz process (不直接执行 skill)
 
 这和 T-092 (delegate subagent) + T-119 (git worktree) 的架构完全一致。TaskEngine 本身就是 Orchestrator。
 
-#### 设计应对 3：解释型 Plugin 层（未来）
+#### 设计应对 3：WASM Plugin — 终端用户自定义 Skill 的唯一可行路径
 
-KimiZ 已经依赖了 `zwasm`（`build.zig.zon` 中有）。未来可以支持 WASM-based skills：
+KimiZ 已经依赖了 `zwasm`（`build.zig.zon` 中有）。支持 WASM-based skills 不是"锦上添花"，而是**产品化的必要条件**。
+
+**核心逻辑**：
+
+> 如果 KimiZ 作为产品只分发二进制（不给源码），用户无法使用 `defineSkill`（需要重新编译 Zig）。
+> 要让终端用户能自定义 Skill，必须提供**运行时动态加载**机制。
+> 在 Zig 这种静态编译语言中，安全、跨平台、沙箱化的运行时动态加载，**唯一可行方案就是 WASM**。
 
 ```zig
 pub const WasmSkill = struct {
     module: wasm.Module,
-    execute: fn(input: []const u8) ![]const u8,
+    
+    /// Execute with JSON input/output
+    pub fn execute(self: *WasmSkill, input_json: []const u8) ![]const u8 {
+        // 1. Write input to WASM memory
+        // 2. Call exported `execute` function
+        // 3. Read output from WASM memory
+    }
 };
 ```
 
-这样用户可以用任何语言编译成 WASM，然后 KimiZ 在运行时加载。这真正实现了"零编译"的技能扩展。
+**WASM Skill 的两种来源**：
 
-#### 当前 T-128 的范围
+1. **用户手写 WASM**：高级用户用 Rust/Go/Zig/AssemblyScript 写 WASM，丢到 `~/.kimiz/skills/my-skill.wasm`
+2. **Prompt → WASM 自动生成**：用户只写自然语言描述，KimiZ 内部用 LLM 生成 Zig 代码，编译为 WASM，然后加载
+
+**WASM 的优势**：
+- ✅ 零编译（对用户而言）
+- ✅ 沙箱安全（WASM 无法访问宿主文件系统，除非显式 import 接口）
+- ✅ 跨语言（用户可以用 Rust/Go 写 skill）
+- ✅ 跨平台（一份 `.wasm` 到处运行）
+- ✅ 热加载（运行时 `dlopen` 等价物）
+
+#### 当前 T-128 的范围与后续任务
 
 - **Phase 1-5 的 Review Agents**：纯 Prompt，完全运行时动态 ✅
 - **Phase 6 的 Compiled Skills**：通过 generator + `zig build` 自动处理 ✅
 - **运行时热加载**：通过 Orchestrator-Worker 模式解决 ✅
-- **WASM Plugin**：超出 T-128 范围，作为 backlog 项目标记 🔮
+- **WASM Plugin**：**不是 T-128 的内容，但必须作为紧随其后的战略任务**
+
+**建议创建 T-129: 设计并实现 WASM-based Skill Plugin 系统**，作为 T-128 完成后第一个启动的任务。
 
 ### 3. Phase 4 → Task 自动拆解
 
@@ -647,3 +671,4 @@ kimiz run -- repl
 - [ ] Phase 验收失败时，自动重试 1 次；仍失败则退出 autonomous 模式并保留 Project 状态
 - [ ] 所有新增代码通过 `zig build test`
 - [ ] 更新 `AGENT-ENTRYPOINT.md` 和 `docs/CURRENT-SPRINT.md`
+- [ ] T-128 文档中明确记录：终端用户自定义 Skill 的下一步是 T-129 WASM Plugin 系统
