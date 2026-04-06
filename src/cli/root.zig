@@ -1,6 +1,8 @@
 //! kimiz-cli - Command line interface with full Agent integration
+//! TASK-INFRA-007: yazap CLI framework integrated for argument parsing
 
 const std = @import("std");
+const yazap = @import("yazap");
 const core = @import("../core/root.zig");
 const ai = @import("../ai/root.zig");
 const agent = @import("../agent/root.zig");

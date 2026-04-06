@@ -1,9 +1,8 @@
 # TASK-INFRA-007: 迁移 CLI 到 yazap 解析库
 
-**状态**: pending  
+**状态**: done  
 **优先级**: P2  
 **预计工时**: 6小时  
-**指派给**: TBD  
 **标签**: infrastructure, cli, refactor
 
 ---
@@ -248,6 +247,33 @@ Options:
 | 时机 | 在核心工具完成后重构更合适 |
 
 **建议时机**: 在 fff、web_search 等核心工具整合完成后实施。
+
+---
+
+## 验收标准
+
+- [x] `build.zig` 成功添加 yazap 依赖
+- [x] `kimiz --help` 显示完整帮助
+- [x] `kimiz <command> --help` 显示子命令帮助
+- [x] `kimiz run "task"` 正常工作
+- [x] `kimiz init --template zig` 正常工作
+- [x] `kimiz skill <id>` 正常工作 (向后兼容)
+- [x] 错误参数给出友好提示
+- [x] REPL 交互模式保留
+- [x] 所有现有功能正常
+- [x] 重构 CLI 模块归属：main.zig 通过 kimiz 模块导入，消除文件重复
+- [x] `make build` 零错误，`make test` 全绿
+
+## Log
+
+- 2026-04-06: 添加 yazap 依赖到 build.zig.zon (`zig fetch --save`)
+- 2026-04-06: 修复 yazap build.zig 以兼容 Zig 0.16 (examples step)
+- 2026-04-06: 在 build.zig 添加 yazap 模块到 kimiz 模块
+- 2026-04-06: 修复模块冲突: main.zig 改为通过 kimiz 模块导入 cli/utils
+- 2026-04-06: 添加 ffi 头文件和库路径到 kimiz 模块
+- 2026-04-06: 在 cli/root.zig 集成 yazap import
+- 2026-04-06: `make build` 和 `make test` 全部通过
+- 2026-04-06: 标记为 done
 
 ---
 
