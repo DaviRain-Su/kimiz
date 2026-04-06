@@ -133,23 +133,36 @@ TaskEngine 行为：
 每个 Phase 的执行流程是统一的：
 
 ```zig
-pub fn executePhase(agent: *Agent, project: *Project, phase: Phase) !PhaseResult {
+pub fn executePhase(author_agent: *Agent, project: *Project, phase: Phase) !PhaseResult {
     // 1. 读取模板
     const template = try loadPhaseTemplate(phase);
     
     // 2. 检查/创建输出文档
     const output_doc = try project.getPhaseDocPath(phase);
     
-    // 3. Agent 生成/完善文档内容
-    const result = try agent.generatePhaseDocument(project, phase, template, output_doc);
+    // 3. Author Agent 生成/完善文档内容
+    const result = try author_agent.generatePhaseDocument(project, phase, template, output_doc);
     
-    // 4. TaskEngine 验收
-    const passed = try validatePhaseDocument(phase, output_doc);
-    
-    if (passed) {
-        return .{ .status = .done, .next_phase = phase.next() };
-    } else {
+    // 4. TaskEngine 形式验收（结构检查）
+    const struct_passed = try validatePhaseDocument(phase, output_doc);
+    if (!struct_passed) {
         return .{ .status = .needs_revision, .feedback = "文档缺少必要章节" };
+    }
+    
+    // 5. Review Agent 内容评审（关键新增）
+    var reviewer = try ReviewAgent.init(phase.reviewRole());
+    const review_result = try reviewer.review(output_doc);
+    
+    switch (review_result.status) {
+        .pass => return .{ .status = .done, .next_phase = phase.next() },
+        .needs_revision => return .{ 
+            .status = .needs_revision, 
+            .feedback = review_result.feedback 
+        },
+        .blocked => return .{ 
+            .status = .blocked, 
+            .feedback = review_result.feedback 
+        },
     }
 }
 ```
@@ -158,6 +171,73 @@ pub fn executePhase(agent: *Agent, project: *Project, phase: Phase) !PhaseResult
 - 文档存在
 - 包含模板中要求的全部 `##` 一级标题
 - 对于 Phase 3（Technical Spec），必须包含 `## 影响文件` 和 `## 验收标准`
+
+### 2.5 Phase Review Agent（多角色评审）
+
+每个 Phase 的产出不仅由 TaskEngine 做形式检查，还必须由**专门的 Review Agent** 做内容评审。这是 7-phase 质量保证的核心。
+
+```
+Phase 1 PRD          → Product Manager Agent
+Phase 2 Architecture → System Architect Agent
+Phase 3 Tech Spec    → Tech Lead Agent
+Phase 4 Task Breakdown → Project Manager Agent
+Phase 5 Test Spec    → QA Engineer Agent
+Phase 6 Implementation → Code Reviewer Agent
+Phase 7 Review       → Release Engineer / Security Agent
+```
+
+**每个 Review Agent 的职责**：
+- 读取当前 Phase 的产出文档
+- 根据该 Phase 的验收标准 checklist 逐项检查
+- 输出 `PASS` 或带具体修改意见的 `NEEDS_REVISION`
+- 不直接修改文档，只返回 review 报告
+
+**Review Agent 的实现方式**：
+
+```zig
+pub const ReviewAgent = struct {
+    role: Role,
+    system_prompt: []const u8,
+    
+    pub const Role = enum {
+        product_manager,    // Phase 1
+        system_architect,   // Phase 2
+        tech_lead,          // Phase 3
+        project_manager,    // Phase 4
+        qa_engineer,        // Phase 5
+        code_reviewer,      // Phase 6
+        release_engineer,   // Phase 7
+    };
+    
+    pub fn review(self: *ReviewAgent, phase_doc: []const u8) !ReviewResult {
+        // 1. 加载该角色的 system prompt
+        // 2. 构造 prompt：文档内容 + 验收标准 + "请 review"
+        // 3. 调用 LLM
+        // 4. 解析结果：PASS / NEEDS_REVISION
+    }
+};
+```
+
+**Review Result 的三种状态**：
+- `PASS` — 进入下一阶段
+- `NEEDS_REVISION` — 返回给 Author Agent（执行 Phase 的 Agent）修改，最多重试 2 次
+- `BLOCKED` — 根本性缺陷，无法在当前迭代中解决，Project 暂停
+
+**Prompt 管理**：
+- `prompts/review/product-manager.md`
+- `prompts/review/system-architect.md`
+- `prompts/review/tech-lead.md`
+- ...
+
+每个 prompt 必须明确：
+1. 该 Phase 的核心目标是什么
+2. 必须包含哪些章节/内容
+3. 常见的反模式（如 Phase 3 缺少影响文件、Phase 5 测试与 spec 不匹配）
+4. 输出格式要求（`PASS` 或 `NEEDS_REVISION: <具体意见>`）
+
+**与 T-120 ~ T-123 的关系**：
+- T-120 建立了 Document-Driven Workflow（Agent 读文档、更新日志）
+- T-128 的 Review Agent 是该工作流的**自然延伸**——现在 Agent 不仅要读写文档，还要**评审文档**
 
 ### 3. Phase 4 → Task 自动拆解
 
@@ -264,12 +344,14 @@ kimiz run -- repl
 
 | 文件 | 预期改动 |
 |------|----------|
-| `src/project.zig` 或 `src/engine/project.zig` | 新增：Project 和 Phase 状态机 |
-| `src/task_engine.zig` 或 `src/engine/task.zig` | 新增：TaskEngine 核心实现（任务队列、依赖解析、归档） |
+| `src/engine/project.zig` | 新增：Project 和 Phase 状态机 |
+| `src/engine/task.zig` | 新增：TaskEngine 核心实现（任务队列、依赖解析、归档） |
+| `src/engine/review.zig` | 新增：ReviewAgent 多角色评审系统 |
 | `src/cli/root.zig` | 新增：`kimiz project create` 和 `--autonomous` 子命令；保留 REPL 调试命令 |
 | `src/agent/agent.zig` | 新增：`executePhase(project, phase)` 和 `executeTask(task)` 接口 |
 | `src/agent/tools/task_tools.zig` | 新增/扩展：`create_project`, `read_phase_template`, `validate_phase_doc`, `read_task`, `update_task_status`, `archive_task` |
-| `tests/task_engine_tests.zig` | 新增：Project/Phase/Task 三层状态机单元测试 |
+| `prompts/review/` | 新增：7 个 Review Agent prompt 文件（product-manager.md 等） |
+| `tests/task_engine_tests.zig` | 新增：Project/Phase/Task/Review 四层状态机单元测试 |
 | `docs/guides/TASK-LIFECYCLE.md` | 更新：加入 TaskEngine 自动归档和 7-phase 流转规则 |
 
 ---
@@ -283,6 +365,15 @@ kimiz run -- repl
 - [ ] `executePhase()` 能按顺序执行 Phase 1 → Phase 2 → Phase 3，且不可跳跃
 - [ ] `validatePhaseDocument()` 能检查 Phase 文档是否包含模板要求的关键章节
 - [ ] Phase 4 完成后，能自动从 `04-task-breakdown.md` 生成至少 1 个 `T-XXX` 任务文件到 `tasks/active/`
+
+### Review 层（多角色评审）
+
+- [ ] `ReviewAgent` 支持 7 种角色：`product_manager`, `system_architect`, `tech_lead`, `project_manager`, `qa_engineer`, `code_reviewer`, `release_engineer`
+- [ ] `ReviewAgent.review()` 能加载对应角色的 prompt，对 Phase 产出文档进行评审
+- [ ] Review 输出能解析为 `PASS` / `NEEDS_REVISION` / `BLOCKED` 三种状态
+- [ ] `executePhase()` 在形式验收后自动调用 Review Agent；`PASS` 才能进入下一阶段
+- [ ] Review 结果为 `NEEDS_REVISION` 时，Author Agent 能根据反馈修改文档并重试（最多 2 次）
+- [ ] `prompts/review/` 目录下至少存在 3 个角色 prompt 文件
 
 ### Task 层（任务队列执行）
 
