@@ -2,6 +2,7 @@ const std = @import("std");
 const core = @import("../core/root.zig");
 const ai = @import("../ai/root.zig");
 const fs = @import("../utils/fs_helper.zig");
+const prompts = @import("../prompts/loader.zig");
 const Agent = @import("../agent/agent.zig").Agent;
 
 // ============================================================================
@@ -76,17 +77,24 @@ pub const ReviewAgent = struct {
     /// prompts/review/{role-file}, appends the document, and asks the model
     /// for a VERDICT.
     pub fn review(self: *const Self, agent: *Agent, document: []const u8) !ReviewReport {
-        // Load review prompt
-        const prompt_path = try std.fs.path.join(self.allocator, &.{ "prompts/review", self.role.promptFile() });
-        defer self.allocator.free(prompt_path);
+        // Load review prompt via PromptLoader cascade (.kimiz > ~/.kimiz > package builtin)
+        var loader = prompts.PromptLoader.init(self.allocator);
+        const maybe_path = try loader.resolvePromptPath(self.role.promptFile());
 
-        const prompt_content = fs.readFileAlloc(self.allocator, prompt_path, 256 * 1024) catch |err| blk: {
-            if (err == error.FileNotFound) {
-                // Fallback: if prompt file is missing, return a stub pass so we don't block execution
-                std.log.warn("Review prompt not found: {s}, using stub review.", .{prompt_path});
-                break :blk "You are a reviewer. Output PASS if the document looks acceptable.";
+        const prompt_content: []const u8 = blk: {
+            if (maybe_path) |cp| {
+                defer self.allocator.free(cp.path);
+                break :blk fs.readFileAlloc(self.allocator, cp.path, 256 * 1024) catch |err| {
+                    if (err == error.FileNotFound) {
+                        std.log.warn("Review prompt resolved but not readable: {s}, using stub review.", .{cp.path});
+                        break :blk try self.allocator.dupe(u8, "You are a reviewer. Output PASS if the document looks acceptable.");
+                    }
+                    return err;
+                };
+            } else {
+                std.log.warn("Review prompt not found for role {s}, using stub review.", .{@tagName(self.role)});
+                break :blk try self.allocator.dupe(u8, "You are a reviewer. Output PASS if the document looks acceptable.");
             }
-            return err;
         };
         defer self.allocator.free(prompt_content);
 

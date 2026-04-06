@@ -92,10 +92,15 @@ pub fn writeFile(
 
 /// Check if file exists
 pub fn fileExists(path: []const u8) bool {
-    const io = getIo() catch return false;
-    const dir = cwd();
-    dir.access(io, path, .{}) catch return false;
-    return true;
+    if (getIo()) |io| {
+        const dir = cwd();
+        dir.access(io, path, .{}) catch return false;
+        return true;
+    } else |_| {
+        const c = @cImport({ @cInclude("unistd.h"); });
+        const nt_path = toNullTerminated(path) catch return false;
+        return c.access(nt_path.ptr, c.F_OK) == 0;
+    }
 }
 
 /// Create directory
