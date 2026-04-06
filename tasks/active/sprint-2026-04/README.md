@@ -38,12 +38,19 @@
 
 ---
 
-## 当前活跃任务队列
+## 当前主任务（唯一焦点）
 
 | # | 任务文件 | 标题 | 状态 | Spec |
 |---|----------|------|------|------|
-| 1 | `T-126-auto-research-metrics.md` | Agent 研究与学习过程的可观测性 | `spec` | 待创建 |
-| 2 | `T-127-integrate-zig-to-yul-as-contract-skill.md` | **将 zig-to-yul 集成为 KimiZ 的合约生成 skill** | `todo` | `docs/specs/T-127-integrate-zig-to-yul-as-contract-skill.md` |
+| 1 | `T-127-integrate-zig-to-yul-as-contract-skill.md` | **将 zig-to-yul 集成为 KimiZ 的合约生成 skill** | `todo` | `docs/specs/T-127-integrate-zig-to-yul-as-contract-skill.md` |
+
+> **原则：T-127 是 Scale 战略的工程落地核心。在 T-127 的 end-to-end 闭环验证通过之前，不启动新的上层功能开发。**
+
+## 冻结任务（T-127 完成后解冻）
+
+| 任务文件 | 标题 | 状态 | 说明 |
+|----------|------|------|------|
+| `T-126-auto-research-metrics.md` | Agent 研究与学习过程的可观测性 | `backlog` | 上层可观测性扩展，依赖 T-124 基础，但非 T-127 阻塞项 |
 
 ---
 

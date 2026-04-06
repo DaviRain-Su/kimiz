@@ -39,21 +39,27 @@
 
 ## 活跃任务
 
-### T-126: Agent 研究与学习过程的可观测性
-- **状态**: `spec`
-- **说明**: 在 T-124 runtime metrics 基础上，补充 Agent 研究/学习阶段的可观测性。Spec 待创建。
-
 ### T-127: 将 zig-to-yul 集成为 KimiZ 的合约生成 skill
 - **状态**: `todo`
 - **Spec**: `docs/specs/T-127-integrate-zig-to-yul-as-contract-skill.md`
 - **说明**: 把已有的 `zig-to-yul` 编译器与 KimiZ Agent 整合，实现需求 → Zig 合约 → EVM Bytecode → 测试部署的完整闭环。
+- **原则**: **T-127 是当前唯一焦点**。在 end-to-end 闭环验证通过前，不启动新的上层功能开发。
+
+---
+
+## 冻结任务（T-127 完成后解冻）
+
+### T-126: Agent 研究与学习过程的可观测性
+- **状态**: `backlog`
+- **位置**: `tasks/backlog/phase-3-subagent/T-126-auto-research-metrics.md`
+- **说明**: 上层可观测性扩展，依赖 T-124 基础，但非 T-127 阻塞项。
 
 ---
 
 ## 执行顺序
 
 ```
-T-126 (spec) → T-127 (implementation)
+T-127 (implementation) → [T-127 done] → 解冻 T-126 / 启动新 Phase 3+ 任务
 ```
 
 ---

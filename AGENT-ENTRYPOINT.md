@@ -53,10 +53,11 @@ Sprint 2026-04 的前期目标已全部完成：
 
 | # | 优先级 | 任务ID | 标题 | 状态 | Spec 文档 | 预计 |
 |---|--------|--------|------|------|-----------|------|
-| 1 | P1 | **T-126** | Agent 研究与学习过程的可观测性 | `spec` | 待创建 Spec | 2.5h |
-| 2 | **P1** | **T-127** | **将 zig-to-yul 集成为 KimiZ 的合约生成 skill** | `todo` | [`docs/specs/T-127-integrate-zig-to-yul-as-contract-skill.md`](docs/specs/T-127-integrate-zig-to-yul-as-contract-skill.md) | 16h |
+| 1 | **P1** | **T-127** | **将 zig-to-yul 集成为 KimiZ 的合约生成 skill** | `todo` | [`docs/specs/T-127-integrate-zig-to-yul-as-contract-skill.md`](docs/specs/T-127-integrate-zig-to-yul-as-contract-skill.md) | 16h |
 
-> **规则**: 只有上一行标记为 `done` 后，才能开始下一行的 `todo` 任务。
+> **原则：T-127 是 Scale 战略的工程落地核心。在 T-127 的 end-to-end 闭环验证通过之前，不启动新的上层功能开发。**
+> 
+> 其他任务（如 T-126 可观测性扩展）已冻结至 backlog，待 T-127 完成后解冻。
 
 ---
 

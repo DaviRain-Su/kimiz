@@ -11,6 +11,7 @@ const harness = @import("../harness/root.zig");
 const workspace = @import("../workspace/root.zig");
 const config = @import("../config.zig");
 const skills = @import("../skills/root.zig");
+const daemon = @import("../daemon/supervisor.zig");
 pub const slash = @import("slash.zig");
 
 const c = @cImport({
@@ -155,6 +156,18 @@ pub fn run(
     try metrics_cmd.addArg(yazap.Arg.positional("ACTION", "Action", null));
     try app.rootCommand().addSubcommand(metrics_cmd);
 
+    // kimiz session create <name>
+    var sess_cmd = app.createCommand("session", "Session management");
+    var sess_create = app.createCommand("create", "Create a new session");
+    try sess_create.addArg(yazap.Arg.positional("NAME", "Session name", null));
+    const sess_list = app.createCommand("list", "List sessions");
+    var sess_stop = app.createCommand("stop", "Stop a session");
+    try sess_stop.addArg(yazap.Arg.positional("ID", "Session ID", null));
+    try app.rootCommand().addSubcommand(sess_cmd);
+    try sess_cmd.addSubcommand(sess_create);
+    try sess_cmd.addSubcommand(sess_list);
+    try sess_cmd.addSubcommand(sess_stop);
+
     // Parse arguments
     const matches = app.parseProcess(io, args) catch |err| {
         return err;
@@ -192,6 +205,29 @@ pub fn run(
         const metrics_args: [1][]const u8 = .{action};
         try runMetricsCommand(allocator, &metrics_args);
         return;
+    }
+
+    if (matches.containsArg("session")) {
+        const sm = matches.subcommandMatches("session").?;
+        if (sm.containsArg("create")) {
+            const cm = sm.subcommandMatches("create").?;
+            const name = cm.getSingleValue("NAME") orelse "default";
+            try runSessionCreateCommand(allocator, name);
+            return;
+        }
+        if (sm.containsArg("list")) {
+            try runSessionListCommand(allocator);
+            return;
+        }
+        if (sm.containsArg("stop")) {
+            const sm2 = sm.subcommandMatches("stop").?;
+            const id = sm2.getSingleValue("ID") orelse {
+                printLine("Usage: kimiz session stop <id>");
+                return;
+            };
+            try runSessionStopCommand(allocator, id);
+            return;
+        }
     }
 
     // No subcommand = interactive mode
@@ -596,4 +632,91 @@ fn runMetricsCommand(allocator: std.mem.Allocator, args: []const []const u8) !vo
     } else {
         printLine("Usage: kimiz metrics [show|list|history|export]");
     }
+}
+
+// ============================================================================
+// Session Management Commands (T-120)
+// ============================================================================
+
+fn runSessionCreateCommand(allocator: std.mem.Allocator, name: []const u8) !void {
+    var mgr = daemon.SessionManager.init(allocator) catch |err| {
+        print("❌ Failed to initialize session manager: ");
+        print(@errorName(err));
+        print("\n");
+        return err;
+    };
+    defer mgr.deinit();
+
+    const id = mgr.supervisor.createSession(name) catch |err| {
+        print("❌ Failed to create session: ");
+        print(@errorName(err));
+        print("\n");
+        return err;
+    };
+    defer allocator.free(id);
+
+    print("✅ Session created: ");
+    print(id);
+    print("\n");
+    try mgr.supervisor.saveState();
+}
+
+fn runSessionListCommand(allocator: std.mem.Allocator) !void {
+    var mgr = daemon.SessionManager.init(allocator) catch |err| {
+        print("❌ Failed to initialize session manager: ");
+        print(@errorName(err));
+        print("\n");
+        return;
+    };
+    defer mgr.deinit();
+
+    const sessions = mgr.supervisor.listSessions() catch |err| {
+        print("❌ Failed to list sessions: ");
+        print(@errorName(err));
+        print("\n");
+        return;
+    };
+    defer {
+        for (sessions) |*s| s.deinit();
+        allocator.free(sessions);
+    }
+
+    printLine("\n📋 Active Sessions:");
+    printLine("-------------------");
+    for (sessions) |s| {
+        printLine("  ID: " ++ s.id);
+        print("  State: ");
+        print(@tagName(s.state));
+        print("\n  Created: ");
+        var buf: [32]u8 = undefined;
+        const ts = try std.fmt.bufPrint(&buf, "{d}", .{s.created_at});
+        print(ts);
+        print("\n\n");
+    }
+    if (sessions.len == 0) {
+        printLine("  No sessions found.");
+    }
+    printLine("");
+}
+
+fn runSessionStopCommand(allocator: std.mem.Allocator, id: []const u8) !void {
+    var mgr = daemon.SessionManager.init(allocator) catch |err| {
+        print("❌ Failed to initialize session manager: ");
+        print(@errorName(err));
+        print("\n");
+        return;
+    };
+    defer mgr.deinit();
+
+    mgr.supervisor.stopSession(id) catch |err| {
+        print("❌ Failed to stop session: ");
+        print(@errorName(err));
+        print("\n");
+        return;
+    };
+
+    print("⏹️  Session stopped: ");
+    print(id);
+    print("\n");
+    try mgr.supervisor.saveState();
 }

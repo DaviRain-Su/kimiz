@@ -31,6 +31,9 @@ pub const extension = @import("extension/root.zig");
 // Memory module - memory management and recall
 pub const memory = @import("memory/root.zig");
 
+// Supervisor Daemon - Session lifecycle management (T-120)
+pub const daemon = @import("daemon/supervisor.zig");
+
 // Learning module - adaptive learning engine
 pub const learning = @import("learning/root.zig");
 
