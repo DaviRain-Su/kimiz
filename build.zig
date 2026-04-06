@@ -23,6 +23,9 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    // TUI support via remote libvaxis fork
+    const vaxis_dep = b.dependency("vaxis", .{ .target = target, .optimize = optimize });
+
     const mod = b.addModule("kimiz", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
@@ -30,6 +33,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "zwasm", .module = zwasm_dep.module("zwasm") },
             // .{ .name = "yazap", .module = yazap_dep.module("yazap") },
             .{ .name = "lmdb", .module = lmdb_dep.module("lmdb") },
+            .{ .name = "vaxis", .module = vaxis_dep.module("vaxis") },
         },
     });
     mod.addIncludePath(b.path("ffi"));

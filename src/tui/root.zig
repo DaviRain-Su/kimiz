@@ -3,6 +3,7 @@
 const std = @import("std");
 const core = @import("../core/root.zig");
 const agent = @import("../agent/root.zig");
+const vaxis = @import("vaxis");
 
 pub fn runTui(allocator: std.mem.Allocator, model: core.Model, options: agent.AgentOptions) !void {
     _ = allocator;
