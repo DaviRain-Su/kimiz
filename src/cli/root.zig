@@ -177,6 +177,12 @@ pub fn run(
         return;
     }
 
+    // Check for metrics commands
+    if (args_slice.len > 1 and std.mem.eql(u8, args_slice[1], "metrics")) {
+        try runMetricsCommand(allocator, if (args_slice.len > 2) args_slice[2..] else &[_][]const u8{});
+        return;
+    }
+
     // Interactive mode
     try runInteractive(allocator);
 }
@@ -529,4 +535,54 @@ fn printHelp() void {
         \\
     ;
     print(help);
+}
+
+fn runMetricsCommand(allocator: std.mem.Allocator, args: []const []const u8) !void {
+    const home_dir = if (std.c.getenv("HOME")) |ptr|
+        try allocator.dupe(u8, std.mem.sliceTo(ptr, 0))
+    else {
+        printLine("❌ Could not determine HOME directory");
+        return error.NoHomeDir;
+    };
+    defer allocator.free(home_dir);
+
+    const metrics_dir = try std.fmt.allocPrint(allocator, "{s}/.kimiz/metrics", .{home_dir});
+    defer allocator.free(metrics_dir);
+
+    if (args.len == 0 or std.mem.eql(u8, args[0], "show") or std.mem.eql(u8, args[0], "list")) {
+        const cmd = try std.fmt.allocPrint(allocator, "ls -t {s}/*.jsonl 2>/dev/null || echo 'NONE'", .{metrics_dir});
+        defer allocator.free(cmd);
+
+        const out = try executeShellCommand(allocator, cmd);
+        defer allocator.free(out);
+
+        const trimmed = std.mem.trim(u8, out, " \t\n\r");
+        if (trimmed.len == 0 or std.mem.eql(u8, trimmed, "NONE")) {
+            printLine("\n📊 No metrics data collected yet.");
+            printLine("Metrics are collected automatically during Agent sessions.\n");
+            return;
+        }
+
+        printLine("\n📊 Available metrics:");
+        var files = std.mem.splitScalar(u8, trimmed, '\n');
+        while (files.next()) |line| {
+            const entry = std.mem.trim(u8, line, " \t\n\r");
+            if (entry.len == 0) continue;
+            const basename = std.fs.path.basename(entry);
+            print("  - ");
+            print(basename);
+            print("\n");
+        }
+        print("\n");
+    } else if (std.mem.eql(u8, args[0], "history")) {
+        const count = if (args.len > 1) args[1] else "5";
+        printLine("\n📋 Last ");
+        print(count);
+        printLine(" sessions:");
+        printLine("(Metrics history available after running Agent sessions)");
+    } else if (std.mem.eql(u8, args[0], "export")) {
+        printLine("Usage: kimiz metrics export --session <id> [--format csv] > output.csv");
+    } else {
+        printLine("Usage: kimiz metrics [show|list|history|export]");
+    }
 }

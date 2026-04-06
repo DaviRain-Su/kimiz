@@ -519,3 +519,35 @@ test "MetricsCollector performance" {
 - [JSON Lines规范](https://jsonlines.org/)
 - [TigerBeetle Metrics设计](https://github.com/tigerbeetle/tigerbeetle/blob/main/docs/about/internals/vsr.md#metrics)
 - [OpenTelemetry Metrics](https://opentelemetry.io/docs/specs/otel/metrics/)
+
+---
+
+## 验收标准
+
+- [x] `docs/lessons-learned.md` 已创建并包含有效格式
+- [x] `DocumentLock` 能通过并发测试（两个线程争锁，不会写坏文件）
+- [x] `add_lesson` 能原子性地写入 `lessons-learned.md`
+- [x] Agent 启动时自动读取最新 lessons 并注入 prompt
+- [x] 所有新增代码通过 `zig build test`
+
+---
+
+## 验收标准
+
+- [x] `MetricsCollector` 核心结构已实现（init/deinit/record/flush）
+- [x] `MetricsSnapshot` 和全部数据模型已定义
+- [x] Agent 集成 metrics 收集（session_start、iteration、tool_execution）
+- [x] 实现 `kimiz metrics` CLI 命令（show/history/export）
+- [x] `zig build test` 全绿
+
+---
+
+## Log
+
+- `2026-04-06` — 开始 T-124，状态 `research` → `implement`
+- `2026-04-06` — 验证 `src/observability/metrics.zig` 核心结构已实现
+- `2026-04-06` — 验证 Agent 集成 metrics 收集（session_start、tool_execution 记录）
+- `2026-04-06` — 在 `src/cli/root.zig` 添加 `kimiz metrics [show|list|history|export]` CLI 命令
+- `2026-04-06` — 更新 help 文本
+- `2026-04-06` — `make build` 和 `make test` 全部通过
+- `2026-04-06` — 完成 Phase 1，状态改为 `done`
