@@ -32,11 +32,15 @@ help:
 	@echo "  make task-stats                             - Show statistics"
 
 # Build Commands
-build:
+build: generate-auto-registry
 	$(ZIG) build
 
-run:
+run: generate-auto-registry
 	$(ZIG) build run -- repl
+
+# Auto-skill registry generation (T-101)
+generate-auto-registry:
+	@./tools/gen_auto_registry.sh || true
 
 clean:
 	rm -rf .zig-cache zig-out

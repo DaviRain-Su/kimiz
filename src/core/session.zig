@@ -176,8 +176,7 @@ pub const Session = struct {
         };
         defer allocator.free(content);
         
-        // TODO: Parse JSONL and populate messages
-        _ = content;
+        // TODO: Parse JSONL and populate messages from content
         
         return session;
     }

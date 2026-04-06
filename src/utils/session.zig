@@ -425,9 +425,6 @@ pub const SessionStore = struct {
             error.FileNotFound => return, // No existing data
             else => return err,
         };
-        defer file.close();
-
-        const content = try file.readToEndAlloc(self.allocator, 10 * 1024 * 1024);
         defer self.allocator.free(content);
 
         _ = manager;

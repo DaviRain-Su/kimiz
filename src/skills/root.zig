@@ -283,3 +283,21 @@ test "SkillRegistry basic operations" {
     try std.testing.expect(retrieved != null);
     try std.testing.expectEqualStrings("Test Skill", retrieved.?.name);
 }
+
+test "Auto-registry integrates auto skills" {
+    const allocator = std.testing.allocator;
+    var registry = SkillRegistry.init(allocator);
+    defer registry.deinit();
+
+    // Register builtin + auto skills (same path as production)
+    try registerBuiltinSkills(&registry);
+
+    // Verify auto-registered skill is accessible
+    const auto_skill = registry.get("auto-hello");
+    try std.testing.expect(auto_skill != null);
+    try std.testing.expectEqualStrings("auto-hello", auto_skill.?.id);
+
+    // Verify builtin skills still work
+    const builtin_skill = registry.get("code-review");
+    try std.testing.expect(builtin_skill != null);
+}

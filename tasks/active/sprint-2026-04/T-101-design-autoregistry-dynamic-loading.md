@@ -82,8 +82,37 @@ pub const auto_skills = &[_]type{
 
 ## 验收标准
 
-- [ ] `AutoRegistry` 能在构建时自动发现 `src/skills/auto/` 下的所有 skill
-- [ ] 新增一个 `.zig` 文件到 `src/skills/auto/` 后，无需修改 `builtin.zig` 即可被调用
-- [ ] `SkillEngine` 统一处理 builtin 和 auto skill 的查询与调用
-- [ ] 所有代码通过 `zig build test`
-- [ ] `zig build` 零错误
+- [x] `AutoRegistry` 能在构建时自动发现 `src/skills/auto/` 下的所有 skill
+- [x] 新增一个 `.zig` 文件到 `src/skills/auto/` 后，无需修改 `builtin.zig` 即可被调用
+- [x] `SkillEngine` 统一处理 builtin 和 auto skill 的查询与调用
+- [x] 所有代码通过 `zig build test`
+- [x] `zig build` 零错误
+
+---
+
+## 5. Log
+
+> 执行任务的过程中，每做一步都要在这里追加记录。这是 Agent 的自我修正历史。
+
+- `2026-04-06` — 开始实现 T-101，状态从 `todo` 改为 `implement`
+- `2026-04-06` — 选择了方案 A（构建时 comptime 生成）。尝试在 build.zig 中直接扫描目录，但 Zig 0.16 的 `std.fs.openDirAbsolute`、`std.fs.cwd()` 等在 build.zig 中不可用
+- `2026-04-06` — 改用 Makefile 预处理方案：`tools/gen_auto_registry.sh` 在 `make build` 前自动扫描并生成 `registry.zig`
+- `2026-04-06` — 验证通过：添加测试文件 `auto_echo_test.zig` 后 `make build` 自动检测到 2 个技能
+- `2026-04-06` — 在 `src/skills/root.zig` 添加集成测试 `Auto-registry integrates auto skills`
+- `2026-04-06` — 修复了两个无关的编译错误：`src/core/session.zig` 和 `src/utils/session.zig`
+- `2026-04-06` — `make build` 和 `make test` 全部通过，状态改为 `verify`
+
+## 6. Lessons Learned
+
+> 任务完成后，填写此章节。这是把个人任务经验升级为项目级长期记忆的关键步骤。
+
+**分类**: 架构决策 / API 选择
+
+**内容**:
+- **Zig 0.16 build.zig 的文件系统限制**: `std.fs.cwd()`、`std.fs.openDirAbsolute()` 和 `b.io` 在 build.zig 配置阶段均不可用。构建时文件系统操作需要通过 `RunArtifact` 执行独立程序，或通过外部脚本（Makefile）预处理
+- **采用 Makefile 预处理**: 使用 shell 脚本扫描目录并生成 `registry.zig` 是最可靠的方案。脚本只在内容变化时更新文件，保留 Zig 构建缓存
+- **统一注册路径**: `SkillEngine` 通过 `registerBuiltinSkills()` 同时注册 builtin 和 auto skills，对调用者完全透明
+
+**后续动作**:
+- [x] 更新 `docs/DESIGN-REFERENCES.md`
+- [ ] 考虑是否需要更新 `docs/lessons-learned.md`
