@@ -51,13 +51,11 @@ Sprint 2026-04 的前期目标已全部完成：
 
 ### 活跃任务队列
 
-| # | 优先级 | 任务ID | 标题 | 状态 | Spec 文档 | 预计 |
-|---|--------|--------|------|------|-----------|------|
-| 1 | **P1** | **T-127** | **将 zig-to-yul 集成为 KimiZ 的合约生成 skill** | `todo` | [`docs/specs/T-127-integrate-zig-to-yul-as-contract-skill.md`](docs/specs/T-127-integrate-zig-to-yul-as-contract-skill.md) | 16h |
+**当前无活跃任务。需要重新确定 KimiZ 核心工具链的下一个工程目标。**
 
-> **原则：T-127 是 Scale 战略的工程落地核心。在 T-127 的 end-to-end 闭环验证通过之前，不启动新的上层功能开发。**
-> 
-> 其他任务（如 T-126 可观测性扩展）已冻结至 backlog，待 T-127 完成后解冻。
+> **原则：KimiZ 核心工具未夯实前，不启动任何上层垂直领域开发（如 T-127 区块链合约生成、T-126 高级可观测性）。**
+>
+> 已冻结的上层任务：T-126（backlog/phase-3-subagent）、T-127（backlog/phase-8-platform）
 
 ---
 

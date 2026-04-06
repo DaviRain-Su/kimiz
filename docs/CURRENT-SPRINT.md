@@ -39,27 +39,25 @@
 
 ## 活跃任务
 
-### T-127: 将 zig-to-yul 集成为 KimiZ 的合约生成 skill
-- **状态**: `todo`
-- **Spec**: `docs/specs/T-127-integrate-zig-to-yul-as-contract-skill.md`
-- **说明**: 把已有的 `zig-to-yul` 编译器与 KimiZ Agent 整合，实现需求 → Zig 合约 → EVM Bytecode → 测试部署的完整闭环。
-- **原则**: **T-127 是当前唯一焦点**。在 end-to-end 闭环验证通过前，不启动新的上层功能开发。
+**当前无活跃任务。需要重新确定 KimiZ 核心工具链的下一个工程目标。**
 
 ---
 
-## 冻结任务（T-127 完成后解冻）
+## 已冻结的上层任务（KimiZ 核心夯实前不做）
 
-### T-126: Agent 研究与学习过程的可观测性
-- **状态**: `backlog`
-- **位置**: `tasks/backlog/phase-3-subagent/T-126-auto-research-metrics.md`
-- **说明**: 上层可观测性扩展，依赖 T-124 基础，但非 T-127 阻塞项。
+| 任务 | 位置 | 说明 |
+|------|------|------|
+| T-126 | `tasks/backlog/phase-3-subagent/` | Agent 研究与学习过程的可观测性（上层扩展） |
+| T-127 | `tasks/backlog/phase-8-platform/` | zig-to-yul 合约生成 skill（区块链上层应用） |
+
+> **原则：KimiZ 核心工具未夯实前，不启动任何上层垂直领域开发。**
 
 ---
 
 ## 执行顺序
 
 ```
-T-127 (implementation) → [T-127 done] → 解冻 T-126 / 启动新 Phase 3+ 任务
+[待确定核心任务] → [核心工具夯实] → 解冻上层任务
 ```
 
 ---
