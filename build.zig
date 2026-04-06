@@ -17,12 +17,19 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    // TASK-INFRA-001: Add LMDB dependency
+    const lmdb_dep = b.dependency("lmdb", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
     const mod = b.addModule("kimiz", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .imports = &.{
             .{ .name = "zwasm", .module = zwasm_dep.module("zwasm") },
             .{ .name = "yazap", .module = yazap_dep.module("yazap") },
+            .{ .name = "lmdb", .module = lmdb_dep.module("lmdb") },
         },
     });
     mod.addIncludePath(b.path("ffi"));

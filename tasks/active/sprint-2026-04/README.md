@@ -22,8 +22,8 @@
 - T-119: 验证 git worktree 隔离
 - T-009: 补充 E2E 测试
 - T-103-SPIKE: comptime Skill DSL 原型验证（结果为 GO）
-- T-100: 建立 auto skill 自动生成流水线（设计完成）
-- T-101: 设计 AutoRegistry 动态加载（设计完成）
+- T-100: 建立 auto skill 自动生成流水线
+- T-101: 设计 AutoRegistry 动态加载
 - T-120: 设计文档驱动的 Agent 工作流
 - T-121: 实现 Agent 长期记忆工具
 - T-122: 改造 System Prompt 强制文档前置读取
@@ -44,6 +44,17 @@
 
 ---
 
-## 当前活跃任务
+## 当前主任务
 
-**待确定**：需要重新评估 KimiZ 核心工具链中，哪些设计任务（如 T-100/T-101）需要真正代码实现，或是否有其他核心阻塞项。
+| # | 任务文件 | 标题 | 状态 | Spec |
+|---|----------|------|------|------|
+| 1 | `T-128-design-and-implement-task-engine.md` | **设计并实现 KimiZ 运行时任务状态机（TaskEngine）** | `todo` | `docs/specs/T-128-design-and-implement-task-engine.md` |
+
+---
+
+## 快速链接
+
+- **路线图**: `docs/ROADMAP-v2.md`
+- **特性清单**: `docs/FEATURES.md`
+- **实现参考索引**: `docs/DESIGN-REFERENCES.md`（执行任务前必读）
+- **Agent 入口**: `AGENT-ENTRYPOINT.md`

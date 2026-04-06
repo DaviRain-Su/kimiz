@@ -40,6 +40,10 @@
             .url = "https://github.com/prajwalch/yazap/archive/refs/heads/main.tar.gz",
             .hash = "yazap-0.7.0-Z1t-EiT6AQDpbgaDQ1i_oBfnvmeH4AUM3WmiuTuXuQMN",
         },
+        .lmdb = .{
+            .url = "https://github.com/nDimensional/zig-lmdb/archive/704e92652323909d8d302a99e835f2f9bf4f4f26.tar.gz",
+            .hash = "lmdb-0.3.2-6TpzoI4_AAAR3elEADjGEwbMrY157vtcN-o6qxtDUXM3",
+        },
     },
     // Specifies the set of files and directories that are included in this package.
     // Only files and directories listed here are included in the `hash` that

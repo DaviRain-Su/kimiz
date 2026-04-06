@@ -39,7 +39,15 @@
 
 ## 活跃任务
 
-**当前无活跃任务。需要重新确定 KimiZ 核心工具链的下一个工程目标。**
+### T-128: 设计并实现 KimiZ 运行时任务状态机（TaskEngine）
+- **状态**: `todo`
+- **Spec**: `docs/specs/T-128-design-and-implement-task-engine.md`
+- **说明**: KimiZ 目前有能力模块（Skill、Subagent、文档驱动、Metrics）但缺少调度器。TaskEngine 让 Agent 启动时自动加载任务队列、解析依赖、自动推进、自动归档，是实现 autonomous 执行的关键基础设施。
+- **验收要点**:
+  - [ ] 解析 `tasks/active/` 构建运行时任务图
+  - [ ] `getNextTask()` 按优先级+依赖返回正确任务
+  - [ ] `startTask/completeTask/archiveCompleted` 闭环
+  - [ ] CLI `kimiz run --autonomous` 最小可行版本
 
 ---
 

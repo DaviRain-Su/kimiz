@@ -51,9 +51,11 @@ Sprint 2026-04 的前期目标已全部完成：
 
 ### 活跃任务队列
 
-**当前无活跃任务。需要重新确定 KimiZ 核心工具链的下一个工程目标。**
+| # | 优先级 | 任务ID | 标题 | 状态 | Spec 文档 | 预计 |
+|---|--------|--------|------|------|-----------|------|
+| 1 | **P0** | **T-128** | **设计并实现 KimiZ 运行时任务状态机（TaskEngine）** | `todo` | [`docs/specs/T-128-design-and-implement-task-engine.md`](docs/specs/T-128-design-and-implement-task-engine.md) | 12h |
 
-> **原则：KimiZ 核心工具未夯实前，不启动任何上层垂直领域开发（如 T-127 区块链合约生成、T-126 高级可观测性）。**
+> **原则：KimiZ 核心工具未夯实前，不启动任何上层垂直领域开发（如 T-127 区块链合约生成、T-126 高级可观测性）。TaskEngine 是核心调度器，属于基础工具链。**
 >
 > 已冻结的上层任务：T-126（backlog/phase-3-subagent）、T-127（backlog/phase-8-platform）
 
