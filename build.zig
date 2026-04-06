@@ -8,7 +8,6 @@ pub fn build(b: *std.Build) void {
     const zwasm_dep = b.dependency("zwasm", .{
         .target = target,
         .optimize = optimize,
-        .tests = false,
     });
 
     // TASK-INFRA-007: Add yazap CLI parser dependency
@@ -24,6 +23,9 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    // TUI support via remote libvaxis fork
+    const vaxis_dep = b.dependency("vaxis", .{ .target = target, .optimize = optimize });
+
     const mod = b.addModule("kimiz", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
@@ -31,14 +33,12 @@ pub fn build(b: *std.Build) void {
             .{ .name = "zwasm", .module = zwasm_dep.module("zwasm") },
             // .{ .name = "yazap", .module = yazap_dep.module("yazap") },
             .{ .name = "lmdb", .module = lmdb_dep.module("lmdb") },
+            .{ .name = "vaxis", .module = vaxis_dep.module("vaxis") },
         },
     });
     mod.addIncludePath(b.path("ffi"));
     mod.addLibraryPath(b.path("ffi"));
     mod.linkSystemLibrary("fff_c", .{});
-
-    // TUI support
-    const vaxis_dep = b.dependency("vaxis", .{ .target = target, .optimize = optimize });
 
     // Single module — all src/ files come in via relative imports from main.zig
     const exe = b.addExecutable(.{
@@ -49,7 +49,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
             .link_libc = true,
             .imports = &.{
-                .{ .name = "vaxis", .module = vaxis_dep.module("vaxis") },
+                .{ .name = "kimiz", .module = mod },
                 .{ .name = "zwasm", .module = zwasm_dep.module("zwasm") },
             },
         }),

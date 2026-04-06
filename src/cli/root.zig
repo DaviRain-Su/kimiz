@@ -2,7 +2,30 @@
 //! Simplified for Zig 0.16 - removed yazap dependency
 
 const std = @import("std");
-// const yazap = @import("yazap");  // Disabled: not compatible with Zig 0.16
+
+// Minimal yazap stub for Zig 0.16 compatibility (yazap dependency disabled)
+const yazap = struct {
+    pub const App = struct {
+        pub fn init(a: anytype, n: anytype, d: anytype) App { _ = .{a, n, d}; return .{}; }
+        pub fn deinit(self: App) void { _ = self; }
+        pub fn rootCommand(self: *App) *App { return self; }
+        pub fn createCommand(self: App, n: anytype, d: anytype) App { _ = .{self, n, d}; return .{}; }
+        pub fn parseProcess(self: App, io: anytype, args: anytype) anyerror!Matches { _ = .{self, io, args}; return .{}; }
+        pub fn addArg(self: App, a: anytype) !void { _ = .{self, a}; }
+        pub fn addSubcommand(self: App, cmd: anytype) !void { _ = .{self, cmd}; }
+    };
+    pub const Command = App;
+    pub const Arg = struct {
+        pub fn booleanOption(n: anytype, s: anytype, d: anytype) Arg { _ = .{n, s, d}; return .{}; }
+        pub fn positional(n: anytype, d: anytype, def: anytype) Arg { _ = .{n, d, def}; return .{}; }
+    };
+    pub const Matches = struct {
+        pub fn containsArg(self: Matches, n: anytype) bool { _ = .{self, n}; return false; }
+        pub fn subcommandMatches(self: Matches, n: anytype) ?*Matches { _ = .{self, n}; return null; }
+        pub fn getSingleValue(self: Matches, n: anytype) ?[]const u8 { _ = .{self, n}; return null; }
+    };
+};
+
 const core = @import("../core/root.zig");
 const ai = @import("../ai/root.zig");
 const agent = @import("../agent/root.zig");
@@ -151,6 +174,18 @@ pub fn run(
     args: std.process.Args,
 ) !void {
     initEnvVars(environ_map);
+
+    var args_list: std.ArrayList([]const u8) = .empty;
+    defer args_list.deinit(allocator);
+    {
+        var it = try std.process.Args.Iterator.initAllocator(args, allocator);
+        defer it.deinit();
+        while (it.next()) |arg| {
+            try args_list.append(allocator, arg);
+        }
+    }
+    const args_slice = try args_list.toOwnedSlice(allocator);
+    defer allocator.free(args_slice);
 
     var app = yazap.App.init(allocator, "kimiz", "AI Coding Agent");
     defer app.deinit();
