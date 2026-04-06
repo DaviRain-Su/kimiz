@@ -12,10 +12,11 @@ pub fn build(b: *std.Build) void {
     });
 
     // TASK-INFRA-007: Add yazap CLI parser dependency
-    const yazap_dep = b.dependency("yazap", .{
-        .target = target,
-        .optimize = optimize,
-    });
+    // NOTE: yazap 暂时禁用，等待 Zig 0.16 兼容更新
+    // const yazap_dep = b.dependency("yazap", .{
+    //     .target = target,
+    //     .optimize = optimize,
+    // });
 
     // TASK-INFRA-001: Add LMDB dependency
     const lmdb_dep = b.dependency("lmdb", .{
@@ -28,7 +29,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .imports = &.{
             .{ .name = "zwasm", .module = zwasm_dep.module("zwasm") },
-            .{ .name = "yazap", .module = yazap_dep.module("yazap") },
+            // .{ .name = "yazap", .module = yazap_dep.module("yazap") },
             .{ .name = "lmdb", .module = lmdb_dep.module("lmdb") },
         },
     });
@@ -167,3 +168,4 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_orchestrator_tests.step);
     // Fuzz tests (disabled - needs fix for SkillContext API change)
     // test_step.dependOn(&run_fuzz_tests.step);
+}
