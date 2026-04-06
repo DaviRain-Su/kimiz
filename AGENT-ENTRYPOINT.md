@@ -26,7 +26,7 @@ zig version  # 必须是 0.16.0-dev+
 | 1 | **`AGENT-ENTRYPOINT.md`** | 本文件，当前执行入口 |
 | 2 | **`tasks/active/sprint-2026-04/README.md`** | 当前 Sprint 看板 |
 | 3 | **`docs/DESIGN-REFERENCES.md`** | 实现参考索引（做任务前必须查） |
-| 4 | **`docs/specs/T-127-integrate-zig-to-yul-as-contract-skill.md`** | 当前主任务 Technical Spec |
+| 4 | **`docs/guides/TASK-LIFECYCLE.md`** | 任务管理规范（**必读：做完必须归档**） |
 | 5 | **`docs/ROADMAP-v2.md`** | 0-10 阶段统一路线图（需要上下文时读） |
 | 6 | **`docs/FEATURES.md`** | 已实现特性清单（需要上下文时读） |
 
