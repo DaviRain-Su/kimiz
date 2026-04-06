@@ -2,7 +2,7 @@
 //! T-113: High-intensity randomized testing to catch boundary conditions
 
 const std = @import("std");
-const skills = @import("root.zig");
+const skills = @import("kimiz").skills;
 
 // ============================================================================
 // Fuzz Random Engine

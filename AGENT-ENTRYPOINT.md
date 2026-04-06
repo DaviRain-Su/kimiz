@@ -26,34 +26,35 @@ zig version  # 必须是 0.16.0-dev+
 | 1 | **`AGENT-ENTRYPOINT.md`** | 本文件，当前执行入口 |
 | 2 | **`tasks/active/sprint-2026-04/README.md`** | 当前 Sprint 看板 |
 | 3 | **`docs/DESIGN-REFERENCES.md`** | 实现参考索引（做任务前必须查） |
-| 4 | **`docs/specs/FIX-ZIG-015-compatibility.md`** | 第一个任务的 Technical Spec |
+| 4 | **`docs/specs/T-127-integrate-zig-to-yul-as-contract-skill.md`** | 当前主任务 Technical Spec |
 | 5 | **`docs/ROADMAP-v2.md`** | 0-10 阶段统一路线图（需要上下文时读） |
 | 6 | **`docs/FEATURES.md`** | 已实现特性清单（需要上下文时读） |
 
 ---
 
-## 2. 当前 Sprint（本周内必须完成）
+## 2. 当前 Sprint
 
-**Sprint 名称**: Sprint 2026-04 - 恢复编译 + 验证 Phase 2 成果  
-**详细看板**: `tasks/active/sprint-2026-04/README.md`
+|**Sprint 名称**: Sprint 2026-04 - Zig 0.16 稳定 + 战略扩展  
+|**详细看板**: `tasks/active/sprint-2026-04/README.md`
 
-### 执行任务队列（严格按顺序，不要跳过）
+### 前期任务（已完成并归档）
+
+Sprint 2026-04 的前期目标已全部完成：
+- Zig 0.16 API 迁移完成（T-125）
+- 编译恢复、测试通过、REPL 可运行
+- delegate / worktree / E2E / comptime DSL 验证通过
+- Auto skill 流水线（T-100）和 AutoRegistry（T-101）设计完成
+- Document-driven workflow 基础设施（T-120 ~ T-123）落地
+- Observability Metrics Phase 1（T-124）完成
+
+归档位置：`tasks/completed/sprint-2026-04/`
+
+### 活跃任务队列
 
 | # | 优先级 | 任务ID | 标题 | 状态 | Spec 文档 | 预计 |
 |---|--------|--------|------|------|-----------|------|
-| 1 | P0 | **FIX-ZIG-015** | ~~修复 Zig 0.15.2 编译兼容性~~ | `cancelled` | 已确认项目目标为 Zig 0.16，此修复回滚 | - |
-| 2 | P0 | **T-092-VERIFY** | 验证 delegate subagent 注册 | `done` | [`docs/specs/T-092-verify-delegate-tool.md`](docs/specs/T-092-verify-delegate-tool.md) | 30min |
-| 3 | P0 | **T-119-VERIFY** | 验证 git worktree 隔离 | `done` | [`docs/specs/T-119-verify-worktree.md`](docs/specs/T-119-verify-worktree.md) | 1h |
-| 4 | P1 | **T-009-E2E** | 补充 E2E 测试（核心工具 + Agent Loop） | `done` | [`docs/specs/T-009-e2e-tests.md`](docs/specs/T-009-e2e-tests.md) | 4h |
-| 5 | **P0** | **T-103-SPIKE** | **comptime Skill DSL 原型验证（Scale 战略关键）** | `done` | [`docs/specs/T-103-spike-comptime-skill-dsl.md`](docs/specs/T-103-spike-comptime-skill-dsl.md) | 4h |
-| 6 | P1 | **T-100** | 建立 auto skill 自动生成流水线 | `done` | [`docs/specs/T-100-establish-auto-skill-generation-pipeline.md`](docs/specs/T-100-establish-auto-skill-generation-pipeline.md) | 12h |
-| 7 | P1 | **T-101** | 设计 AutoRegistry 动态加载 | `done` | [`docs/specs/T-101-design-autoregistry-dynamic-loading.md`](docs/specs/T-101-design-autoregistry-dynamic-loading.md) | 10h |
-| 8 | P1 | **T-120-DESIGN** | 设计文档驱动的 Agent 工作流 | `done` | [`docs/specs/T-120-design-document-driven-loop.md`](docs/specs/T-120-design-document-driven-loop.md) | 2h |
-| 9 | P1 | **T-121-IMPLEMENT** | 实现 Agent 长期记忆工具 | `done` | [`docs/specs/T-121-implement-memory-tools.md`](docs/specs/T-121-implement-memory-tools.md) | 4h |
-| 10 | P1 | **T-122-PROMPT** | 改造 System Prompt 强制文档前置读取 | `done` | [`docs/specs/T-122-prompt-document-driven-loop.md`](docs/specs/T-122-prompt-document-driven-loop.md) | 3h |
-| 11 | P2 | **T-123-LESSONS** | 建立 lessons-learned 和多 Agent 一致性 | `done` | [`docs/specs/T-123-lessons-learned-and-consistency.md`](docs/specs/T-123-lessons-learned-and-consistency.md) | 3h |
-| 12 | **P1** | **T-124-METRICS** | **Observability Metrics - Phase 1 (内置收集)** | `done` | [`docs/specs/T-124-observability-metrics-phase1.md`](docs/specs/T-124-observability-metrics-phase1.md) | 6-8h |
-| 13 | **P1** | **T-127** | **将 zig-to-yul 集成为 KimiZ 的合约生成 skill** | `todo` | [`docs/specs/T-127-integrate-zig-to-yul-as-contract-skill.md`](docs/specs/T-127-integrate-zig-to-yul-as-contract-skill.md) | 16h |
+| 1 | P1 | **T-126** | Agent 研究与学习过程的可观测性 | `spec` | 待创建 Spec | 2.5h |
+| 2 | **P1** | **T-127** | **将 zig-to-yul 集成为 KimiZ 的合约生成 skill** | `todo` | [`docs/specs/T-127-integrate-zig-to-yul-as-contract-skill.md`](docs/specs/T-127-integrate-zig-to-yul-as-contract-skill.md) | 16h |
 
 > **规则**: 只有上一行标记为 `done` 后，才能开始下一行的 `todo` 任务。
 
@@ -109,13 +110,11 @@ zig version  # 必须是 0.16.0-dev+
 - Skills: `src/skills/*.zig`
 - Worktree: `src/utils/worktree.zig`
 
-### 当前已知编译错误
-1. `src/main.zig:5:30`: `root source file struct 'process' has no member named 'Init'`
-   - 原因: 使用了 Zig 0.16 的 `std.process.Init`
-2. `src/http.zig:48:51`: `no field named 'io' in struct 'http.Client'`
-   - 原因: 使用了 Zig 0.16 的 `std.Io`
+### 当前编译状态
 
-解决方案详见 **FIX-ZIG-015** 的 Spec。
+- `zig build` ✅ 零错误（Zig 0.16）
+- `zig build test` ✅ 全部通过
+- `make build` / `make test` 推荐作为入口命令
 
 ---
 

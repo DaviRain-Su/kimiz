@@ -1,6 +1,7 @@
 const std = @import("std");
-const cli = @import("cli/root.zig");
-const utils = @import("utils/root.zig");
+const kimiz = @import("kimiz");
+const cli = kimiz.cli;
+const utils = kimiz.utils;
 
 pub fn main(init: std.process.Init) !u8 {
     const allocator = init.gpa;

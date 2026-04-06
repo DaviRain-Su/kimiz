@@ -36,6 +36,10 @@
             .url = "https://github.com/DaviRain-Su/zwasm/archive/refs/heads/main.tar.gz",
             .hash = "zwasm-1.6.0-IBbzF24TKACJ02Sezgm-NmtnniyWeK5p23FTSAWZwDKT",
         },
+        .yazap = .{
+            .url = "https://github.com/prajwalch/yazap/archive/refs/heads/main.tar.gz",
+            .hash = "yazap-0.7.0-Z1t-EiT6AQDpbgaDQ1i_oBfnvmeH4AUM3WmiuTuXuQMN",
+        },
     },
     // Specifies the set of files and directories that are included in this package.
     // Only files and directories listed here are included in the `hash` that
