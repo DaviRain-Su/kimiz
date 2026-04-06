@@ -61,6 +61,7 @@ T-129 要求实现 WASM-based Skill Plugin 系统。子任务 01 是整个 T-129
   - `execute()` 暂为 stub（返回 `error.TodoImplementInT12903`，等待 T-129-03 的 host import 内存分配）
 - `2026-04-06` — 添加 3 个单元测试（正常初始化 / 缺少 export / 版本不匹配），使用 WAT 字符串作为 fixture
 - `2026-04-06` — `zig build test` 通过（8/8 steps succeeded）
+- `2026-04-06` — 提交 `t129` 分支到远程，状态标记为 `done`
 
 ## 6. Lessons Learned
 
@@ -72,5 +73,4 @@ T-129 要求实现 WASM-based Skill Plugin 系统。子任务 01 是整个 T-129
 - WAT fixture 是测试 WASM skill 的最快方式，`zwasm.loadFromWat` 默认可用（`enable_wat = true`），比手写 wasm binary bytes 可靠得多
 - `execute()` 不能直接把宿主指针传给 WASM，必须通过 WASM linear memory + offset。这证实了 T-129-03 的 host `alloc` import 是必不可少的
 
-**后续动作**:
-- [ ] 继续执行 T-129-02 的 PluginLoader 实现
+

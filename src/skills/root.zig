@@ -252,6 +252,8 @@ pub const generator = @import("generator.zig");
 pub const wasm_skill = @import("wasm_skill.zig");
 pub const WasmSkill = wasm_skill.WasmSkill;
 pub const WasmSkillError = wasm_skill.WasmSkillError;
+pub const plugin_loader = @import("plugin_loader.zig");
+pub const PluginLoader = plugin_loader.PluginLoader;
 
 // ============================================================================
 // Tests

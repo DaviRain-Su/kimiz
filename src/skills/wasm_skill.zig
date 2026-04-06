@@ -32,7 +32,11 @@ pub const WasmSkill = struct {
     /// Validates ABI, reads metadata (name, description), and takes ownership
     /// of the module pointer (does NOT deinit the module on failure).
     pub fn init(allocator: std.mem.Allocator, inner: *zwasm.WasmModule) !Self {
-        // 1. Verify version global
+        // 1. Verify required function export
+        _ = inner.module.getExport("kimiz_skill_execute", .func) orelse
+            return WasmSkillError.MissingExport;
+
+        // 2. Verify version global
         const version_idx = inner.module.getExport("kimiz_skill_version", .global) orelse
             return WasmSkillError.MissingExport;
         const version_global = try inner.instance.getGlobal(@intCast(version_idx));
@@ -41,7 +45,7 @@ pub const WasmSkill = struct {
             return WasmSkillError.VersionMismatch;
         }
 
-        // 2. Read metadata from globals
+        // 3. Read metadata from globals
         const name = try readMetadata(allocator, inner, "kimiz_skill_name", "kimiz_skill_name_len");
         errdefer allocator.free(name);
 

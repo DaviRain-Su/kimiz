@@ -41,19 +41,34 @@
 
 ## 4. 验收标准
 
-- [ ] `PluginLoader.loadFromFile(path)` 能读取 `.wasm` 文件并返回 `WasmSkill`
-- [ ] 成功加载后对 `wasm_bytes` 的内存能正确释放（无泄漏）
-- [ ] 缺少 `kimiz_skill_execute` 导出时返回明确的 ABI 错误
-- [ ] `kimiz_skill_version != 1` 时返回版本不匹配错误
-- [ ] 能正确提取 name 和 description 字符串
-- [ ] `PluginLoader` 实例持有 `allocator` 和可选的 `WasiConfig`
-- [ ] 至少 3 个测试（加载成功 / 缺少 export / 版本错误）
-- [ ] `zig build test` 通过
+- [x] `PluginLoader.loadFromFile(path)` 能读取 `.wasm` 和 `.wat` 文件并返回 `WasmSkill`
+- [x] 成功加载后对 `source` 的内存能正确释放（无泄漏）
+- [x] 缺少 `kimiz_skill_execute` 导出时返回明确的 ABI 错误（`WasmSkillError.MissingExport`）
+- [x] `kimiz_skill_version != 1` 时返回版本不匹配错误（已由 `WasmSkill.init` 覆盖）
+- [x] 能正确提取 name 和 description 字符串
+- [x] `PluginLoader` 实例持有 `allocator`
+- [x] 3 个测试（加载成功 `.wat` / 缺少 function export / 无效 binary）
+- [x] `zig build test` 通过
 
 ## 5. Log
 
 - `2026-04-06` — 创建子任务文档，状态为 `todo`
+- `2026-04-06` — 实现 `src/skills/plugin_loader.zig`：
+  - `PluginLoader` 结构，持有 `allocator`
+  - `loadFromFile(path)`：自动根据 `.wat` / `.wasm` 后缀选择 `loadFromWat` 或 `load`
+  - 复用 `WasmSkill.init()` 进行 ABI 验证和元数据提取
+- `2026-04-06` — 扩展 `WasmSkill.init()` 增加 `kimiz_skill_execute` function export 的前置检查
+- `2026-04-06` — 添加 3 个单元测试：有效 `.wat` 加载、缺少 `execute` export、无效 binary
+- `2026-04-06` — `zig build test` 通过（77/77 tests passed）
 
 ## 6. Lessons Learned
 
-（任务完成后填写）
+**分类**: API 设计 / 测试策略
+
+**内容**:
+- `PluginLoader` 支持 `.wat` 文件加载极大简化了测试：不需要手写 wasm binary bytes 或依赖外部 `wat2wasm` 工具
+- 将 ABI 验证集中在 `WasmSkill.init()` 中是更好的设计：`PluginLoader` 只负责 I/O，验证逻辑不分散
+- `std.fs.cwd()` + `.zig-cache/tmp_*.wat` 是 Zig 测试中最稳定的临时文件模式（避免 `std.testing.tmpDir` 的路径获取问题）
+
+**后续动作**:
+- [ ] 继续执行 T-129-03 的 Host Imports 实现

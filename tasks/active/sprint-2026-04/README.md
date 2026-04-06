@@ -55,9 +55,9 @@
 
 | # | 子任务文件 | 标题 | 状态 |
 |---|------------|------|------|
-| 1 | [`T-129-01-wasm-skill-abi-and-skeleton.md`](T-129-01-wasm-skill-abi-and-skeleton.md) | WASM Skill ABI 设计与最小骨架 | `todo` |
-| 2 | [`T-129-02-plugin-loader.md`](T-129-02-plugin-loader.md) | PluginLoader — 文件加载与 ABI 验证 | `todo` |
-| 3 | [`T-129-03-host-imports.md`](T-129-03-host-imports.md) | Host Imports 实现（log, alloc, free） | `todo` |
+| 1 | [`T-129-01-wasm-skill-abi-and-skeleton.md`](T-129-01-wasm-skill-abi-and-skeleton.md) | WASM Skill ABI 设计与最小骨架 | `done` |
+| 2 | [`T-129-02-plugin-loader.md`](T-129-02-plugin-loader.md) | PluginLoader — 文件加载与 ABI 验证 | `done` |
+| 3 | [`T-129-03-host-imports.md`](T-129-03-host-imports.md) | Host Imports 实现（log, alloc, free） | `in_progress` |
 | 4 | [`T-129-04-plugin-registry.md`](T-129-04-plugin-registry.md) | PluginRegistry — 扫描、注册与热重载 | `todo` |
 | 5 | [`T-129-05-skillregistry-integration.md`](T-129-05-skillregistry-integration.md) | 与 SkillRegistry / TaskEngine 集成 | `todo` |
 | 6 | [`T-129-06-prompt-to-wasm-autogen.md`](T-129-06-prompt-to-wasm-autogen.md) | Prompt-to-WASM 自动生成 + CLI | `todo` |
