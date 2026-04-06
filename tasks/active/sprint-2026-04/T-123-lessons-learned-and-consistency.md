@@ -126,8 +126,21 @@ pub const DocumentLock = struct {
 
 ## 验收标准
 
-- [ ] `docs/lessons-learned.md` 已创建并包含有效格式
-- [ ] `DocumentLock` 能通过并发测试（两个线程争锁，不会写坏文件）
-- [ ] `add_lesson` 能原子性地写入 `lessons-learned.md`
-- [ ] Agent 启动时自动读取最新 lessons 并注入 prompt
-- [ ] 所有新增代码通过 `zig build test`
+- [x] `docs/lessons-learned.md` 已创建并包含有效格式
+- [x] `DocumentLock` 能通过并发测试（两个线程争锁，不会写坏文件）
+- [x] `add_lesson` 能原子性地写入 `lessons-learned.md`
+- [x] Agent 启动时自动读取最新 lessons 并注入 prompt
+- [x] 所有新增代码通过 `zig build test`
+
+---
+
+## Log
+
+- `2026-04-06` — 开始 T-123 实现，状态 `todo` → `implement`
+- `2026-04-06` — 创建 `docs/lessons-learned.md`，预填充 Zig 0.16 相关经验教训
+- `2026-04-06` — 创建 `src/utils/document_lock.zig` 实现文件锁
+- `2026-04-06` — 创建 `src/agent/tools/lesson_tools.zig` 实现 add_lesson 工具
+- `2026-04-06` — 注册 document_lock 到 utils/root.zig，lesson_tools 到 agent/root.zig
+- `2026-04-06` — 在 cli/root.zig 注册 add_lesson 到 Agent 工具表
+- `2026-04-06` — `make build` 和 `make test` 全部通过
+- `2026-04-06` — 完成实现，状态改为 `done`

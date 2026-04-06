@@ -259,6 +259,7 @@ fn runInteractive(allocator: std.mem.Allocator) !void {
     var read_task_ctx = agent.doc_tools.ReadActiveTaskContext{};
     var update_log_ctx = agent.doc_tools.UpdateTaskLogContext{};
     var sync_spec_ctx = agent.doc_tools.SyncSpecWithCodeContext{};
+    var add_lesson_ctx = agent.lesson_tools.AddLessonContext{};
 
     const tools = [_]agent.AgentTool{
         agent.read_file.createAgentTool(&read_file_ctx),
@@ -273,6 +274,7 @@ fn runInteractive(allocator: std.mem.Allocator) !void {
         agent.doc_tools.createReadActiveTaskTool(&read_task_ctx),
         agent.doc_tools.createUpdateTaskLogTool(&update_log_ctx),
         agent.doc_tools.createSyncSpecWithCodeTool(&sync_spec_ctx),
+        agent.lesson_tools.createAddLessonTool(&add_lesson_ctx),
     };
 
     // Initialize Agent

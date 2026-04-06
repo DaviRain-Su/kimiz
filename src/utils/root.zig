@@ -11,6 +11,7 @@ pub const config = @import("config.zig");
 pub const session = @import("session.zig");
 pub const io_manager = @import("io_manager.zig");
 pub const worktree = @import("worktree.zig");
+pub const doc_lock = @import("document_lock.zig");
 
 // Re-export IoManager
 pub const IoManager = io_manager.IoManager;

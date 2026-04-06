@@ -13,6 +13,7 @@ pub const bash = @import("tools/bash.zig");
 pub const git = @import("tools/git.zig");
 pub const fff = @import("tools/fff.zig");
 pub const doc_tools = @import("tools/document_tools.zig");
+pub const lesson_tools = @import("tools/lesson_tools.zig");
 
 // Re-export common types
 pub const Tool = tool.Tool;

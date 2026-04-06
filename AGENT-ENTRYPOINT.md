@@ -51,7 +51,7 @@ zig version  # 必须是 0.16.0-dev+
 | 8 | P1 | **T-120-DESIGN** | 设计文档驱动的 Agent 工作流 | `done` | [`docs/specs/T-120-design-document-driven-loop.md`](docs/specs/T-120-design-document-driven-loop.md) | 2h |
 | 9 | P1 | **T-121-IMPLEMENT** | 实现 Agent 长期记忆工具 | `done` | [`docs/specs/T-121-implement-memory-tools.md`](docs/specs/T-121-implement-memory-tools.md) | 4h |
 | 10 | P1 | **T-122-PROMPT** | 改造 System Prompt 强制文档前置读取 | `done` | [`docs/specs/T-122-prompt-document-driven-loop.md`](docs/specs/T-122-prompt-document-driven-loop.md) | 3h |
-| 11 | P2 | **T-123-LESSONS** | 建立 lessons-learned 和多 Agent 一致性 | `todo` | [`docs/specs/T-123-lessons-learned-and-consistency.md`](docs/specs/T-123-lessons-learned-and-consistency.md) | 3h |
+| 11 | P2 | **T-123-LESSONS** | 建立 lessons-learned 和多 Agent 一致性 | `done` | [`docs/specs/T-123-lessons-learned-and-consistency.md`](docs/specs/T-123-lessons-learned-and-consistency.md) | 3h |
 | 12 | **P1** | **T-124-METRICS** | **Observability Metrics - Phase 1 (内置收集)** | `research` | [`docs/specs/T-124-observability-metrics-phase1.md`](docs/specs/T-124-observability-metrics-phase1.md) | 6-8h |
 
 > **规则**: 只有上一行标记为 `done` 后，才能开始下一行的 `todo` 任务。
