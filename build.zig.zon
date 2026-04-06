@@ -12,6 +12,10 @@
             .url = "https://github.com/nDimensional/zig-lmdb/archive/704e92652323909d8d302a99e835f2f9bf4f4f26.tar.gz",
             .hash = "lmdb-0.3.2-6TpzoI4_AAAR3elEADjGEwbMrY157vtcN-o6qxtDUXM3",
         },
+        .vaxis = .{
+            .url = "git+https://github.com/DaviRain-Su/libvaxis#301cd45118c85491a45a94a1769d0498246815cf",
+            .hash = "vaxis-0.5.1-BWNV_NJDCQC6726nXpeaxbgAWkmcBiDExU4FRWgFDZx-",
+        },
     },
     .paths = .{
         "build.zig",
