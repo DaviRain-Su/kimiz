@@ -66,7 +66,7 @@ pub fn executePhase(
 
     // 5. Content review (with one retry on NEEDS_REVISION)
     var reviewer = review_mod.ReviewAgent.init(allocator, reviewRoleForPhase(phase));
-    var report = try reviewer.review(assistant_msg);
+    var report = try reviewer.review(agent, assistant_msg);
     defer report.deinit();
 
     if (report.result == .needs_revision) {
@@ -86,7 +86,7 @@ pub fn executePhase(
             return PhaseResult.init(allocator, .needs_revision, "Retry document still fails structural validation.");
         }
 
-        var retry_report = try reviewer.review(retry_msg);
+        var retry_report = try reviewer.review(agent, retry_msg);
         defer retry_report.deinit();
 
         return PhaseResult.init(allocator, mapReviewResult(retry_report.result), retry_report.feedback);
