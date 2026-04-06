@@ -46,6 +46,13 @@ pub const WorkspaceInfo = struct {
     }
 
     pub fn collect(self: *Self) !void {
+        if (self.branch) |b| { self.allocator.free(b); self.branch = null; }
+        if (self.default_branch) |b| { self.allocator.free(b); self.default_branch = null; }
+        if (self.git_status) |s| { self.allocator.free(s); self.git_status = null; }
+        for (self.recent_commits) |c| self.allocator.free(c);
+        self.allocator.free(self.recent_commits);
+        self.recent_commits = &[_][]const u8{};
+
         self.repo_root = findGitRoot(self.allocator, self.cwd) catch null;
         if (self.repo_root) |root| {
             self.branch = getGitBranch(self.allocator, root) catch null;
@@ -141,14 +148,17 @@ fn findGitRoot(allocator: std.mem.Allocator, _start_dir: []const u8) !?[]const u
 
 fn getGitBranch(allocator: std.mem.Allocator, _repo_root: []const u8) !?[]const u8 {
     _ = _repo_root;
-    if (try runGit(allocator, ".", &[_][]const u8{ "git", "branch", "--show-current" })) |b|
+    if (try runGit(allocator, ".", &[_][]const u8{ "git", "branch", "--show-current" })) |b| {
         if (b.len > 0) return b;
+        allocator.free(b);
+    }
     return try runGit(allocator, ".", &[_][]const u8{ "git", "rev-parse", "--abbrev-ref", "HEAD" });
 }
 
 fn getGitDefaultBranch(allocator: std.mem.Allocator, _repo_root: []const u8) !?[]const u8 {
     _ = _repo_root;
     const out = try runGit(allocator, ".", &[_][]const u8{ "git", "remote", "show", "origin" }) orelse return null;
+    defer allocator.free(out);
     var lines = std.mem.splitScalar(u8, out, '\n');
     while (lines.next()) |line| {
         if (std.mem.indexOf(u8, line, "HEAD branch:")) |pos| {
@@ -169,15 +179,29 @@ fn getRecentCommits(allocator: std.mem.Allocator, _repo_root: []const u8, count:
     const cnt = try std.fmt.allocPrint(allocator, "{d}", .{count});
     defer allocator.free(cnt);
     const argv = &[_][]const u8{ "git", "log", "--oneline", "-n", cnt };
-    const out = try runGit(allocator, ".", argv) orelse return &[_][]const u8{};
-    var commits: std.ArrayList([]const u8) = .empty;
-    defer commits.deinit(allocator);
-    var lines = std.mem.splitScalar(u8, std.mem.trim(u8, out, " \t\n\r"), '\n');
-    while (lines.next()) |line| {
-        const entry = std.mem.trim(u8, line, " \t\n\r");
-        if (entry.len > 0) try commits.append(allocator, try allocator.dupe(u8, entry));
+    const maybe_out = try runGit(allocator, ".", argv);
+    if (maybe_out) |out| {
+        var commits: std.ArrayList([]const u8) = .empty;
+        defer {
+            for (commits.items) |c| allocator.free(c);
+            commits.deinit(allocator);
+        }
+        var lines = std.mem.splitScalar(u8, std.mem.trim(u8, out, " \t\n\r"), '\n');
+        while (lines.next()) |line| {
+            const entry = std.mem.trim(u8, line, " \t\n\r");
+            if (entry.len > 0) {
+                const duped = try allocator.dupe(u8, entry);
+                commits.append(allocator, duped) catch |err| {
+                    allocator.free(duped);
+                    return err;
+                };
+            }
+        }
+        const result = try commits.toOwnedSlice(allocator);
+        allocator.free(out);
+        return result;
     }
-    return try commits.toOwnedSlice(allocator);
+    return &[_][]const u8{};
 }
 
 fn readFileLimited(allocator: std.mem.Allocator, path: []const u8, max_bytes: usize) !?[]const u8 {
