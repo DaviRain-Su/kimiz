@@ -8,7 +8,6 @@ pub fn build(b: *std.Build) void {
     const zwasm_dep = b.dependency("zwasm", .{
         .target = target,
         .optimize = optimize,
-        .tests = false,
     });
 
     // TASK-INFRA-007: Add yazap CLI parser dependency
@@ -37,9 +36,6 @@ pub fn build(b: *std.Build) void {
     mod.addLibraryPath(b.path("ffi"));
     mod.linkSystemLibrary("fff_c", .{});
 
-    // TUI support
-    const vaxis_dep = b.dependency("vaxis", .{ .target = target, .optimize = optimize });
-
     // Single module — all src/ files come in via relative imports from main.zig
     const exe = b.addExecutable(.{
         .name = "kimiz",
@@ -49,7 +45,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
             .link_libc = true,
             .imports = &.{
-                .{ .name = "vaxis", .module = vaxis_dep.module("vaxis") },
+                .{ .name = "kimiz", .module = mod },
                 .{ .name = "zwasm", .module = zwasm_dep.module("zwasm") },
             },
         }),
