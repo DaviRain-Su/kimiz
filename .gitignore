@@ -33,5 +33,5 @@ zig-pkg
 .crush
 .claude
 .agents
-skills
+/skills/
 skills-lock.json

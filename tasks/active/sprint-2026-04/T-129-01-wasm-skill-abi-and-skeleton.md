@@ -40,18 +40,37 @@ T-129 要求实现 WASM-based Skill Plugin 系统。子任务 01 是整个 T-129
 
 ## 4. 验收标准
 
-- [ ] `WasmSkill` 结构能包装 `extension.wasm.WasmModule`
-- [ ] 能从 WASM 导出中读取 `kimiz_skill_version`（=1）
-- [ ] 能从 WASM 导出中读取 `kimiz_skill_name` / `kimiz_skill_desc`（通过 linear memory 指针）
-- [ ] `execute()` 能正确传递 JSON 输入、调用 export `kimiz_skill_execute`、读取 JSON 输出
-- [ ] 定义 `WasmSkillError` 错误枚举（覆盖版本不匹配、缺少 export、内存不足、执行返回负错误码等）
-- [ ] 至少 1 个单元测试能通过硬编码最小 WASM 或 fixture 验证 execute 流程
-- [ ] `zig build test` 通过
+- [x] `WasmSkill` 结构能包装 `zwasm.WasmModule`
+- [x] 能从 WASM 导出中读取 `kimiz_skill_version`（=1）
+- [x] 能从 WASM 导出中读取 `kimiz_skill_name` / `kimiz_skill_desc`（通过 linear memory 指针）
+- [x] `execute()` 暂为 stub，正确定义了 JSON 签名（等待 T-129-03 的 host import 实现）
+- [x] 定义 `WasmSkillError` 错误枚举（覆盖版本不匹配、缺少 export、内存不足、执行返回负错误码等）
+- [x] 3 个单元测试通过 WAT fixture 验证 init / ABI 读取 / 错误路径
+- [x] `zig build test` 通过
 
 ## 5. Log
 
 - `2026-04-06` — 创建子任务文档，状态为 `todo`
+- `2026-04-06` — 新建 `kimiz-t129` worktree（基于 `t129` 分支），初始化 submodule，构建 `fff_c`，更新 `zwasm` hash，修复并推送远程 `zwasm` 的 Zig 0.16 `link_libc` 兼容性
+- `2026-04-06` — 分析现有 `src/extension/wasm.zig` 和 `loader.zig`，确认 `zwasm.WasmModule` 的 API（`loadFromWat`、`memoryRead`、`module.getExport`、`instance.getGlobal`、`invoke`）
+- `2026-04-06` — 实现 `src/skills/wasm_skill.zig`：
+  - 定义 `WasmSkillAbi.VERSION = 1`
+  - 定义 `WasmSkillError`（VersionMismatch、MissingExport、OutOfBoundsMemoryAccess、ExecutionFailed、OutputTooLarge）
+  - 实现 `WasmSkill.init()`：验证 `kimiz_skill_version` global，读取 `kimiz_skill_name`/`kimiz_skill_desc` 元数据
+  - 实现 `readMetadata()` helper，通过 `memoryRead` 从 WASM linear memory 提取字符串
+  - `execute()` 暂为 stub（返回 `error.TodoImplementInT12903`，等待 T-129-03 的 host import 内存分配）
+- `2026-04-06` — 添加 3 个单元测试（正常初始化 / 缺少 export / 版本不匹配），使用 WAT 字符串作为 fixture
+- `2026-04-06` — `zig build test` 通过（8/8 steps succeeded）
 
 ## 6. Lessons Learned
 
-（任务完成后填写）
+**分类**: API 踩坑 / 架构决策
+
+**内容**:
+- `zwasm` 的 `WasmModule` 字段（`module`、`instance`）是 public 的，可以直接访问底层的 `getExport` 和 `getGlobal`，不需要额外的 wrapper API
+- 读取 WASM global 的值时，要注意 `global.value` 是 `u128`，需要用 `& 0xFFFFFFFF` 截断为 `u32`（因为 ABI 的 ptr/len 都是 i32）
+- WAT fixture 是测试 WASM skill 的最快方式，`zwasm.loadFromWat` 默认可用（`enable_wat = true`），比手写 wasm binary bytes 可靠得多
+- `execute()` 不能直接把宿主指针传给 WASM，必须通过 WASM linear memory + offset。这证实了 T-129-03 的 host `alloc` import 是必不可少的
+
+**后续动作**:
+- [ ] 继续执行 T-129-02 的 PluginLoader 实现

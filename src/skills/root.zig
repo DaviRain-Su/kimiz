@@ -249,6 +249,9 @@ pub fn registerBuiltinSkills(registry: *SkillRegistry) !void {
 }
 
 pub const generator = @import("generator.zig");
+pub const wasm_skill = @import("wasm_skill.zig");
+pub const WasmSkill = wasm_skill.WasmSkill;
+pub const WasmSkillError = wasm_skill.WasmSkillError;
 
 // ============================================================================
 // Tests
