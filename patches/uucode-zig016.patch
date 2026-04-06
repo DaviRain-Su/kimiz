@@ -1,0 +1,147 @@
+diff --git a/src/build/Ucd.zig b/src/build/Ucd.zig
+index d1102c4..d43c82f 100644
+--- a/src/build/Ucd.zig
++++ b/src/build/Ucd.zig
+@@ -139,7 +139,7 @@ fn fieldNeedsSection(comptime field: []const u8, comptime ucd_section: UcdSectio
+ }
+ 
+ pub fn init(allocator: std.mem.Allocator, io: std.Io, comptime table_configs: []const config.Table) !Self {
+-    const start = try std.Io.Clock.awake.now(io);
++    const start = std.Io.Clock.awake.now(io);
+ 
+     var self: Self = .{};
+ 
+@@ -228,7 +228,7 @@ pub fn init(allocator: std.mem.Allocator, io: std.Io, comptime table_configs: []
+         try parseIndicSyllabicCategory(allocator, io, self.indic_syllabic_category);
+     }
+ 
+-    const end = try std.Io.Clock.awake.now(io);
++    const end = std.Io.Clock.awake.now(io);
+     std.log.debug("Ucd init time: {d}ms\n", .{@divTrunc(std.Io.Timestamp.durationTo(start, end).nanoseconds, std.time.ns_per_ms)});
+ 
+     return self;
+diff --git a/src/build/tables.zig b/src/build/tables.zig
+index 797891f..d79d8b9 100644
+--- a/src/build/tables.zig
++++ b/src/build/tables.zig
+@@ -23,7 +23,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
+     defer threaded.deinit();
+     const io = threaded.io();
+ 
+-    const total_start = try std.Io.Clock.awake.now(io);
++    const total_start = std.Io.Clock.awake.now(io);
+ 
+     const ucd = try Ucd.init(main_allocator, io, table_configs);
+ 
+@@ -63,12 +63,14 @@ pub fn main(init: std.process.Init.Minimal) !void {
+         resolved_tables[i] = table_config.resolve();
+     }
+ 
+-    inline for (resolved_tables, 0..) |resolved_table, i| {
+-        const start = try std.Io.Clock.awake.now(io);
++    var table_i: usize = 0;
++    while (table_i < table_configs.len) : (table_i += 1) {
++        const resolved_table = resolved_tables[table_i];
++        const start = std.Io.Clock.awake.now(io);
+ 
+         try writeTableData(
+             resolved_table,
+-            i,
++            table_i,
+             table_allocator,
+             io,
+             &ucd,
+@@ -78,9 +80,9 @@ pub fn main(init: std.process.Init.Minimal) !void {
+         std.log.debug("Arena end capacity: {d}", .{table_arena.queryCapacity()});
+         _ = table_arena.reset(.retain_capacity);
+ 
+-        const end = try std.Io.Clock.awake.now(io);
++        const end = std.Io.Clock.awake.now(io);
+         std.log.debug("`writeTableData` for table_config {d} time: {d}ms", .{
+-            i, @divTrunc(std.Io.Timestamp.durationTo(start, end).nanoseconds, std.time.ns_per_ms),
++            table_i, @divTrunc(std.Io.Timestamp.durationTo(start, end).nanoseconds, std.time.ns_per_ms),
+         });
+     }
+ 
+@@ -90,10 +92,11 @@ pub fn main(init: std.process.Init.Minimal) !void {
+         \\
+     );
+ 
+-    inline for (resolved_tables, 0..) |resolved_table, i| {
++    var table_j: usize = 0;
++    while (table_j < table_configs.len) : (table_j += 1) {
+         try writeTable(
+-            resolved_table,
+-            i,
++            resolved_tables[table_j],
++            table_j,
+             table_allocator,
+             writer,
+         );
+@@ -109,7 +112,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
+ 
+     std.log.debug("Main arena end capacity: {d}", .{main_arena.queryCapacity()});
+ 
+-    const total_end = try std.Io.Clock.awake.now(io);
++    const total_end = std.Io.Clock.awake.now(io);
+     std.log.debug("Total time: {d}ms", .{@divTrunc(std.Io.Timestamp.durationTo(total_start, total_end).nanoseconds, std.time.ns_per_ms)});
+ 
+     if (config.is_updating_ucd) {
+@@ -526,14 +529,14 @@ pub fn writeTableData(
+     var block: B = undefined;
+     var block_len: usize = 0;
+ 
+-    const build_data_start = try std.Io.Clock.awake.now(io);
++    const build_data_start = std.Io.Clock.awake.now(io);
+     var get_data_time: u64 = 0;
+ 
+     for (0..config.max_code_point + 1) |cp_usize| {
+-        const get_data_start = try std.Io.Clock.awake.now(io);
++        const get_data_start = std.Io.Clock.awake.now(io);
+         const cp: u21 = @intCast(cp_usize);
+ 
+-        const get_data_end = try std.Io.Clock.awake.now(io);
++        const get_data_end = std.Io.Clock.awake.now(io);
+         get_data_time += @intCast(std.Io.Timestamp.durationTo(get_data_start, get_data_end).nanoseconds);
+ 
+         var a: AllData = undefined;
+@@ -1136,7 +1139,7 @@ pub fn writeTableData(
+         std.log.debug("Table stage 3 len: {d} (u{d})", .{ stage3.items.len, 1 + std.math.log2(stage3.items.len) });
+     }
+ 
+-    const build_data_end = try std.Io.Clock.awake.now(io);
++    const build_data_end = std.Io.Clock.awake.now(io);
+     std.log.debug("Building data time: {d}ms", .{@divTrunc(std.Io.Timestamp.durationTo(build_data_start, build_data_end).nanoseconds, std.time.ns_per_ms)});
+ 
+     const prefix, const TypePrefix = try tablePrefix(table_config, table_index, allocator);
+diff --git a/src/config.zig b/src/config.zig
+index 2f752ce..a5f4414 100644
+--- a/src/config.zig
++++ b/src/config.zig
+@@ -617,7 +617,7 @@ pub const Table = struct {
+     pub fn field(comptime self: *const Table, comptime name: []const u8) Field {
+         @setEvalBranchQuota(20_000);
+ 
+-        return for (self.fields) |f| {
++        return inline for (self.fields) |f| {
+             if (std.mem.eql(u8, f.name, name)) {
+                 break f;
+             }
+@@ -634,7 +634,7 @@ pub const Table = struct {
+ 
+         const can_be_packed = switch (self.packing) {
+             .auto, .@"packed" => blk: {
+-                for (self.fields) |f| {
++                inline for (self.fields) |f| {
+                     if (!f.canBePacked()) {
+                         break :blk false;
+                     }
+@@ -734,7 +734,7 @@ pub const Extension = struct {
+     }
+ 
+     pub fn field(comptime self: *const Extension, comptime name: []const u8) Field {
+-        return for (self.fields) |f| {
++        return inline for (self.fields) |f| {
+             if (std.mem.eql(u8, f.name, name)) {
+                 break f;
+             }
