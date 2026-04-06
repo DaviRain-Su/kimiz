@@ -204,7 +204,9 @@ fn mapTypeToParamType(comptime T: type, comptime field_name: []const u8) skills.
 
     return switch (T) {
         bool => .boolean,
+        ?bool => .boolean,
         i32, i64, u32, u64 => .integer,
+        ?i32, ?i64, ?u32, ?u64 => .integer,
         []const u8 => classifyStringParam(field_name),
         ?[]const u8 => classifyStringParam(field_name),
         else => .string,
@@ -375,8 +377,8 @@ test "defineSkill with enum fields" {
     try std.testing.expect(EnumSkill.params[1].param_type == .selection);
     try std.testing.expectEqualStrings("junior_dev", EnumSkill.params[1].default_value.?);
 
-    // filepath should be filepath type
-    try std.testing.expect(EnumSkill.params[0].param_type == .filepath);
+    // code should be code type
+    try std.testing.expect(EnumSkill.params[0].param_type == .code);
 
     // verbose should be boolean and not required
     try std.testing.expect(EnumSkill.params[2].param_type == .boolean);
@@ -417,7 +419,9 @@ test "defineSkill with SkillContext handler" {
         .session_id = "test",
     };
 
-    const result = try CtxSkill.execute_fn(ctx, args, allocator);
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const result = try CtxSkill.execute_fn(ctx, args, arena.allocator());
     try std.testing.expect(result.success);
     try std.testing.expectEqualStrings("hello ctx", result.output);
 }

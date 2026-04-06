@@ -79,4 +79,6 @@ test {
     _ = observability;
     _ = engine;
     _ = prompts;
+    _ = skills;
+    _ = extension;
 }

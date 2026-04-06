@@ -194,8 +194,8 @@ fn isPreviouslyReported(session: *ReviewSession, issue: ReviewIssue) bool {
     return session.previously_reported.contains(key);
 }
 
-fn dedupIssues(allocator: std.mem.Allocator, issues: []ReviewIssue) ![]ReviewIssue {
-    if (issues.len == 0) return issues;
+fn dedupIssues(allocator: std.mem.Allocator, issues: []const ReviewIssue) ![]ReviewIssue {
+    if (issues.len == 0) return try allocator.alloc(ReviewIssue, 0);
     var deduped: std.ArrayList(ReviewIssue) = .empty;
     defer deduped.deinit(allocator);
 
@@ -324,7 +324,7 @@ fn formatReview(
     allocator: std.mem.Allocator,
     session: *ReviewSession,
     filepath: []const u8,
-    issues: []ReviewIssue,
+    issues: []const ReviewIssue,
 ) ![]u8 {
     var output: std.ArrayList(u8) = .empty;
     defer output.deinit(allocator);

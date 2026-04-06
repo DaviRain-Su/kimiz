@@ -68,11 +68,30 @@ pub const WasmSkill = struct {
 
     /// Execute the skill with JSON input and return JSON output.
     /// Caller owns the returned memory.
-    /// TODO: T-129-03 will implement proper linear-memory buffer allocation via host imports.
+    /// Input/output buffers are placed in WASM linear memory using fixed safe offsets.
     pub fn execute(self: *Self, input_json: []const u8) ![]const u8 {
-        _ = self;
-        _ = input_json;
-        return error.TodoImplementInT12903;
+        const output_cap: u32 = 64 * 1024; // 64KB max output
+        const input_ptr: u32 = 8192; // safe offset above metadata + bump area
+        const output_ptr: u32 = input_ptr + @as(u32, @intCast(input_json.len));
+
+        // Write input JSON into WASM linear memory
+        try self.inner.memoryWrite(input_ptr, input_json);
+
+        // Call kimiz_skill_execute(input_ptr, input_len, output_ptr, output_cap)
+        var results = [_]u64{0};
+        try self.inner.invoke("kimiz_skill_execute", &[_]u64{
+            input_ptr,
+            input_json.len,
+            output_ptr,
+            output_cap,
+        }, &results);
+
+        const result_len = @as(i32, @bitCast(@as(u32, @intCast(results[0]))));
+        if (result_len < 0) {
+            return WasmSkillError.ExecutionFailed;
+        }
+        const result_u32: u32 = @intCast(result_len);
+        return try self.inner.memoryRead(self.allocator, output_ptr, result_u32);
     }
 };
 
