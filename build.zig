@@ -135,6 +135,17 @@ pub fn build(b: *std.Build) void {
     });
     const run_prompts_loader_tests = b.addRunArtifact(prompts_loader_tests);
     test_step.dependOn(&run_prompts_loader_tests.step);
+
+    // Orchestrator tests (T-128-07)
+    const orchestrator_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/engine/orchestrator.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    const run_orchestrator_tests = b.addRunArtifact(orchestrator_tests);
+    test_step.dependOn(&run_orchestrator_tests.step);
     // Fuzz tests (disabled - needs fix for SkillContext API change)
     // test_step.dependOn(&run_fuzz_tests.step);
 }

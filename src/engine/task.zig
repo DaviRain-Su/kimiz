@@ -177,24 +177,28 @@ fn parseFloat(s: []const u8, default: f32) f32 {
 
 pub const TaskQueue = struct {
     allocator: std.mem.Allocator,
-    tasks: []Task,
+    tasks: std.ArrayList(Task),
 
     const Self = @This();
 
     pub fn init(allocator: std.mem.Allocator) Self {
         return .{
             .allocator = allocator,
-            .tasks = &.{},
+            .tasks = std.ArrayList(Task).init(allocator),
         };
     }
 
     pub fn deinit(self: *Self) void {
-        for (self.tasks) |*t| t.deinit(self.allocator);
-        self.allocator.free(self.tasks);
+        for (self.tasks.items) |*t| t.deinit(self.allocator);
+        self.tasks.deinit();
     }
 
     pub fn isEmpty(self: *const Self) bool {
-        return self.tasks.len == 0;
+        return self.tasks.items.len == 0;
+    }
+
+    pub fn addTask(self: *Self, allocator: std.mem.Allocator, t: Task) !void {
+        try self.tasks.append(allocator, t);
     }
 
     pub fn getDoneTasks(self: *const Self, out: *std.ArrayList([]const u8)) void {
